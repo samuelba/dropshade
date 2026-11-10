@@ -43,6 +43,18 @@ Themes: `dusk` (dark) and `dawn` (light) are built in, and any
 `~/.config/dropshade/themes/` works by its file name. `theme = { dark = "dusk", light = "dawn" }`
 follows the system's light/dark setting.
 
+## Install
+
+Each [release](https://github.com/samuelba/dropshade/releases) has packages for x86_64 and
+aarch64:
+
+| Format | Notes |
+| ------ | ----- |
+| `.rpm` / `.deb` | Includes the GNOME Shell extension system-wide; enable it in Extensions and log out once |
+| AppImage | Run `Dropshade-*.AppImage gnome-extension install` once |
+| Flatpak (x86_64) | Shells run on the host via `flatpak-spawn`; install the extension from the release zip |
+| `.tar.gz` | The binary plus desktop files; run `dropshade gnome-extension install` |
+
 ## Getting started
 
 ```sh
@@ -116,6 +128,7 @@ your real session is never touched:
 ```sh
 ./scripts/gnome-smoke.sh              # headless, with the extension: windows, tabs, config, CLI
 ./scripts/gnome-smoke.sh --fallback   # headless, without it: the app manages its own window
+./scripts/package.sh                  # every release artifact for this machine, into dist/
 ./scripts/gnome-dev.sh     # nested window you can use (needs: sudo dnf install mutter-devkit)
 ```
 
@@ -129,4 +142,4 @@ The extension (`gnome-extension/`) is licensed GPL-2.0-or-later, as extensions.g
 
 ## License
 
-Licensed under [MIT](LICENSE-MIT). Dropshade builds on `alacritty_terminal` (Apache-2.0).
+Licensed under [MIT](LICENSE). Dropshade builds on `alacritty_terminal` (Apache-2.0).

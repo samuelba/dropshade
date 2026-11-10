@@ -1,0 +1,86 @@
+name: Packages
+
+# Builds every release artifact, so packaging breaks show up before a release. The release
+# workflow calls this one and uploads the results.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - crates/dropshade/Cargo.toml
+      - gnome-extension/**
+      - packaging/**
+      - scripts/package.sh
+      - .github/workflows/packages.yml
+  workflow_dispatch:
+  workflow_call:
+
+concurrency:
+  group: packages-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 22.04 keeps the glibc requirement low, so the binaries run on older distributions.
+          - os: ubuntu-22.04
+            arch: x86_64
+          - os: ubuntu-22.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deb,cargo-generate-rpm
+      - run: sudo apt-get update && sudo apt-get install -y zip libxkbcommon0 libwayland-client0 libwayland-cursor0 dpkg-dev
+      - name: Fetch linuxdeploy
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/linuxdeploy" \
+            "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.arch }}.AppImage"
+          chmod +x "$RUNNER_TEMP/linuxdeploy"
+      - run: ./scripts/package.sh
+        env:
+          LINUXDEPLOY: ${{ runner.temp }}/linuxdeploy
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  flatpak:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v7
+      - name: Generate the offline Cargo sources
+        run: |
+          generator=9d86d336a39b9af38b86f114b6ce5820fe260f91
+          curl -fsSLo flatpak-cargo-generator.py \
+            "https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/$generator/cargo/flatpak-cargo-generator.py"
+          python3 -m pip install --break-system-packages aiohttp tomlkit
+          python3 flatpak-cargo-generator.py Cargo.lock -o packaging/flatpak/cargo-sources.json
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: Dropshade-x86_64.flatpak
+          manifest-path: packaging/flatpak/io.github.samuelba.Dropshade.yml
+          cache-key: flatpak-builder-${{ hashFiles('Cargo.lock') }}
+          upload-artifact: false
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages-flatpak
+          path: Dropshade-x86_64.flatpak
+          if-no-files-found: error

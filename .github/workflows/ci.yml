@@ -55,10 +55,29 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov,cargo-nextest
-      - run: cargo llvm-cov nextest --package dropshade-term --locked --fail-under-lines 80
+      - run: >-
+          cargo llvm-cov nextest --locked --fail-under-lines 80
+          --package dropshade-term --package dropshade-config --package dropshade-session
 
   deny:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
+
+  desktop:
+    name: Extension and desktop files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: sudo apt-get update && sudo apt-get install -y libglib2.0-bin desktop-file-utils appstream
+      - name: Extension JavaScript parses
+        run: for file in gnome-extension/*.js; do node --check --input-type=module < "$file"; done
+      - run: glib-compile-schemas --strict --dry-run gnome-extension/schemas
+      - run: desktop-file-validate packaging/io.github.samuelba.Dropshade.desktop
+      - run: appstreamcli validate --no-net packaging/io.github.samuelba.Dropshade.metainfo.xml
+      - name: Shell scripts parse
+        run: for file in scripts/*.sh; do bash -n "$file"; done

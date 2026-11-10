@@ -84,7 +84,8 @@ fn write_files(target: &Path) -> std::io::Result<()> {
 /// GNOME Shell does not see the user's shell PATH (e.g. ~/.cargo/bin), so the extension is told
 /// exactly which binary to start.
 fn point_extension_at_this_binary(schemas: &Path) {
-    let Ok(binary) = std::env::current_exe() else {
+    let current = std::env::current_exe().ok();
+    let Some(binary) = launch_target(std::env::var_os("APPIMAGE"), current) else {
         return;
     };
     let value = format!("[{}]", quote(&binary));
@@ -102,6 +103,18 @@ fn point_extension_at_this_binary(schemas: &Path) {
             eprintln!("dropshade: could not tell the extension where Dropshade is: {error}");
         }
     }
+}
+
+/// What the extension should start. Inside an `AppImage` the binary lives in a temporary mount,
+/// so the `AppImage` file itself (`$APPIMAGE`) is the stable choice.
+fn launch_target(
+    appimage: Option<std::ffi::OsString>,
+    current: Option<std::path::PathBuf>,
+) -> Option<std::path::PathBuf> {
+    appimage
+        .map(std::path::PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .or(current)
 }
 
 /// A `GVariant` string literal for a path.
@@ -154,6 +167,23 @@ mod tests {
             .expect("metadata")
             .1;
         assert!(metadata.contains(UUID));
+    }
+
+    #[test]
+    fn appimages_point_the_extension_at_the_appimage_file() {
+        let current = Some(std::path::PathBuf::from(
+            "/tmp/.mount_abc/usr/bin/dropshade",
+        ));
+        let appimage = Some("/home/me/Apps/Dropshade.AppImage".into());
+        assert_eq!(
+            launch_target(appimage, current.clone()),
+            Some(std::path::PathBuf::from("/home/me/Apps/Dropshade.AppImage"))
+        );
+        assert_eq!(launch_target(None, current.clone()), current);
+        assert_eq!(
+            launch_target(Some("relative".into()), current.clone()),
+            current
+        );
     }
 
     #[test]

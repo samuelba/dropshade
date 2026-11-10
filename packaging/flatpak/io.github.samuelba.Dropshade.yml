@@ -1,0 +1,46 @@
+# Flatpak build. Shells run on the host through flatpak-spawn, so the sandbox needs to talk to
+# org.freedesktop.Flatpak. CI generates cargo-sources.json from Cargo.lock with
+# flatpak-cargo-generator before building, so the build itself runs offline.
+#
+# Limitations inside Flatpak: the tab directory and "program still running" checks read /proc,
+# which only shows sandbox processes, so new tabs start in the home directory and closing a tab
+# does not ask first. The GNOME Shell extension is installed separately (extensions.gnome.org or
+# the release zip) and must start "flatpak run io.github.samuelba.Dropshade".
+id: io.github.samuelba.Dropshade
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: dropshade
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --talk-name=org.freedesktop.Flatpak
+  - --own-name=io.github.samuelba.Dropshade
+  - --talk-name=io.github.samuelba.Dropshade.Shell
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/dropshade/cargo
+    CARGO_NET_OFFLINE: 'true'
+modules:
+  - name: dropshade
+    buildsystem: simple
+    build-commands:
+      - cargo build --release --locked --offline -p dropshade
+      - install -Dm755 target/release/dropshade /app/bin/dropshade
+      - install -Dm644 packaging/io.github.samuelba.Dropshade.desktop /app/share/applications/io.github.samuelba.Dropshade.desktop
+      - install -Dm644 packaging/io.github.samuelba.Dropshade.metainfo.xml /app/share/metainfo/io.github.samuelba.Dropshade.metainfo.xml
+      - install -Dm644 packaging/icons/hicolor/scalable/apps/io.github.samuelba.Dropshade.svg /app/share/icons/hicolor/scalable/apps/io.github.samuelba.Dropshade.svg
+      - install -Dm644 packaging/icons/hicolor/symbolic/apps/io.github.samuelba.Dropshade-symbolic.svg /app/share/icons/hicolor/symbolic/apps/io.github.samuelba.Dropshade-symbolic.svg
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - target
+          - dist
+          - .jj
+      - cargo-sources.json
