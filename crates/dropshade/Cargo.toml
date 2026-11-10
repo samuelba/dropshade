@@ -11,6 +11,7 @@ authors.workspace = true
 [dependencies]
 dropshade-term.workspace = true
 iced.workspace = true
+open.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 

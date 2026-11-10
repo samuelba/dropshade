@@ -13,7 +13,11 @@ alacritty_terminal.workspace = true
 iced.workspace = true
 iced_graphics.workspace = true
 thiserror.workspace = true
+unicode-width.workspace = true
 tracing.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+alacritty_terminal.workspace = true

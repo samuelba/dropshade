@@ -7,16 +7,23 @@ use std::sync::Arc;
 
 use alacritty_terminal::event::{Event, EventListener};
 use alacritty_terminal::event_loop::{EventLoop, EventLoopSender, Msg};
-use alacritty_terminal::grid::Scroll;
+use alacritty_terminal::grid::{Dimensions, Scroll};
+use alacritty_terminal::index::{Column, Point, Side as GridSide};
+use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::sync::FairMutex;
-use alacritty_terminal::term::{Config, Term, TermMode};
+use alacritty_terminal::term::{
+    ClipboardType, Config, Term, TermMode, point_to_viewport, viewport_to_point,
+};
 use alacritty_terminal::tty;
 use iced::futures::Stream;
 use iced::futures::channel::mpsc;
 
 use crate::colors::Palette;
 use crate::frame::{self, Frame};
-use crate::size::{CellSize, GridSize};
+use crate::input::paste_bytes;
+use crate::links;
+use crate::mouse::CellPosition;
+use crate::size::{CellSize, GridSize, Side};
 
 /// Forwards emulator events from the pty thread to the UI.
 #[derive(Debug, Clone)]
@@ -40,6 +47,8 @@ pub struct SpawnOptions {
     pub working_directory: Option<PathBuf>,
     pub env: HashMap<String, String>,
     pub scrollback_lines: usize,
+    /// Lets applications enable the kitty keyboard protocol (`CSI > flags u`).
+    pub kitty_keyboard: bool,
     pub size: GridSize,
     pub cell: CellSize,
 }
@@ -51,6 +60,7 @@ impl Default for SpawnOptions {
             working_directory: None,
             env: HashMap::new(),
             scrollback_lines: 10_000,
+            kitty_keyboard: true,
             size: GridSize {
                 columns: 80,
                 lines: 24,
@@ -78,6 +88,29 @@ pub enum Notice {
     TitleChanged,
     Bell,
     Exited(Option<i32>),
+    /// The application asked to copy text (OSC 52) to the clipboard or primary selection.
+    Copy {
+        text: String,
+        primary: bool,
+    },
+}
+
+/// How a mouse selection grows: by cell, by word (double-click) or by line (triple-click).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelectionKind {
+    Simple,
+    Word,
+    Line,
+}
+
+impl SelectionKind {
+    pub fn from_clicks(clicks: u8) -> Self {
+        match clicks {
+            0 | 1 => Self::Simple,
+            2 => Self::Word,
+            _ => Self::Line,
+        }
+    }
 }
 
 pub struct Terminal {
@@ -112,6 +145,7 @@ impl Terminal {
         let proxy = EventProxy { sender };
         let config = Config {
             scrolling_history: options.scrollback_lines,
+            kitty_keyboard: options.kitty_keyboard,
             ..Config::default()
         };
         let term = Arc::new(FairMutex::new(Term::new(
@@ -194,6 +228,87 @@ impl Terminal {
         self.term.lock().scroll_display(Scroll::Delta(lines));
     }
 
+    pub fn scroll_page(&self, up: bool) {
+        self.term
+            .lock()
+            .scroll_display(if up { Scroll::PageUp } else { Scroll::PageDown });
+    }
+
+    pub fn scroll_to_top(&self) {
+        self.term.lock().scroll_display(Scroll::Top);
+    }
+
+    /// Starts a selection at a viewport cell.
+    pub fn select(&self, kind: SelectionKind, at: CellPosition, side: Side) {
+        let mut term = self.term.lock();
+        let point = grid_point(term.grid().display_offset(), at);
+        let kind = match kind {
+            SelectionKind::Simple => SelectionType::Simple,
+            SelectionKind::Word => SelectionType::Semantic,
+            SelectionKind::Line => SelectionType::Lines,
+        };
+        term.selection = Some(Selection::new(kind, point, grid_side(side)));
+    }
+
+    /// Moves the end of the current selection to a viewport cell.
+    pub fn extend_selection(&self, to: CellPosition, side: Side) {
+        let mut term = self.term.lock();
+        let point = grid_point(term.grid().display_offset(), to);
+        if let Some(selection) = term.selection.as_mut() {
+            selection.update(point, grid_side(side));
+        }
+    }
+
+    pub fn clear_selection(&self) {
+        self.term.lock().selection = None;
+    }
+
+    /// The selected text, or `None` when nothing (or only empty space) is selected.
+    pub fn selection_text(&self) -> Option<String> {
+        self.term
+            .lock()
+            .selection_to_string()
+            .filter(|text| !text.is_empty())
+    }
+
+    /// The cursor's viewport cell, or `None` while it is scrolled out of view.
+    pub fn cursor_position(&self) -> Option<CellPosition> {
+        let term = self.term.lock();
+        let point = term.grid().cursor.point;
+        point_to_viewport(term.grid().display_offset(), point).map(|p| CellPosition {
+            column: p.column.0,
+            line: p.line,
+        })
+    }
+
+    /// Whether the application asked for a blinking cursor (DECSCUSR).
+    pub fn cursor_blinks(&self) -> bool {
+        self.term.lock().cursor_style().blinking
+    }
+
+    /// The link under a viewport cell: an OSC 8 hyperlink, or else a URL in the row's text.
+    pub fn link_at(&self, at: CellPosition) -> Option<String> {
+        let term = self.term.lock();
+        let columns = term.columns();
+        if at.column >= columns || at.line >= term.screen_lines() {
+            return None;
+        }
+        let point = grid_point(term.grid().display_offset(), at);
+        let row = &term.grid()[point.line];
+        if let Some(link) = row[point.column].hyperlink() {
+            return Some(link.uri().to_owned());
+        }
+        let chars: Vec<char> = (0..columns).map(|column| row[Column(column)].c).collect();
+        links::url_at(&chars, at.column)
+    }
+
+    /// Sends pasted text, using bracketed paste when the application asked for it.
+    pub fn paste(&self, text: &str) {
+        let bracketed = self.mode().contains(TermMode::BRACKETED_PASTE);
+        self.scroll_to_bottom();
+        self.write(paste_bytes(text, bracketed));
+    }
+
     /// Applies an emulator event and tells the UI how to react.
     pub fn handle_event(&mut self, event: Event, palette: &Palette) -> Option<Notice> {
         match event {
@@ -225,8 +340,12 @@ impl Terminal {
             Event::Bell => Some(Notice::Bell),
             Event::ChildExit(status) => Some(Notice::Exited(status.code())),
             Event::Exit => Some(Notice::Exited(None)),
-            Event::ClipboardStore(..) | Event::ClipboardLoad(..) => {
-                tracing::debug!(?event, "clipboard requests are not supported yet");
+            Event::ClipboardStore(kind, text) => Some(Notice::Copy {
+                text,
+                primary: kind == ClipboardType::Selection,
+            }),
+            Event::ClipboardLoad(..) => {
+                tracing::debug!("ignoring an OSC 52 clipboard read request");
                 None
             }
         }
@@ -242,5 +361,17 @@ impl Terminal {
 impl Drop for Terminal {
     fn drop(&mut self) {
         self.send(Msg::Shutdown);
+    }
+}
+
+#[allow(clippy::cast_possible_wrap)]
+fn grid_point(display_offset: usize, at: CellPosition) -> Point {
+    viewport_to_point(display_offset, Point::new(at.line, Column(at.column)))
+}
+
+fn grid_side(side: Side) -> GridSide {
+    match side {
+        Side::Left => GridSide::Left,
+        Side::Right => GridSide::Right,
     }
 }

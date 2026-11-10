@@ -179,3 +179,161 @@ mod events {
         assert!(terminal.cell().width > 0.0);
     }
 }
+
+#[test]
+fn applications_can_enable_the_kitty_keyboard_protocol() {
+    use alacritty_terminal::term::TermMode;
+
+    let terminal = spawn(
+        "printf '\\033[>1uready'; sleep 2",
+        GridSize {
+            columns: 20,
+            lines: 3,
+        },
+    );
+    wait_for(&terminal, "ready");
+    let screen = screen_text(&terminal);
+    let mode = terminal.mode();
+    assert!(
+        mode.contains(TermMode::DISAMBIGUATE_ESC_CODES),
+        "mode {mode:?}, screen {screen:?}"
+    );
+}
+
+mod selection {
+    use dropshade_term::mouse::CellPosition;
+    use dropshade_term::size::Side;
+    use dropshade_term::{GridSize, SelectionKind};
+
+    use super::{spawn, wait_for};
+
+    const SIZE: GridSize = GridSize {
+        columns: 30,
+        lines: 3,
+    };
+
+    fn at(column: usize) -> CellPosition {
+        CellPosition { column, line: 0 }
+    }
+
+    #[test]
+    fn double_click_selects_a_word() {
+        let terminal = spawn("printf 'hello world'; sleep 2", SIZE);
+        wait_for(&terminal, "hello world");
+        terminal.select(SelectionKind::Word, at(1), Side::Left);
+        assert_eq!(terminal.selection_text().as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn triple_click_selects_the_line() {
+        let terminal = spawn("printf 'hello world'; sleep 2", SIZE);
+        wait_for(&terminal, "hello world");
+        terminal.select(SelectionKind::Line, at(3), Side::Left);
+        let text = terminal.selection_text().unwrap_or_default();
+        assert_eq!(text.trim_end(), "hello world");
+    }
+
+    #[test]
+    fn dragging_extends_a_simple_selection_and_clearing_removes_it() {
+        let terminal = spawn("printf 'hello world'; sleep 2", SIZE);
+        wait_for(&terminal, "hello world");
+        terminal.select(SelectionKind::Simple, at(6), Side::Left);
+        terminal.extend_selection(at(10), Side::Right);
+        assert_eq!(terminal.selection_text().as_deref(), Some("world"));
+        terminal.clear_selection();
+        assert_eq!(terminal.selection_text(), None);
+    }
+
+    #[test]
+    fn paste_reaches_the_shell() {
+        let terminal = spawn("read line; printf 'got:%s' \"$line\"; sleep 2", SIZE);
+        terminal.paste("pasted\n");
+        let text = wait_for(&terminal, "got:pasted");
+        assert!(text.contains("got:pasted"), "screen was: {text:?}");
+    }
+}
+
+mod links {
+    use dropshade_term::GridSize;
+    use dropshade_term::mouse::CellPosition;
+
+    use super::{spawn, wait_for};
+
+    const SIZE: GridSize = GridSize {
+        columns: 40,
+        lines: 3,
+    };
+
+    fn at(column: usize) -> CellPosition {
+        CellPosition { column, line: 0 }
+    }
+
+    #[test]
+    fn plain_urls_in_output_are_found() {
+        let terminal = spawn("printf 'visit https://example.com now'; sleep 2", SIZE);
+        wait_for(&terminal, "now");
+        assert_eq!(
+            terminal.link_at(at(8)).as_deref(),
+            Some("https://example.com")
+        );
+        assert_eq!(terminal.link_at(at(2)), None);
+    }
+
+    #[test]
+    fn osc8_hyperlinks_win_over_the_visible_text() {
+        let script =
+            "printf '\\033]8;;https://osc.example/\\033\\\\label\\033]8;;\\033\\\\ done'; sleep 2";
+        let terminal = spawn(script, SIZE);
+        wait_for(&terminal, "done");
+        assert_eq!(
+            terminal.link_at(at(1)).as_deref(),
+            Some("https://osc.example/")
+        );
+        assert_eq!(terminal.link_at(at(7)), None);
+    }
+
+    #[test]
+    fn positions_outside_the_grid_have_no_link() {
+        let terminal = spawn("sleep 2", SIZE);
+        assert_eq!(
+            terminal.link_at(CellPosition {
+                column: 99,
+                line: 0
+            }),
+            None
+        );
+    }
+}
+
+mod cursor {
+    use dropshade_term::GridSize;
+    use dropshade_term::mouse::CellPosition;
+
+    use super::{spawn, wait_for};
+
+    const SIZE: GridSize = GridSize {
+        columns: 20,
+        lines: 3,
+    };
+
+    #[test]
+    fn cursor_position_follows_output() {
+        let terminal = spawn("printf 'hi'; sleep 2", SIZE);
+        wait_for(&terminal, "hi");
+        assert_eq!(
+            terminal.cursor_position(),
+            Some(CellPosition { column: 2, line: 0 })
+        );
+    }
+
+    #[test]
+    fn applications_can_request_a_blinking_cursor() {
+        let steady = spawn("printf 'a'; sleep 2", SIZE);
+        wait_for(&steady, "a");
+        assert!(!steady.cursor_blinks());
+
+        let blinking = spawn("printf '\\033[1 qb'; sleep 2", SIZE);
+        wait_for(&blinking, "b");
+        assert!(blinking.cursor_blinks());
+    }
+}

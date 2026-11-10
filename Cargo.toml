@@ -16,6 +16,8 @@ alacritty_terminal = "0.26"
 iced = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "tokio", "canvas", "advanced", "wayland", "x11", "web-colors"] }
 iced_graphics = "0.14"
 anyhow = "1"
+open = "5"
+unicode-width = "0.2"
 thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

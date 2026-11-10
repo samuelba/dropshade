@@ -1,12 +1,14 @@
 //! Dropshade: a drop-down terminal for Linux.
 
 use dropshade_term::{
-    InputConfig, Interaction, Notice, Palette, SpawnOptions, TermEvent, Terminal, TerminalView,
-    ViewStyle, metrics,
+    InputConfig, Interaction, Notice, Palette, Shortcut, SpawnOptions, TermEvent, Terminal,
+    TerminalView, TerminalWidget, ViewStyle, links, metrics,
 };
-use iced::widget::{canvas, container, text};
+use iced::clipboard;
+use iced::widget::{container, text};
 use iced::window::settings::PlatformSpecific;
-use iced::{Color, Element, Fill, Font, Size, Task, Theme, window};
+use iced::{Color, Element, Fill, Font, Size, Subscription, Task, Theme, time, window};
+use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 
 const APP_ID: &str = "io.github.samuelba.Dropshade";
@@ -16,6 +18,8 @@ const LINE_HEIGHT: f32 = 1.25;
 const PADDING: f32 = 10.0;
 const BACKGROUND_OPACITY: f32 = 0.94;
 const SHELL_LAUNCHED_ENV: &str = "DROPSHADE_SHELL_LAUNCHED";
+const BLINK_INTERVAL: Duration = Duration::from_millis(530);
+const BELL_DURATION: Duration = Duration::from_millis(120);
 
 fn main() -> iced::Result {
     tracing_subscriber::fmt()
@@ -26,6 +30,15 @@ fn main() -> iced::Result {
 
     iced::application(App::boot, App::update, App::view)
         .title(App::title)
+        .subscription(App::subscription)
+        // FIFO presentation stalls under Mutter: a commit carrying a wp_fifo_v1 barrier can wait
+        // forever for a repaint, freezing the drop-down until it is hidden and shown again.
+        // Without vsync, wgpu picks mailbox or immediate; winit still paces redraws with frame
+        // callbacks, and ICED_PRESENT_MODE overrides this choice.
+        .settings(iced::Settings {
+            vsync: false,
+            ..iced::Settings::default()
+        })
         .window(window::Settings {
             size: Size::new(1100.0, 640.0),
             transparent: true,
@@ -45,7 +58,7 @@ fn main() -> iced::Result {
 
 #[derive(Debug)]
 enum App {
-    Running(Session),
+    Running(Box<Session>),
     Failed(String),
 }
 
@@ -54,12 +67,17 @@ struct Session {
     terminal: Terminal,
     style: ViewStyle,
     input: InputConfig,
+    cursor_on: bool,
+    bell: bool,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
     Term(TermEvent),
     Interaction(Interaction),
+    Paste(Option<String>),
+    Blink,
+    BellOff,
 }
 
 impl App {
@@ -83,8 +101,13 @@ impl App {
                     terminal,
                     style,
                     input: InputConfig::default(),
+                    cursor_on: true,
+                    bell: false,
                 };
-                (Self::Running(session), Task::run(events, Message::Term))
+                (
+                    Self::Running(Box::new(session)),
+                    Task::run(events, Message::Term),
+                )
             }
             Err(error) => {
                 tracing::error!(%error, "could not start the shell");
@@ -108,27 +131,66 @@ impl App {
             Message::Term(event) => {
                 match session.terminal.handle_event(event, &session.style.palette) {
                     Some(Notice::Exited(_)) => iced::exit(),
+                    Some(Notice::Copy { text, primary }) => copy(text, primary),
+                    Some(Notice::Bell) => {
+                        session.bell = true;
+                        Task::none()
+                    }
                     _ => Task::none(),
                 }
             }
             Message::Interaction(interaction) => {
-                apply(&mut session.terminal, interaction);
+                if matches!(interaction, Interaction::Input(_)) {
+                    session.cursor_on = true;
+                }
+                apply(&mut session.terminal, interaction)
+            }
+            Message::Blink => {
+                session.cursor_on = !session.cursor_on;
                 Task::none()
             }
+            Message::BellOff => {
+                session.bell = false;
+                Task::none()
+            }
+            Message::Paste(Some(text)) => {
+                session.terminal.paste(&text);
+                Task::none()
+            }
+            Message::Paste(None) => Task::none(),
         }
+    }
+
+    fn subscription(&self) -> Subscription<Message> {
+        let Self::Running(session) = self else {
+            return Subscription::none();
+        };
+        let blink = if session.terminal.cursor_blinks() {
+            time::every(BLINK_INTERVAL).map(|_| Message::Blink)
+        } else {
+            Subscription::none()
+        };
+        let bell = if session.bell {
+            time::every(BELL_DURATION).map(|_| Message::BellOff)
+        } else {
+            Subscription::none()
+        };
+        Subscription::batch([blink, bell])
     }
 
     fn view(&self) -> Element<'_, Message> {
         match self {
-            Self::Running(session) => canvas(TerminalView::new(
-                &session.terminal,
-                &session.style,
-                &session.input,
-                Message::Interaction,
-            ))
-            .width(Fill)
-            .height(Fill)
-            .into(),
+            Self::Running(session) => {
+                let view = TerminalView::new(
+                    &session.terminal,
+                    &session.style,
+                    &session.input,
+                    Message::Interaction,
+                )
+                .cursor_visible(session.cursor_on || !session.terminal.cursor_blinks())
+                .bell(session.bell);
+                TerminalWidget::new(view).into()
+            }
             Self::Failed(error) => container(text(format!(
                 "Dropshade could not start a shell.\n\n{error}"
             )))
@@ -138,7 +200,7 @@ impl App {
     }
 }
 
-fn apply(terminal: &mut Terminal, interaction: Interaction) {
+fn apply(terminal: &mut Terminal, interaction: Interaction) -> Task<Message> {
     match interaction {
         Interaction::Input(bytes) => {
             terminal.scroll_to_bottom();
@@ -146,6 +208,56 @@ fn apply(terminal: &mut Terminal, interaction: Interaction) {
         }
         Interaction::Resize(size) => terminal.resize(size),
         Interaction::Scroll(lines) => terminal.scroll(lines),
+        Interaction::Select { kind, at, side } => terminal.select(kind, at, side),
+        Interaction::ExtendSelection { at, side } => terminal.extend_selection(at, side),
+        Interaction::FinishSelection => {
+            return terminal
+                .selection_text()
+                .map_or_else(Task::none, |text| copy(text, true));
+        }
+        Interaction::PastePrimary => return clipboard::read_primary().map(Message::Paste),
+        Interaction::OpenLink(cell) => {
+            if let Some(url) = terminal.link_at(cell) {
+                open_link(&url);
+            }
+        }
+        Interaction::Shortcut(shortcut) => return run_shortcut(terminal, shortcut),
+    }
+    Task::none()
+}
+
+fn run_shortcut(terminal: &Terminal, shortcut: Shortcut) -> Task<Message> {
+    match shortcut {
+        Shortcut::Copy => {
+            return terminal
+                .selection_text()
+                .map_or_else(Task::none, |text| copy(text, false));
+        }
+        Shortcut::Paste => return clipboard::read().map(Message::Paste),
+        Shortcut::PastePrimary => return clipboard::read_primary().map(Message::Paste),
+        Shortcut::ScrollPageUp => terminal.scroll_page(true),
+        Shortcut::ScrollPageDown => terminal.scroll_page(false),
+        Shortcut::ScrollToTop => terminal.scroll_to_top(),
+        Shortcut::ScrollToBottom => terminal.scroll_to_bottom(),
+    }
+    Task::none()
+}
+
+fn open_link(url: &str) {
+    if !links::is_openable(url) {
+        tracing::warn!(url, "refusing to open a link with an unsupported scheme");
+        return;
+    }
+    if let Err(error) = open::that_detached(url) {
+        tracing::error!(url, %error, "could not open link");
+    }
+}
+
+fn copy(text: String, primary: bool) -> Task<Message> {
+    if primary {
+        clipboard::write_primary(text)
+    } else {
+        clipboard::write(text)
     }
 }
 
