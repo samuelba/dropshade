@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 pub use error::ConfigError;
 pub use schema::{
     Appearance, Binding, Config, CursorShape, Font, Input, Monitor, Scrollback, Session,
-    TabBarPosition, Terminal, ThemeChoice, Unlimited, Window,
+    TabBarPosition, TabWidth, Terminal, ThemeChoice, Unlimited, Window,
 };
 
 /// The default configuration, documented; `dropshade config print-default` prints it.
@@ -145,6 +145,7 @@ mod tests {
             [appearance]
             theme = { dark = "dusk", light = "dawn" }
             tab_bar = "left"
+            tab_width = "fit"
 
             [terminal]
             scrollback = "unlimited"
@@ -160,6 +161,7 @@ mod tests {
         assert_eq!(config.appearance.theme.name(true), "dawn");
         assert_eq!(config.appearance.theme.name(false), "dusk");
         assert_eq!(config.appearance.tab_bar, TabBarPosition::Left);
+        assert_eq!(config.appearance.tab_width, TabWidth::Fit);
         assert_eq!(config.terminal.scrollback.lines(), usize::MAX);
         assert_eq!(
             config.keybindings["ctrl+shift+t"],

@@ -46,7 +46,7 @@ impl App {
                 .map(|rename| (rename.id, rename.draft.as_str())),
             colors: self.settings.colors,
             width: self.window_size.width,
-            tab_count: self.tabs.len(),
+            sizing: self.settings.tab_sizing,
         };
         let tab_bar = bar::view(&self.tabs, state).map(Message::Tab);
         let terminal: Element<'_, Message> = iced::widget::Column::new()

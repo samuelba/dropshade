@@ -13,7 +13,7 @@ use dropshade_term::input::{Binding, BindingAction, Chord};
 use dropshade_term::{CursorShape, CursorStyle, InputConfig, Palette, ViewStyle, metrics};
 use iced::Font;
 
-use crate::tabs::BarPosition;
+use crate::tabs::{BarPosition, TabSizing};
 use crate::theme::UiColors;
 
 const DEFAULT_FONT_FAMILY: &str = "monospace";
@@ -24,6 +24,7 @@ pub struct Settings {
     pub colors: UiColors,
     pub input: InputConfig,
     pub bar: BarPosition,
+    pub tab_sizing: TabSizing,
     pub shell: Option<(String, Vec<String>)>,
     pub env: HashMap<String, String>,
     pub working_directory: Option<PathBuf>,
@@ -66,6 +67,7 @@ pub fn build(config: &Config, prefers_light: bool, themes_dir: Option<&Path>) ->
         style,
         input,
         bar: bar_position(config.appearance.tab_bar),
+        tab_sizing: tab_sizing(config.appearance.tab_width),
         shell: (!terminal.shell.trim().is_empty())
             .then(|| (terminal.shell.clone(), terminal.shell_args.clone())),
         env: terminal.env.clone().into_iter().collect(),
@@ -178,6 +180,13 @@ fn bar_position(position: dropshade_config::TabBarPosition) -> BarPosition {
     }
 }
 
+fn tab_sizing(width: dropshade_config::TabWidth) -> TabSizing {
+    match width {
+        dropshade_config::TabWidth::Fixed => TabSizing::Fixed,
+        dropshade_config::TabWidth::Fit => TabSizing::Fit,
+    }
+}
+
 fn cursor_shape(shape: ConfigCursorShape) -> CursorShape {
     match shape {
         ConfigCursorShape::Block => CursorShape::Block,
@@ -216,6 +225,7 @@ mod tests {
         assert!(settings.warnings.is_empty(), "{:?}", settings.warnings);
         assert_eq!(settings.style.palette, Palette::DUSK);
         assert_eq!(settings.bar, BarPosition::Top);
+        assert_eq!(settings.tab_sizing, TabSizing::Fixed);
         assert_eq!(settings.shell, None);
         assert_eq!(settings.input.shift_enter.as_deref(), Some(&b"\x1b\r"[..]));
         assert_eq!(settings.scrollback_lines, 10_000);
@@ -233,7 +243,7 @@ mod tests {
     #[test]
     fn appearance_values_are_applied() {
         let settings = settings(
-            "[appearance]\ntheme = \"dawn\"\npadding = 4\nbackground_opacity = 0.5\ntab_bar = \"bottom\"\n\
+            "[appearance]\ntheme = \"dawn\"\npadding = 4\nbackground_opacity = 0.5\ntab_bar = \"bottom\"\ntab_width = \"fit\"\n\
              cursor_shape = \"beam\"\ncursor_blink = true\n[font]\nsize = 20\n",
         );
         assert_eq!(
@@ -244,6 +254,7 @@ mod tests {
         assert!((settings.style.background_opacity - 0.5).abs() < f32::EPSILON);
         assert!((settings.style.font_size - 20.0).abs() < f32::EPSILON);
         assert_eq!(settings.bar, BarPosition::Bottom);
+        assert_eq!(settings.tab_sizing, TabSizing::Fit);
         assert_eq!(
             settings.cursor_style,
             CursorStyle {
