@@ -5,9 +5,7 @@
 
 ### Features
 
-* add a tab width setting to size tabs to their names ([6eeaad5](https://github.com/samuelba/dropshade/commit/6eeaad5b4f48a40b52c20532b50afbc6d2a1a9eb))
-* **gnome-extension:** notify when the Dropshade app is not installed ([5ee26b6](https://github.com/samuelba/dropshade/commit/5ee26b6a3b689c9e7ff20f08e7cad8ad28f749ff))
-* **gnome-extension:** notify when the Dropshade app is not installed ([a3b8490](https://github.com/samuelba/dropshade/commit/a3b84906661f94eb32f8dc9f8e15fa552f6358c6))
+* **gnome-extension:** notify when the Dropshade app is not installed (@samuelba) ([a3b8490](https://github.com/samuelba/dropshade/commit/a3b84906661f94eb32f8dc9f8e15fa552f6358c6))
 
 ## [0.2.0](https://github.com/samuelba/dropshade/compare/v0.1.0...v0.2.0) (2026-11-10)
 
