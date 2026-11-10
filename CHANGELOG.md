@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/samuelba/dropshade/compare/v0.2.0...v0.3.0) (2026-11-10)
+
+
+### Features
+
+* **gnome-extension:** notify when the Dropshade app is not installed (@samuelba) ([a3b8490](https://github.com/samuelba/dropshade/commit/a3b84906661f94eb32f8dc9f8e15fa552f6358c6))
+
 ## [0.2.0](https://github.com/samuelba/dropshade/compare/v0.1.0...v0.2.0) (2026-11-10)
 
 
