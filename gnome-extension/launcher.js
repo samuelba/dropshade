@@ -4,6 +4,7 @@ import Meta from 'gi://Meta';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 const DEFAULT_COMMAND = ['dropshade'];
+const SIGTERM = 15;
 
 /**
  * Starts Dropshade as a privileged Wayland client so its window can be identified reliably.
@@ -60,6 +61,8 @@ export class AppLauncher {
 
     destroy() {
         global.display.disconnect(this._windowCreatedId);
+        const client = this._client;
         this._client = null;
+        client?.get_subprocess().send_signal(SIGTERM);
     }
 }
