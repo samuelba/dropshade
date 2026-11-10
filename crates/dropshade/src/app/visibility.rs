@@ -10,7 +10,7 @@ use super::{App, INITIAL_SIZE, Message, WindowSettings};
 use crate::ipc::client::{self, Visibility};
 use crate::ipc::{Command, service};
 
-pub const APP_ID: &str = "io.github.samuelba.Dropshade";
+pub const APP_ID: &str = "dev.samuelba.Dropshade";
 
 pub fn window_settings(managed: bool) -> window::Settings {
     window::Settings {

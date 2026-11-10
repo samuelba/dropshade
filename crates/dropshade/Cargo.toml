@@ -40,13 +40,13 @@ priority = "optional"
 depends = "$auto"
 assets = [
     ["target/release/dropshade", "usr/bin/", "755"],
-    ["../../packaging/io.github.samuelba.Dropshade.desktop", "usr/share/applications/", "644"],
-    ["../../packaging/io.github.samuelba.Dropshade.metainfo.xml", "usr/share/metainfo/", "644"],
-    ["../../packaging/icons/hicolor/scalable/apps/io.github.samuelba.Dropshade.svg", "usr/share/icons/hicolor/scalable/apps/", "644"],
-    ["../../packaging/icons/hicolor/symbolic/apps/io.github.samuelba.Dropshade-symbolic.svg", "usr/share/icons/hicolor/symbolic/apps/", "644"],
-    ["../../gnome-extension/*.js", "usr/share/gnome-shell/extensions/dropshade@samuelba.github.io/", "644"],
-    ["../../gnome-extension/metadata.json", "usr/share/gnome-shell/extensions/dropshade@samuelba.github.io/", "644"],
-    ["../../gnome-extension/LICENSE", "usr/share/gnome-shell/extensions/dropshade@samuelba.github.io/", "644"],
+    ["../../packaging/dev.samuelba.Dropshade.desktop", "usr/share/applications/", "644"],
+    ["../../packaging/dev.samuelba.Dropshade.metainfo.xml", "usr/share/metainfo/", "644"],
+    ["../../packaging/icons/hicolor/scalable/apps/dev.samuelba.Dropshade.svg", "usr/share/icons/hicolor/scalable/apps/", "644"],
+    ["../../packaging/icons/hicolor/symbolic/apps/dev.samuelba.Dropshade-symbolic.svg", "usr/share/icons/hicolor/symbolic/apps/", "644"],
+    ["../../gnome-extension/*.js", "usr/share/gnome-shell/extensions/dropshade@samuelba.dev/", "644"],
+    ["../../gnome-extension/metadata.json", "usr/share/gnome-shell/extensions/dropshade@samuelba.dev/", "644"],
+    ["../../gnome-extension/LICENSE", "usr/share/gnome-shell/extensions/dropshade@samuelba.dev/", "644"],
     ["../../gnome-extension/schemas/org.gnome.shell.extensions.dropshade.gschema.xml", "usr/share/glib-2.0/schemas/", "644"],
     ["../../README.md", "usr/share/doc/dropshade/", "644"],
 ]
@@ -55,13 +55,13 @@ assets = [
 license = "MIT AND GPL-2.0-or-later"
 assets = [
     { source = "target/release/dropshade", dest = "/usr/bin/dropshade", mode = "755" },
-    { source = "../../packaging/io.github.samuelba.Dropshade.desktop", dest = "/usr/share/applications/io.github.samuelba.Dropshade.desktop", mode = "644" },
-    { source = "../../packaging/io.github.samuelba.Dropshade.metainfo.xml", dest = "/usr/share/metainfo/io.github.samuelba.Dropshade.metainfo.xml", mode = "644" },
-    { source = "../../packaging/icons/hicolor/scalable/apps/io.github.samuelba.Dropshade.svg", dest = "/usr/share/icons/hicolor/scalable/apps/io.github.samuelba.Dropshade.svg", mode = "644" },
-    { source = "../../packaging/icons/hicolor/symbolic/apps/io.github.samuelba.Dropshade-symbolic.svg", dest = "/usr/share/icons/hicolor/symbolic/apps/io.github.samuelba.Dropshade-symbolic.svg", mode = "644" },
-    { source = "../../gnome-extension/*.js", dest = "/usr/share/gnome-shell/extensions/dropshade@samuelba.github.io/", mode = "644" },
-    { source = "../../gnome-extension/metadata.json", dest = "/usr/share/gnome-shell/extensions/dropshade@samuelba.github.io/metadata.json", mode = "644" },
-    { source = "../../gnome-extension/LICENSE", dest = "/usr/share/gnome-shell/extensions/dropshade@samuelba.github.io/LICENSE", mode = "644" },
+    { source = "../../packaging/dev.samuelba.Dropshade.desktop", dest = "/usr/share/applications/dev.samuelba.Dropshade.desktop", mode = "644" },
+    { source = "../../packaging/dev.samuelba.Dropshade.metainfo.xml", dest = "/usr/share/metainfo/dev.samuelba.Dropshade.metainfo.xml", mode = "644" },
+    { source = "../../packaging/icons/hicolor/scalable/apps/dev.samuelba.Dropshade.svg", dest = "/usr/share/icons/hicolor/scalable/apps/dev.samuelba.Dropshade.svg", mode = "644" },
+    { source = "../../packaging/icons/hicolor/symbolic/apps/dev.samuelba.Dropshade-symbolic.svg", dest = "/usr/share/icons/hicolor/symbolic/apps/dev.samuelba.Dropshade-symbolic.svg", mode = "644" },
+    { source = "../../gnome-extension/*.js", dest = "/usr/share/gnome-shell/extensions/dropshade@samuelba.dev/", mode = "644" },
+    { source = "../../gnome-extension/metadata.json", dest = "/usr/share/gnome-shell/extensions/dropshade@samuelba.dev/metadata.json", mode = "644" },
+    { source = "../../gnome-extension/LICENSE", dest = "/usr/share/gnome-shell/extensions/dropshade@samuelba.dev/LICENSE", mode = "644" },
     { source = "../../gnome-extension/schemas/org.gnome.shell.extensions.dropshade.gschema.xml", dest = "/usr/share/glib-2.0/schemas/org.gnome.shell.extensions.dropshade.gschema.xml", mode = "644" },
     { source = "../../README.md", dest = "/usr/share/doc/dropshade/README.md", mode = "644", doc = true },
 ]

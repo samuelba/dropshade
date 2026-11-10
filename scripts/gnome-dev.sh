@@ -7,7 +7,7 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 dev="$root/target/gnome-dev"
-uuid="dropshade@samuelba.github.io"
+uuid="dropshade@samuelba.dev"
 schemas="$root/gnome-extension/schemas"
 
 if ! rpm -q mutter-devkit >/dev/null 2>&1 && ! command -v mutter-devkit >/dev/null 2>&1; then

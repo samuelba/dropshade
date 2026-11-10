@@ -1,4 +1,4 @@
-//! The app's D-Bus service (`io.github.samuelba.Dropshade`): commands for the running instance and
+//! The app's D-Bus service (`dev.samuelba.Dropshade`): commands for the running instance and
 //! the window settings the GNOME Shell extension applies.
 
 use std::path::PathBuf;
@@ -22,7 +22,7 @@ impl Service {
     }
 }
 
-#[interface(name = "io.github.samuelba.Dropshade")]
+#[interface(name = "dev.samuelba.Dropshade")]
 impl Service {
     fn toggle(&self) -> fdo::Result<()> {
         self.send(Command::Toggle)

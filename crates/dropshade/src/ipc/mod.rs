@@ -5,9 +5,9 @@ pub mod service;
 
 use std::path::PathBuf;
 
-pub const BUS_NAME: &str = "io.github.samuelba.Dropshade";
-pub const OBJECT_PATH: &str = "/io/github/samuelba/Dropshade";
-pub const SHELL_BUS_NAME: &str = "io.github.samuelba.Dropshade.Shell";
+pub const BUS_NAME: &str = "dev.samuelba.Dropshade";
+pub const OBJECT_PATH: &str = "/dev/samuelba/Dropshade";
+pub const SHELL_BUS_NAME: &str = "dev.samuelba.Dropshade.Shell";
 
 /// What other processes (the CLI, a second instance) can ask the running app to do.
 #[derive(Debug, Clone, PartialEq, Eq)]

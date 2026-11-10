@@ -6,8 +6,8 @@ source "$SMOKE_ROOT/scripts/gnome-smoke-lib.sh"
 start_isolated_shell "['$SMOKE_UUID', '$SMOKE_DEVTOOLS']"
 
 dropshade() {
-    call --dest io.github.samuelba.Dropshade.Shell --object-path /io/github/samuelba/Dropshade/Shell \
-        --method "io.github.samuelba.Dropshade.Shell.$1" >/dev/null
+    call --dest dev.samuelba.Dropshade.Shell --object-path /dev/samuelba/Dropshade/Shell \
+        --method "dev.samuelba.Dropshade.Shell.$1" >/dev/null
 }
 
 echo "1. first toggle (launch + show)"; dropshade Toggle; sleep 5; inspect; shot 1-shown
@@ -42,7 +42,7 @@ echo "14. new tab from the command line"
 "$dropshade_cli" new-tab --cwd /tmp; sleep 2; type_text "pwd"; sleep 1; shot 14-new-tab
 app_pid() {
     call --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
-        --method org.freedesktop.DBus.GetConnectionUnixProcessID io.github.samuelba.Dropshade |
+        --method org.freedesktop.DBus.GetConnectionUnixProcessID dev.samuelba.Dropshade |
         sed -E 's/.*uint32 ([0-9]+).*/\1/'
 }
 echo "15. tabs survive a logout (SIGTERM) and come back on the next start"

@@ -77,7 +77,7 @@ jobs:
       - name: Extension JavaScript parses
         run: for file in gnome-extension/*.js; do node --check --input-type=module < "$file"; done
       - run: glib-compile-schemas --strict --dry-run gnome-extension/schemas
-      - run: desktop-file-validate packaging/io.github.samuelba.Dropshade.desktop
-      - run: appstreamcli validate --no-net packaging/io.github.samuelba.Dropshade.metainfo.xml
+      - run: desktop-file-validate packaging/dev.samuelba.Dropshade.desktop
+      - run: appstreamcli validate --no-net packaging/dev.samuelba.Dropshade.metainfo.xml
       - name: Shell scripts parse
         run: for file in scripts/*.sh; do bash -n "$file"; done

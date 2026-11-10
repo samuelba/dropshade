@@ -3,6 +3,6 @@
 set -euo pipefail
 method="${1:-Toggle}"
 gdbus call --session \
-    --dest io.github.samuelba.Dropshade.Shell \
-    --object-path /io/github/samuelba/Dropshade/Shell \
-    --method "io.github.samuelba.Dropshade.Shell.$method"
+    --dest dev.samuelba.Dropshade.Shell \
+    --object-path /dev/samuelba/Dropshade/Shell \
+    --method "dev.samuelba.Dropshade.Shell.$method"

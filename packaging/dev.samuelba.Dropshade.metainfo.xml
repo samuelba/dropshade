@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.samuelba.Dropshade</id>
+  <id>dev.samuelba.Dropshade</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
   <name>Dropshade</name>
@@ -19,11 +19,11 @@
       <li>Mouse reporting, hyperlinks, input methods and bracketed paste</li>
     </ul>
   </description>
-  <launchable type="desktop-id">io.github.samuelba.Dropshade.desktop</launchable>
+  <launchable type="desktop-id">dev.samuelba.Dropshade.desktop</launchable>
   <url type="homepage">https://github.com/samuelba/dropshade</url>
   <url type="bugtracker">https://github.com/samuelba/dropshade/issues</url>
   <url type="vcs-browser">https://github.com/samuelba/dropshade</url>
-  <developer id="io.github.samuelba">
+  <developer id="dev.samuelba">
     <name>Samuel Bachmann</name>
   </developer>
   <provides>

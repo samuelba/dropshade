@@ -17,7 +17,7 @@ pub const DEFAULT_CONFIG: &str = include_str!("default.toml");
 
 /// `$XDG_CONFIG_HOME/dropshade`, or `None` when no home directory is known.
 pub fn config_dir() -> Option<PathBuf> {
-    directories::ProjectDirs::from("io.github", "samuelba", "dropshade")
+    directories::ProjectDirs::from("dev", "samuelba", "dropshade")
         .map(|dirs| dirs.config_dir().to_path_buf())
 }
 

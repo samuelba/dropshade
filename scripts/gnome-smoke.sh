@@ -7,7 +7,7 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 dev="$root/target/gnome-smoke"
-uuid="dropshade@samuelba.github.io"
+uuid="dropshade@samuelba.dev"
 devtools="devtools@dropshade.local"
 
 rm -rf -- "$dev"

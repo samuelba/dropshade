@@ -5,9 +5,9 @@ use zbus::{Connection, fdo, proxy};
 use super::{BUS_NAME, SHELL_BUS_NAME};
 
 #[proxy(
-    interface = "io.github.samuelba.Dropshade",
-    default_service = "io.github.samuelba.Dropshade",
-    default_path = "/io/github/samuelba/Dropshade"
+    interface = "dev.samuelba.Dropshade",
+    default_service = "dev.samuelba.Dropshade",
+    default_path = "/dev/samuelba/Dropshade"
 )]
 pub trait App {
     fn toggle(&self) -> zbus::Result<()>;
@@ -19,9 +19,9 @@ pub trait App {
 }
 
 #[proxy(
-    interface = "io.github.samuelba.Dropshade.Shell",
-    default_service = "io.github.samuelba.Dropshade.Shell",
-    default_path = "/io/github/samuelba/Dropshade/Shell"
+    interface = "dev.samuelba.Dropshade.Shell",
+    default_service = "dev.samuelba.Dropshade.Shell",
+    default_path = "/dev/samuelba/Dropshade/Shell"
 )]
 pub trait Shell {
     fn toggle(&self) -> zbus::Result<()>;

@@ -4,7 +4,7 @@
 use std::path::Path;
 use std::process::{Command, ExitCode};
 
-pub const UUID: &str = "dropshade@samuelba.github.io";
+pub const UUID: &str = "dropshade@samuelba.dev";
 const SCHEMA_ID: &str = "org.gnome.shell.extensions.dropshade";
 
 const FILES: [(&str, &str); 8] = [

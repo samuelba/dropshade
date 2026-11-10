@@ -7,8 +7,8 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
-app_id="io.github.samuelba.Dropshade"
-uuid="dropshade@samuelba.github.io"
+app_id="dev.samuelba.Dropshade"
+uuid="dropshade@samuelba.dev"
 version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
 arch="$(uname -m)"
 dist="$root/dist"

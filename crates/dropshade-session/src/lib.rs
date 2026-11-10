@@ -110,13 +110,13 @@ pub fn save(path: &Path, snapshot: &Snapshot) -> Result<(), SessionError> {
 
 /// `~/.local/state/dropshade/session.toml`.
 pub fn session_path() -> Option<PathBuf> {
-    directories::ProjectDirs::from("io.github", "samuelba", "dropshade")
+    directories::ProjectDirs::from("dev", "samuelba", "dropshade")
         .and_then(|dirs| dirs.state_dir().map(|dir| dir.join("session.toml")))
 }
 
 /// `~/.config/dropshade/layouts`.
 pub fn layouts_dir() -> Option<PathBuf> {
-    directories::ProjectDirs::from("io.github", "samuelba", "dropshade")
+    directories::ProjectDirs::from("dev", "samuelba", "dropshade")
         .map(|dirs| dirs.config_dir().join("layouts"))
 }
 
