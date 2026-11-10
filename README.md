@@ -1,5 +1,11 @@
 # Dropshade
 
+[![CI](https://github.com/samuelba/dropshade/actions/workflows/ci.yml/badge.svg)](https://github.com/samuelba/dropshade/actions/workflows/ci.yml)
+
+<p align="center">
+  <img src="packaging/icons/hicolor/scalable/apps/dev.samuelba.Dropshade.svg" alt="Dropshade logo" width="128">
+</p>
+
 A drop-down terminal for Linux, written in Rust. Press a hotkey and it slides down over your
 windows; press it again and it is gone.
 
