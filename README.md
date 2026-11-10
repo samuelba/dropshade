@@ -69,6 +69,10 @@ aarch64:
 | Flatpak (x86_64) | Shells run on the host via `flatpak-spawn`; install the extension from the release zip |
 | `.tar.gz` | The binary plus desktop files; run `dropshade gnome-extension install` |
 
+On start, Dropshade asks GitHub for the latest release. When a newer one is out, it shows a
+notification once per version and a download link in About Dropshade. Turn this off with
+`[updates] check = false`, or under Settings → Session.
+
 ## Getting started
 
 ```sh

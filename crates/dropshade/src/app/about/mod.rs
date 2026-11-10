@@ -7,6 +7,7 @@ use iced::{Center, Element, Fill, Font, Task, font};
 
 use super::update::open_link;
 use super::{APP_NAME, App, Message};
+use crate::release::{self, Release};
 
 const DIALOG_WIDTH: f32 = 380.0;
 const ICON_SIZE: f32 = 96.0;
@@ -20,6 +21,7 @@ const AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
 #[derive(Debug, Clone, Copy)]
 pub enum AboutMessage {
     OpenRepository,
+    OpenRelease,
     Close,
 }
 
@@ -32,7 +34,47 @@ impl App {
     pub(super) fn about_message(&mut self, message: AboutMessage) -> Task<Message> {
         match message {
             AboutMessage::OpenRepository => open_link(REPOSITORY),
+            AboutMessage::OpenRelease => {
+                if let Some(release) = &self.release {
+                    open_link(&release.url);
+                }
+            }
             AboutMessage::Close => self.about = false,
+        }
+        Task::none()
+    }
+
+    /// Starts looking for a newer release, unless the config turns that off.
+    pub(super) fn check_release(&self) -> Task<Message> {
+        if self.config.updates.check {
+            Task::perform(release::check(), Message::ReleaseChecked)
+        } else {
+            Task::none()
+        }
+    }
+
+    pub(super) fn release_checked(
+        &mut self,
+        result: Result<Option<Release>, String>,
+    ) -> Task<Message> {
+        match result {
+            Ok(Some(found)) => {
+                tracing::info!(version = %found.version, "a newer release is available");
+                let announce = release::notified_path()
+                    .is_none_or(|path| release::first_announcement(&path, &found));
+                self.release = Some(found.clone());
+                if announce {
+                    return Task::perform(release::notify::announce(found), |download| {
+                        if download {
+                            Message::About(AboutMessage::OpenRelease)
+                        } else {
+                            Message::Done
+                        }
+                    });
+                }
+            }
+            Ok(None) => tracing::debug!("this is the latest release"),
+            Err(error) => tracing::warn!(%error, "cannot check for a newer release"),
         }
         Task::none()
     }
@@ -43,7 +85,7 @@ impl App {
             weight: font::Weight::Bold,
             ..Font::DEFAULT
         };
-        let heading = column![
+        let mut heading = column![
             text(APP_NAME).size(24).font(bold),
             text(format!("Version {VERSION}"))
                 .size(TEXT_SIZE)
@@ -51,6 +93,14 @@ impl App {
         ]
         .spacing(2)
         .align_x(Center);
+        if let Some(release) = &self.release {
+            let download =
+                button(text(format!("Download version {}", release.version)).size(TEXT_SIZE))
+                    .padding([6, 12])
+                    .style(move |_, status| colors.accent_button(status))
+                    .on_press(Message::About(AboutMessage::OpenRelease));
+            heading = heading.push(Space::new().height(6)).push(download);
+        }
         let repository = button(text(display_url(REPOSITORY)).size(TEXT_SIZE))
             .padding([6, 12])
             .style(move |_, status| colors.ghost_button(colors.accent, status))

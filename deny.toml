@@ -30,6 +30,10 @@ allow = [
     "Zlib",
     "CC0-1.0",
 ]
+exceptions = [
+    # Mozilla's CA bundle, used by ureq to verify api.github.com for the update check.
+    { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots" },
+]
 
 [bans]
 multiple-versions = "allow"
