@@ -59,4 +59,15 @@ echo "17. a hand-written layout with a startup command"
 printf '[[tab]]\nname = "scripted"\ncwd = "/tmp"\ncommand = "echo from-layout"\n' \
     > "$XDG_CONFIG_HOME/dropshade/layouts/scripted.toml"
 "$dropshade_cli" layout load scripted; sleep 3; shot 17-scripted
+echo "18. search the scrollback (Ctrl+Shift+F)"
+chord "Control_L Shift_L f"; sleep 1; type_text "from-layout"; sleep 2; shot 18-search
+chord "Escape"; sleep 1
+echo "19. context menu and settings panel"
+printf '[window]\nheight = 0.8\nwidth = 0.6\n' > "$config_file"; sleep 2
+"$dropshade_cli" hide; sleep 1; "$dropshade_cli" show; sleep 2
+click 700 300 3; sleep 1; shot 19-menu
+click 760 439 1; sleep 2; shot 20-settings
+echo "21. the panel writes to config.toml"
+click 766 476 1; sleep 2
+sed 's/^/    | /' "$config_file"
 echo "screenshots: $SMOKE_DEV/out"

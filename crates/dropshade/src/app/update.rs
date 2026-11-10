@@ -13,6 +13,10 @@ impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Term(id, event) => self.terminal_event(id, event),
+            Message::Interaction(Interaction::ContextMenu(position)) => {
+                self.terminal_menu = Some(position);
+                Task::none()
+            }
             Message::Interaction(Interaction::Shortcut(shortcut)) => self.shortcut(shortcut),
             Message::Interaction(interaction) => self.interaction(interaction),
             Message::Paste(text) => {
@@ -34,11 +38,17 @@ impl App {
                 Task::none()
             }
             Message::Tab(message) => self.tab_message(message),
+            Message::Search(message) => self.search_message(message),
+            Message::Menu(action) => self.menu_action(action),
+            Message::Settings(message) => self.settings_message(message),
             Message::WindowResized(size) => {
                 self.window_size = size;
                 Task::none()
             }
             Message::Escape => {
+                self.close_search();
+                self.terminal_menu = None;
+                self.settings_panel = None;
                 self.renaming = None;
                 self.menu = None;
                 self.pending_close = None;
@@ -171,6 +181,7 @@ impl App {
                     .active_id()
                     .map_or_else(Task::none, |id| self.start_rename(id));
             }
+            Shortcut::Search => return self.open_search(),
             Shortcut::NextTab => self.tabs.cycle(1),
             Shortcut::PreviousTab => self.tabs.cycle(-1),
             Shortcut::MoveTabLeft => self.tabs.move_active(-1),
@@ -328,6 +339,7 @@ fn apply(terminal: &mut Terminal, interaction: Interaction) -> Task<Message> {
             }
         }
         Interaction::Shortcut(shortcut) => return run_terminal_shortcut(terminal, shortcut),
+        Interaction::ContextMenu(_) => {}
     }
     Task::none()
 }
@@ -352,6 +364,7 @@ fn run_terminal_shortcut(terminal: &Terminal, shortcut: Shortcut) -> Task<Messag
         | Shortcut::MoveTabLeft
         | Shortcut::MoveTabRight
         | Shortcut::RenameTab
+        | Shortcut::Search
         | Shortcut::GoToTab(_) => {}
     }
     Task::none()

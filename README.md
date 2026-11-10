@@ -24,6 +24,11 @@ staying on top and the slide animation.
 | Shift+Insert, middle click | Paste the primary selection |
 | Shift+PageUp/PageDown/Home/End | Scroll the scrollback |
 | Ctrl+click | Open a link |
+| Ctrl+Shift+F | Search the scrollback (Enter: older match) |
+
+Right-click the terminal for Copy, Paste, New Tab, Find and **Settings**: a panel for theme, font
+size, opacity, tab bar, drop-down size, cursor and session restore that saves straight into
+`config.toml`, keeping its comments.
 
 In tabs: middle-click closes, right-click opens a menu, and dragging reorders. Every shortcut can be
 changed in the `[keybindings]` section of the configuration.
@@ -60,6 +65,8 @@ aarch64:
 ```sh
 cargo build --release
 ./target/release/dropshade gnome-extension install   # once; then log out and back in
+# Upgrading from a build before the dev.samuelba.Dropshade rename:
+# gnome-extensions uninstall dropshade@samuelba.github.io
 ```
 
 Press <kbd>F12</kbd> (configurable as `window.hotkey`) and the terminal slides down; press it again

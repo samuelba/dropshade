@@ -31,6 +31,8 @@ pub(super) struct PointerContext {
     pub padding: f32,
     /// Pointer position relative to the terminal's top-left corner, even outside it.
     pub position: Option<Point>,
+    /// The terminal's top-left corner in window coordinates.
+    pub origin: Point,
     pub over: bool,
     pub now: Instant,
 }
@@ -102,7 +104,9 @@ fn press(state: &mut PointerState, button: Button, ctx: PointerContext) -> Optio
             })
         }
         Button::Middle => Some(Interaction::PastePrimary),
-        Button::Right => None,
+        Button::Right => ctx
+            .position
+            .map(|p| Interaction::ContextMenu(Point::new(ctx.origin.x + p.x, ctx.origin.y + p.y))),
     }
 }
 
@@ -176,6 +180,7 @@ mod tests {
             cell: CELL,
             padding: 0.0,
             position: Some(Point::new(x, y)),
+            origin: Point::new(100.0, 40.0),
             over: true,
             now,
         }
@@ -276,6 +281,20 @@ mod tests {
             ctx(12.0, 25.0, mode, Instant::now()),
         );
         assert_eq!(release, None);
+    }
+
+    #[test]
+    fn right_click_opens_the_context_menu_in_window_coordinates() {
+        let mut state = PointerState::default();
+        let result = handle(
+            &mut state,
+            &pressed(mouse::Button::Right),
+            ctx(12.0, 5.0, TermMode::empty(), Instant::now()),
+        );
+        assert_eq!(
+            result,
+            Some(Interaction::ContextMenu(Point::new(112.0, 45.0)))
+        );
     }
 
     #[test]

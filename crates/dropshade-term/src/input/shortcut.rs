@@ -19,6 +19,7 @@ pub enum Shortcut {
     MoveTabLeft,
     MoveTabRight,
     RenameTab,
+    Search,
     /// Activates the tab at this zero-based index.
     GoToTab(u8),
 }
@@ -54,6 +55,7 @@ impl std::str::FromStr for Shortcut {
             "move-tab-left" => Self::MoveTabLeft,
             "move-tab-right" => Self::MoveTabRight,
             "rename-tab" => Self::RenameTab,
+            "search" => Self::Search,
             _ => return Err(format!("unknown action \"{name}\"")),
         };
         Ok(shortcut)
@@ -79,6 +81,7 @@ fn ctrl_shift_character(c: &str) -> Option<Shortcut> {
         "t" => Some(Shortcut::NewTab),
         "w" => Some(Shortcut::CloseTab),
         "r" => Some(Shortcut::RenameTab),
+        "f" => Some(Shortcut::Search),
         _ => None,
     }
 }
@@ -162,6 +165,8 @@ mod tests {
         assert_eq!(character("t", ctrl_shift), Some(Shortcut::NewTab));
         assert_eq!(character("w", ctrl_shift), Some(Shortcut::CloseTab));
         assert_eq!(character("r", ctrl_shift), Some(Shortcut::RenameTab));
+        assert_eq!(character("f", ctrl_shift), Some(Shortcut::Search));
+        assert_eq!("search".parse(), Ok(Shortcut::Search));
         assert_eq!(
             named(Named::PageDown, Modifiers::CTRL),
             Some(Shortcut::NextTab)

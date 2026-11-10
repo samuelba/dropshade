@@ -130,6 +130,7 @@ fn run(config_path: Option<PathBuf>, managed: bool, startup: Startup) -> ExitCod
     let boot = move || App::boot(config_path.clone(), managed, startup.clone());
     let result = iced::daemon(boot, App::update, App::view)
         .title(App::title)
+        .theme(App::theme)
         .subscription(App::subscription)
         // FIFO presentation stalls under Mutter: a commit carrying a wp_fifo_v1 barrier can wait
         // forever for a repaint, freezing the drop-down until it is hidden and shown again.

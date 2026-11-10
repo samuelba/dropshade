@@ -9,9 +9,10 @@ use std::sync::Arc;
 use alacritty_terminal::event::{Event, EventListener};
 use alacritty_terminal::event_loop::{EventLoop, EventLoopSender, Msg};
 use alacritty_terminal::grid::{Dimensions, Scroll};
-use alacritty_terminal::index::{Column, Point, Side as GridSide};
+use alacritty_terminal::index::{Boundary, Column, Direction, Line, Point, Side as GridSide};
 use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::sync::FairMutex;
+use alacritty_terminal::term::search::{Match, RegexSearch};
 use alacritty_terminal::term::{
     ClipboardType, Config, Term, TermMode, point_to_viewport, viewport_to_point,
 };
@@ -93,6 +94,15 @@ pub struct ForegroundProcess {
     pub name: String,
 }
 
+/// Which way to look for the next search match.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchDirection {
+    /// Towards older output (up).
+    Older,
+    /// Towards newer output (down).
+    Newer,
+}
+
 /// What the UI should do after an emulator event was handled.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Notice {
@@ -134,6 +144,8 @@ pub struct Terminal {
     child_pid: u32,
     /// A duplicate of the pty master, used to ask which process group is in the foreground.
     pty: File,
+    search: Option<RegexSearch>,
+    search_match: Option<Match>,
 }
 
 impl std::fmt::Debug for Terminal {
@@ -194,6 +206,8 @@ impl Terminal {
             title: None,
             child_pid,
             pty: pty_handle,
+            search: None,
+            search_match: None,
         };
         Ok((terminal, receiver))
     }
@@ -349,6 +363,66 @@ impl Terminal {
         links::url_at(&chars, at.column)
     }
 
+    /// Searches the output and scrollback for `query` as plain text, newest match first. The match
+    /// becomes the selection and is scrolled into view. Lowercase queries ignore case.
+    pub fn search(&mut self, query: &str) -> bool {
+        self.clear_search();
+        if query.is_empty() {
+            return false;
+        }
+        let Ok(regex) = RegexSearch::new(&escape_regex(query)) else {
+            return false;
+        };
+        self.search = Some(regex);
+        let origin = {
+            let term = self.term.lock();
+            let bottom = i32::try_from(term.screen_lines()).unwrap_or(i32::MAX) - 1;
+            Point::new(Line(bottom), term.last_column())
+        };
+        self.find(origin, Direction::Left, GridSide::Right)
+    }
+
+    /// Moves to the next match of the current search, wrapping around at the ends.
+    pub fn search_next(&mut self, direction: SearchDirection) -> bool {
+        let Some(current) = self.search_match.clone() else {
+            return false;
+        };
+        let origin = {
+            let term = self.term.lock();
+            match direction {
+                SearchDirection::Older => current.start().sub(&*term, Boundary::None, 1),
+                SearchDirection::Newer => current.end().add(&*term, Boundary::None, 1),
+            }
+        };
+        match direction {
+            SearchDirection::Older => self.find(origin, Direction::Left, GridSide::Right),
+            SearchDirection::Newer => self.find(origin, Direction::Right, GridSide::Left),
+        }
+    }
+
+    pub fn clear_search(&mut self) {
+        if self.search_match.take().is_some() {
+            self.term.lock().selection = None;
+        }
+        self.search = None;
+    }
+
+    fn find(&mut self, origin: Point, direction: Direction, side: GridSide) -> bool {
+        let Some(regex) = self.search.as_mut() else {
+            return false;
+        };
+        let mut term = self.term.lock();
+        let Some(found) = term.search_next(regex, origin, direction, side, None) else {
+            return false;
+        };
+        term.scroll_to_point(*found.start());
+        let mut selection = Selection::new(SelectionType::Simple, *found.start(), GridSide::Left);
+        selection.update(*found.end(), GridSide::Right);
+        term.selection = Some(selection);
+        self.search_match = Some(found);
+        true
+    }
+
     /// Sends pasted text, using bracketed paste when the application asked for it.
     pub fn paste(&self, text: &str) {
         let bracketed = self.mode().contains(TermMode::BRACKETED_PASTE);
@@ -421,4 +495,18 @@ fn grid_side(side: Side) -> GridSide {
         Side::Left => GridSide::Left,
         Side::Right => GridSide::Right,
     }
+}
+
+/// Escapes regex syntax so a search query matches literally.
+fn escape_regex(query: &str) -> String {
+    query
+        .chars()
+        .flat_map(|c| {
+            let special = "\\.+*?()|[]{}^$#&-~".contains(c);
+            special
+                .then_some('\\')
+                .into_iter()
+                .chain(std::iter::once(c))
+        })
+        .collect()
 }

@@ -44,6 +44,23 @@ impl UiColors {
         }
     }
 
+    /// An iced theme in the terminal's colors, so built-in widgets (lists, sliders, toggles)
+    /// match the chrome.
+    pub fn iced_theme(self, palette: &Palette) -> iced::Theme {
+        let color = |rgb: dropshade_term::alacritty_terminal::vte::ansi::Rgb| to_iced(rgb, 1.0);
+        iced::Theme::custom(
+            "Dropshade",
+            iced::theme::Palette {
+                background: self.surface,
+                text: self.text,
+                primary: self.accent,
+                success: color(palette.normal[2]),
+                warning: color(palette.normal[3]),
+                danger: color(palette.normal[1]),
+            },
+        )
+    }
+
     pub fn bar_style(self) -> container::Style {
         container::Style::default().background(self.bar)
     }

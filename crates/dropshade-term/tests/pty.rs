@@ -466,3 +466,39 @@ mod options {
         assert_eq!(cursor.shape, CursorShape::Beam);
     }
 }
+
+mod search {
+    use dropshade_term::{GridSize, SearchDirection};
+
+    use super::{spawn, wait_for};
+
+    const SIZE: GridSize = GridSize {
+        columns: 30,
+        lines: 5,
+    };
+
+    #[test]
+    fn finds_the_newest_match_first_and_steps_to_older_ones() {
+        let mut terminal = spawn("printf 'alpha one\\nbeta\\nalpha two\\n'; sleep 2", SIZE);
+        wait_for(&terminal, "alpha two");
+        assert!(terminal.search("alpha"));
+        let newest = terminal.selection_text();
+        assert_eq!(newest.as_deref(), Some("alpha"));
+        assert!(terminal.search_next(SearchDirection::Older));
+        assert!(terminal.search_next(SearchDirection::Newer));
+        terminal.clear_search();
+        assert_eq!(terminal.selection_text(), None);
+    }
+
+    #[test]
+    fn queries_are_plain_text_with_smart_case() {
+        let mut terminal = spawn("printf 'x.y xzy Total\\n'; sleep 2", SIZE);
+        wait_for(&terminal, "Total");
+        assert!(terminal.search("x.y"));
+        assert_eq!(terminal.selection_text().as_deref(), Some("x.y"));
+        assert!(terminal.search("total"), "lowercase ignores case");
+        assert!(!terminal.search("TOTAL"), "uppercase is case-sensitive");
+        assert!(!terminal.search(""));
+        assert!(!terminal.search("absent"));
+    }
+}

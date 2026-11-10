@@ -1,6 +1,8 @@
 //! The Dropshade application: tabs of terminals plus the chrome around them.
 
+mod panel;
 mod persist;
+mod search;
 mod session;
 mod update;
 mod view;
@@ -20,7 +22,9 @@ use ipc::WindowSettings;
 use crate::ipc::{self, Command};
 use crate::settings::{self, Settings};
 use crate::tabs::{TabId, TabMessage, Tabs};
+pub use panel::{MenuAction, SettingsMessage};
 pub use persist::Startup;
+pub use search::SearchMessage;
 use session::Session;
 
 pub const APP_NAME: &str = "Dropshade";
@@ -42,6 +46,9 @@ pub struct App {
     renaming: Option<Rename>,
     menu: Option<Menu>,
     pending_close: Option<PendingClose>,
+    search: Option<search::SearchBar>,
+    terminal_menu: Option<Point>,
+    settings_panel: Option<panel::SettingsPanel>,
     dragging: Option<TabId>,
     bar_pointer: Point,
     window_size: Size,
@@ -83,6 +90,9 @@ pub enum Message {
     Blink,
     BellOff,
     Tab(TabMessage),
+    Search(SearchMessage),
+    Menu(MenuAction),
+    Settings(SettingsMessage),
     WindowResized(Size),
     Escape,
     Enter,
@@ -118,6 +128,9 @@ impl App {
             renaming: None,
             menu: None,
             pending_close: None,
+            search: None,
+            terminal_menu: None,
+            settings_panel: None,
             dragging: None,
             bar_pointer: Point::ORIGIN,
             window_size: INITIAL_SIZE,
@@ -134,6 +147,12 @@ impl App {
         let service = app.start_service();
         let theme = system::theme().map(Message::SystemTheme);
         (app, Task::batch([first_tab, open, service, theme]))
+    }
+
+    pub fn theme(&self, _window: window::Id) -> iced::Theme {
+        self.settings
+            .colors
+            .iced_theme(&self.settings.style.palette)
     }
 
     pub fn title(&self, _window: window::Id) -> String {
@@ -195,7 +214,12 @@ impl App {
     }
 
     fn overlay_open(&self) -> bool {
-        self.renaming.is_some() || self.menu.is_some() || self.pending_close.is_some()
+        self.renaming.is_some()
+            || self.menu.is_some()
+            || self.pending_close.is_some()
+            || self.search.is_some()
+            || self.terminal_menu.is_some()
+            || self.settings_panel.is_some()
     }
 
     /// Re-reads the config file. A broken file keeps the current settings and shows why.

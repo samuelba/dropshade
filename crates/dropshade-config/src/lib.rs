@@ -1,5 +1,6 @@
 //! Dropshade's configuration: the TOML file, themes and keybinding definitions.
 
+pub mod edit;
 mod error;
 mod schema;
 pub mod theme;

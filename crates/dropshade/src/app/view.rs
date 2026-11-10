@@ -21,6 +21,12 @@ impl App {
         if let Some(menu) = self.menu {
             layers.push(self.menu_layer(menu));
         }
+        if let Some(position) = self.terminal_menu {
+            layers.push(self.terminal_menu_layer(position));
+        }
+        if let Some(panel) = self.settings_panel {
+            layers.push(self.settings_layer(panel));
+        }
         if let Some(pending) = &self.pending_close {
             layers.push(self.close_dialog(pending));
         }
@@ -40,10 +46,11 @@ impl App {
             tab_count: self.tabs.len(),
         };
         let tab_bar = bar::view(&self.tabs, state).map(Message::Tab);
-        let terminal = match self.banner() {
-            Some(banner) => column![banner, self.terminal()].into(),
-            None => self.terminal(),
-        };
+        let terminal: Element<'_, Message> = iced::widget::Column::new()
+            .push(self.banner())
+            .push(self.search_bar())
+            .push(self.terminal())
+            .into();
         match self.settings.bar {
             BarPosition::Top => column![tab_bar, terminal].into(),
             BarPosition::Bottom => column![terminal, tab_bar].into(),

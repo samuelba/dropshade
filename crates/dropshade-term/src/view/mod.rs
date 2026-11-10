@@ -34,7 +34,7 @@ pub struct ViewStyle {
 }
 
 /// Something the user did that the application should apply to the terminal.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Interaction {
     Input(Vec<u8>),
     Resize(GridSize),
@@ -54,6 +54,8 @@ pub enum Interaction {
     PastePrimary,
     /// Ctrl+click: open the link under this cell, if there is one.
     OpenLink(CellPosition),
+    /// Right-click outside mouse reporting: open the context menu at this window position.
+    ContextMenu(Point),
 }
 
 /// Per-widget state kept by iced between events.
@@ -184,6 +186,7 @@ impl<'a, Message> TerminalView<'a, Message> {
             position: cursor
                 .position()
                 .map(|p| Point::new(p.x - bounds.x, p.y - bounds.y)),
+            origin: bounds.position(),
             over: cursor.is_over(bounds),
             now: Instant::now(),
         }
