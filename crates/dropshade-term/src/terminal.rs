@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -81,6 +82,13 @@ pub enum SpawnError {
     EventLoop(#[source] std::io::Error),
 }
 
+/// A program running in the foreground of the shell, such as an editor or a build.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForegroundProcess {
+    pub pid: i32,
+    pub name: String,
+}
+
 /// What the UI should do after an emulator event was handled.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Notice {
@@ -120,6 +128,8 @@ pub struct Terminal {
     cell: CellSize,
     title: Option<String>,
     child_pid: u32,
+    /// A duplicate of the pty master, used to ask which process group is in the foreground.
+    pty: File,
 }
 
 impl std::fmt::Debug for Terminal {
@@ -165,6 +175,7 @@ impl Terminal {
         let window_size = options.size.window_size(options.cell);
         let pty = tty::new(&pty_options, window_size, 0).map_err(SpawnError::Pty)?;
         let child_pid = pty.child().id();
+        let pty_handle = pty.file().try_clone().map_err(SpawnError::Pty)?;
         let event_loop = EventLoop::new(Arc::clone(&term), proxy, pty, true, false)
             .map_err(SpawnError::EventLoop)?;
         let loop_sender = event_loop.channel();
@@ -177,6 +188,7 @@ impl Terminal {
             cell: options.cell,
             title: None,
             child_pid,
+            pty: pty_handle,
         };
         Ok((terminal, receiver))
     }
@@ -278,6 +290,24 @@ impl Terminal {
         point_to_viewport(term.grid().display_offset(), point).map(|p| CellPosition {
             column: p.column.0,
             line: p.line,
+        })
+    }
+
+    /// The shell's current directory, so new tabs can open where the user is working.
+    pub fn working_directory(&self) -> Option<PathBuf> {
+        std::fs::read_link(format!("/proc/{}/cwd", self.child_pid)).ok()
+    }
+
+    /// The program in the foreground, or `None` while the shell itself is waiting for input.
+    pub fn foreground_process(&self) -> Option<ForegroundProcess> {
+        let group = nix::unistd::tcgetpgrp(&self.pty).ok()?;
+        if u32::try_from(group.as_raw()).ok()? == self.child_pid {
+            return None;
+        }
+        let name = std::fs::read_to_string(format!("/proc/{group}/comm")).ok()?;
+        Some(ForegroundProcess {
+            pid: group.as_raw(),
+            name: name.trim_end().to_owned(),
         })
     }
 

@@ -16,7 +16,7 @@ pub use colors::Palette;
 pub use input::InputConfig;
 pub use input::Shortcut;
 pub use size::{CellSize, GridSize};
-pub use terminal::{Notice, SelectionKind, SpawnError, SpawnOptions, Terminal};
+pub use terminal::{ForegroundProcess, Notice, SelectionKind, SpawnError, SpawnOptions, Terminal};
 pub use view::{Interaction, PointerState, TerminalView, TerminalWidget, ViewState, ViewStyle};
 
 /// Sets `TERM` and `COLORTERM` for child shells. Call once at startup, before spawning threads.

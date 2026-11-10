@@ -8,8 +8,25 @@ Dropshade is a native Wayland app built on [iced](https://iced.rs) and
 Shell extension handles the parts Wayland leaves to the compositor: the global hotkey, placement,
 staying on top and the slide animation.
 
-> **Status:** early development. The terminal runs in a regular window; the drop-down behaviour,
-> tabs and sessions are on the way.
+> **Status:** early development. Tabs, the terminal core and the GNOME drop-down work; the config
+> file, session restore and packages are on the way.
+
+## Shortcuts
+
+| Keys | Action |
+| ---- | ------ |
+| Ctrl+Shift+T / Ctrl+Shift+W | New tab / close tab (asks first if a program is still running) |
+| Ctrl+PageDown / Ctrl+PageUp, Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab |
+| Ctrl+Shift+PageUp / Ctrl+Shift+PageDown | Move tab left / right |
+| Alt+1 … Alt+9 | Go to tab 1–9 |
+| Ctrl+Shift+R | Rename tab (or double-click the tab) |
+| Ctrl+Shift+C / Ctrl+Shift+V | Copy / paste |
+| Shift+Insert, middle click | Paste the primary selection |
+| Shift+PageUp/PageDown/Home/End | Scroll the scrollback |
+| Ctrl+click | Open a link |
+
+In tabs: middle-click closes, right-click opens a menu, and dragging reorders. Until the config file
+lands, `DROPSHADE_TAB_BAR=top|bottom|left|right` places the tab bar.
 
 ## Building
 

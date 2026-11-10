@@ -337,3 +337,82 @@ mod cursor {
         assert!(blinking.cursor_blinks());
     }
 }
+
+mod foreground {
+    use std::time::{Duration, Instant};
+
+    use dropshade_term::{GridSize, SpawnOptions, Terminal};
+
+    fn interactive_sh() -> Terminal {
+        let options = SpawnOptions {
+            command: Some(("sh".into(), vec!["-i".into()])),
+            size: GridSize {
+                columns: 40,
+                lines: 5,
+            },
+            ..SpawnOptions::default()
+        };
+        Terminal::spawn(options).expect("spawn sh").0
+    }
+
+    fn wait_until(mut condition: impl FnMut() -> bool) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if condition() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        false
+    }
+
+    #[test]
+    fn an_idle_shell_has_no_foreground_process() {
+        let terminal = interactive_sh();
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(terminal.foreground_process(), None);
+    }
+
+    #[test]
+    fn a_running_command_is_reported_by_name() {
+        let terminal = interactive_sh();
+        terminal.write(b"sleep 5\r".to_vec());
+        let found = wait_until(|| terminal.foreground_process().is_some());
+        assert!(found, "no foreground process detected");
+        assert_eq!(
+            terminal.foreground_process().map(|p| p.name).as_deref(),
+            Some("sleep")
+        );
+    }
+}
+
+mod working_directory {
+    use std::path::Path;
+    use std::time::{Duration, Instant};
+
+    use dropshade_term::{GridSize, SpawnOptions, Terminal};
+
+    #[test]
+    fn follows_cd_in_the_shell() {
+        let options = SpawnOptions {
+            command: Some(("sh".into(), vec!["-i".into()])),
+            size: GridSize {
+                columns: 40,
+                lines: 5,
+            },
+            ..SpawnOptions::default()
+        };
+        let terminal = Terminal::spawn(options).expect("spawn sh").0;
+        terminal.write(b"cd /tmp\r".to_vec());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while terminal.working_directory().as_deref() != Some(Path::new("/tmp"))
+            && Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(
+            terminal.working_directory().as_deref(),
+            Some(Path::new("/tmp"))
+        );
+    }
+}

@@ -18,6 +18,7 @@ iced_graphics = "0.14"
 anyhow = "1"
 open = "5"
 unicode-width = "0.2"
+nix = { version = "0.31", default-features = false, features = ["process", "term"] }
 thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

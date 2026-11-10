@@ -15,6 +15,7 @@ iced_graphics.workspace = true
 thiserror.workspace = true
 unicode-width.workspace = true
 tracing.workspace = true
+nix.workspace = true
 
 [lints]
 workspace = true

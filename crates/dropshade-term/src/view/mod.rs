@@ -82,6 +82,7 @@ pub struct TerminalView<'a, Message> {
     on_interaction: fn(Interaction) -> Message,
     cursor_visible: bool,
     bell: bool,
+    accepts_input: bool,
 }
 
 impl<Message> std::fmt::Debug for TerminalView<'_, Message> {
@@ -106,6 +107,16 @@ impl<'a, Message> TerminalView<'a, Message> {
             on_interaction,
             cursor_visible: true,
             bell: false,
+            accepts_input: true,
+        }
+    }
+
+    /// Stops keyboard and IME input from reaching the terminal, e.g. while a dialog is open.
+    #[must_use]
+    pub fn accepts_input(self, accepts_input: bool) -> Self {
+        Self {
+            accepts_input,
+            ..self
         }
     }
 
@@ -221,6 +232,11 @@ impl<Message> canvas::Program<Message> for TerminalView<'_, Message> {
         cursor: mouse::Cursor,
     ) -> Option<Action<Message>> {
         match event {
+            Event::Keyboard(keyboard::Event::KeyPressed { .. }) | Event::InputMethod(_)
+                if !self.accepts_input =>
+            {
+                None
+            }
             Event::Window(window::Event::RedrawRequested(_) | window::Event::Resized(_)) => {
                 let size = self.grid_size_for(bounds);
                 (size != self.terminal.size())
@@ -502,5 +518,30 @@ mod tests {
             assert!(rect.x >= 110.0 && rect.y >= 60.0);
             assert!((rect.width - CELL.width).abs() < f32::EPSILON);
         });
+    }
+
+    #[test]
+    fn keys_are_ignored_while_input_is_disabled() {
+        let terminal = terminal();
+        let style = style();
+        let input = InputConfig::default();
+        let view = TerminalView::new(&terminal, &style, &input, |interaction| interaction)
+            .accepts_input(false);
+        let event = Event::Keyboard(keyboard::Event::KeyPressed {
+            key: Key::Character("a".into()),
+            modified_key: Key::Character("a".into()),
+            physical_key: Physical::Unidentified(NativeCode::Unidentified),
+            location: Location::Standard,
+            modifiers: Modifiers::empty(),
+            text: Some("a".into()),
+            repeat: false,
+        });
+        let result = view.update(
+            &mut ViewState::default(),
+            &event,
+            bounds(660.0, 404.0),
+            mouse::Cursor::Unavailable,
+        );
+        assert!(result.is_none());
     }
 }
