@@ -23,6 +23,43 @@ pub enum Shortcut {
     GoToTab(u8),
 }
 
+impl std::str::FromStr for Shortcut {
+    type Err = String;
+
+    /// Parses an action name such as `new-tab` or `go-to-tab-3`.
+    fn from_str(name: &str) -> Result<Self, Self::Err> {
+        let name = name.trim().to_ascii_lowercase();
+        if let Some(number) = name.strip_prefix("go-to-tab-") {
+            return number
+                .parse::<u8>()
+                .ok()
+                .filter(|n| (1..=9).contains(n))
+                .map(|n| Self::GoToTab(n - 1))
+                .ok_or_else(|| {
+                    format!("unknown action \"{name}\" (tabs go from go-to-tab-1 to go-to-tab-9)")
+                });
+        }
+        let shortcut = match name.as_str() {
+            "copy" => Self::Copy,
+            "paste" => Self::Paste,
+            "paste-primary" => Self::PastePrimary,
+            "scroll-page-up" => Self::ScrollPageUp,
+            "scroll-page-down" => Self::ScrollPageDown,
+            "scroll-to-top" => Self::ScrollToTop,
+            "scroll-to-bottom" => Self::ScrollToBottom,
+            "new-tab" => Self::NewTab,
+            "close-tab" => Self::CloseTab,
+            "next-tab" => Self::NextTab,
+            "previous-tab" => Self::PreviousTab,
+            "move-tab-left" => Self::MoveTabLeft,
+            "move-tab-right" => Self::MoveTabRight,
+            "rename-tab" => Self::RenameTab,
+            _ => return Err(format!("unknown action \"{name}\"")),
+        };
+        Ok(shortcut)
+    }
+}
+
 /// The shortcut bound to a key press, if any.
 pub fn shortcut(key: &Key, modifiers: Modifiers) -> Option<Shortcut> {
     let (ctrl, shift, alt) = (modifiers.control(), modifiers.shift(), modifiers.alt());

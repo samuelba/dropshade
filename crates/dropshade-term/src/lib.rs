@@ -11,7 +11,9 @@ pub mod size;
 pub mod terminal;
 pub mod view;
 
+pub use alacritty_terminal;
 pub use alacritty_terminal::event::Event as TermEvent;
+pub use alacritty_terminal::vte::ansi::{CursorShape, CursorStyle};
 pub use colors::Palette;
 pub use input::InputConfig;
 pub use input::Shortcut;

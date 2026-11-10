@@ -2,8 +2,10 @@
 
 use std::path::PathBuf;
 
-use dropshade_term::{SpawnError, SpawnOptions, TermEvent, Terminal, ViewStyle};
+use dropshade_term::{SpawnError, SpawnOptions, TermEvent, Terminal};
 use iced::futures::Stream;
+
+use crate::settings::Settings;
 
 #[derive(Debug)]
 pub struct Session {
@@ -12,14 +14,18 @@ pub struct Session {
     pub bell: bool,
 }
 
-/// Starts a shell sized for `style`, optionally in `working_directory`.
+/// Starts a shell with the current settings, optionally in `working_directory`.
 pub fn spawn(
-    style: &ViewStyle,
+    settings: &Settings,
     working_directory: Option<PathBuf>,
 ) -> Result<(Session, impl Stream<Item = TermEvent> + Send + 'static), SpawnError> {
     let options = SpawnOptions {
-        cell: style.cell,
+        command: settings.shell.clone(),
         working_directory,
+        env: settings.env.clone(),
+        scrollback_lines: settings.scrollback_lines,
+        cursor_style: settings.cursor_style,
+        cell: settings.style.cell,
         ..SpawnOptions::default()
     };
     let (terminal, events) = Terminal::spawn(options)?;

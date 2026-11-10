@@ -106,4 +106,11 @@ echo "8. escape keeps the tab"; chord "Escape"; sleep 1; shot 8-kept
 echo "8b. left-click the first tab"; click 100 50 1; sleep 1; shot 8b-clicked-first
 echo "9. right-click the second tab"; click 360 50 3; sleep 1; shot 9-menu
 echo "10. move it left from the menu"; click 400 99 1; sleep 1; shot 10-moved
+config_file="$XDG_CONFIG_HOME/dropshade/config.toml"
+echo "11. live reload"
+printf '[appearance]\ntheme = "dawn"\ntab_bar = "bottom"\n[font]\nsize = 17\n' > "$config_file"
+sleep 2; shot 11-reloaded
+echo "12. a broken file keeps the settings and explains why"
+printf '[appearance]\ntheme = "dawn"\ntab_bar = "bottom"\nbogus = 1\n' > "$config_file"
+sleep 2; shot 12-broken
 echo "screenshots: $SMOKE_DEV/out"

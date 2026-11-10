@@ -16,6 +16,7 @@ use alacritty_terminal::term::{
     ClipboardType, Config, Term, TermMode, point_to_viewport, viewport_to_point,
 };
 use alacritty_terminal::tty;
+use alacritty_terminal::vte::ansi::CursorStyle;
 use iced::futures::Stream;
 use iced::futures::channel::mpsc;
 
@@ -50,6 +51,8 @@ pub struct SpawnOptions {
     pub scrollback_lines: usize,
     /// Lets applications enable the kitty keyboard protocol (`CSI > flags u`).
     pub kitty_keyboard: bool,
+    /// Cursor used until an application asks for another one.
+    pub cursor_style: CursorStyle,
     pub size: GridSize,
     pub cell: CellSize,
 }
@@ -62,6 +65,7 @@ impl Default for SpawnOptions {
             env: HashMap::new(),
             scrollback_lines: 10_000,
             kitty_keyboard: true,
+            cursor_style: CursorStyle::default(),
             size: GridSize {
                 columns: 80,
                 lines: 24,
@@ -156,6 +160,7 @@ impl Terminal {
         let config = Config {
             scrolling_history: options.scrollback_lines,
             kitty_keyboard: options.kitty_keyboard,
+            default_cursor_style: options.cursor_style,
             ..Config::default()
         };
         let term = Arc::new(FairMutex::new(Term::new(
@@ -228,6 +233,18 @@ impl Terminal {
         self.size = size;
         self.term.lock().resize(size);
         self.send(Msg::Resize(size.window_size(self.cell)));
+    }
+
+    /// Applies changed settings to a running terminal.
+    pub fn update_options(&self, scrollback_lines: usize, cursor_style: CursorStyle) {
+        let mut term = self.term.lock();
+        let config = Config {
+            scrolling_history: scrollback_lines,
+            kitty_keyboard: true,
+            default_cursor_style: cursor_style,
+            ..Config::default()
+        };
+        term.set_options(config);
     }
 
     /// Jumps the viewport back to the live end of the output.

@@ -1,0 +1,57 @@
+# Dropshade configuration
+# Location: ~/.config/dropshade/config.toml. Changes apply as soon as the file is saved.
+# Every setting is optional; the values below are the defaults.
+
+[font]
+# An installed font family, or "monospace" for the system's default monospace font.
+family = "monospace"
+size = 15.0
+# Line height as a multiple of the font size.
+line_height = 1.25
+
+[appearance]
+# Built-in: "dusk" (dark), "dawn" (light). Any Alacritty theme file placed in
+# ~/.config/dropshade/themes/<name>.toml can be used by its name.
+# To follow the system's light/dark setting: theme = { dark = "dusk", light = "dawn" }
+theme = "dusk"
+# 0.0 (fully transparent) to 1.0 (opaque).
+background_opacity = 0.94
+# Space around the terminal, in pixels.
+padding = 10.0
+# Where the tabs are: "top", "bottom", "left" or "right".
+tab_bar = "top"
+# "block", "beam" or "underline". Applications can still change it.
+cursor_shape = "block"
+cursor_blink = false
+
+[terminal]
+# Program to run; empty means your login shell.
+shell = ""
+shell_args = []
+# Lines kept for scrolling back, or "unlimited" (kept in memory, so it can grow large).
+scrollback = 10000
+# Directory for the first tab; empty means your home directory.
+working_directory = ""
+
+[terminal.env]
+# Extra environment variables, e.g. EDITOR = "nvim"
+
+[input]
+# Sent for Shift+Enter unless the application uses the kitty keyboard protocol (Claude Code
+# does, and then gets Shift+Enter directly). Empty sends a plain Enter.
+shift_enter = "\u001b\r"
+# Input methods for composed and CJK text.
+ime = true
+# Also copy selected text to the clipboard (it always goes to the primary selection).
+copy_on_select = false
+
+[keybindings]
+# Override or add shortcuts. Values are action names, "none" to pass the key to the terminal,
+# or { send = "text" } to type text. Examples:
+# "ctrl+shift+t" = "new-tab"
+# "ctrl+alt+l" = { send = "clear\r" }
+# "ctrl+tab" = "none"
+#
+# Actions: copy, paste, paste-primary, new-tab, close-tab, next-tab, previous-tab,
+# move-tab-left, move-tab-right, rename-tab, go-to-tab-1 … go-to-tab-9,
+# scroll-page-up, scroll-page-down, scroll-to-top, scroll-to-bottom

@@ -50,11 +50,23 @@ impl App {
                 self.dragging = None;
                 Task::none()
             }
+            Message::ConfigChanged => {
+                self.reload_config();
+                Task::none()
+            }
+            Message::SystemTheme(mode) => {
+                let prefers_light = mode == iced::theme::Mode::Light;
+                if prefers_light != self.prefers_light {
+                    self.prefers_light = prefers_light;
+                    self.apply_settings();
+                }
+                Task::none()
+            }
         }
     }
 
     pub(super) fn open_tab(&mut self, working_directory: Option<PathBuf>) -> Task<Message> {
-        match session::spawn(&self.style, working_directory) {
+        match session::spawn(&self.settings, working_directory) {
             Ok((session, events)) => {
                 let id = self.tabs.insert(session);
                 self.error = None;
@@ -69,7 +81,7 @@ impl App {
     }
 
     fn terminal_event(&mut self, id: TabId, event: TermEvent) -> Task<Message> {
-        let palette = self.style.palette;
+        let palette = self.settings.style.palette;
         let Some(tab) = self.tabs.get_mut(id) else {
             return Task::none();
         };
@@ -94,6 +106,12 @@ impl App {
         };
         if matches!(interaction, Interaction::Input(_)) {
             tab.content.cursor_on = true;
+        }
+        if matches!(interaction, Interaction::FinishSelection) && self.settings.copy_on_select {
+            let Some(text) = tab.content.terminal.selection_text() else {
+                return Task::none();
+            };
+            return Task::batch([copy(text.clone(), true), copy(text, false)]);
         }
         apply(&mut tab.content.terminal, interaction)
     }

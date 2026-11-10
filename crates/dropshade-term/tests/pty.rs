@@ -416,3 +416,53 @@ mod working_directory {
         );
     }
 }
+
+mod options {
+    use alacritty_terminal::vte::ansi::{CursorShape, CursorStyle};
+    use dropshade_term::{GridSize, Palette, SpawnOptions, Terminal};
+
+    use super::wait_for;
+
+    fn beam() -> CursorStyle {
+        CursorStyle {
+            shape: CursorShape::Beam,
+            blinking: true,
+        }
+    }
+
+    #[test]
+    fn the_default_cursor_style_comes_from_the_options() {
+        let options = SpawnOptions {
+            command: Some((
+                "sh".into(),
+                vec!["-c".into(), "printf ready; sleep 2".into()],
+            )),
+            size: GridSize {
+                columns: 20,
+                lines: 3,
+            },
+            cursor_style: beam(),
+            ..SpawnOptions::default()
+        };
+        let terminal = Terminal::spawn(options).expect("spawn").0;
+        wait_for(&terminal, "ready");
+        let cursor = terminal.frame(&Palette::default()).cursor.expect("cursor");
+        assert_eq!(cursor.shape, CursorShape::Beam);
+        assert!(terminal.cursor_blinks());
+    }
+
+    #[test]
+    fn options_can_change_while_running() {
+        let terminal = super::spawn(
+            "printf ready; sleep 2",
+            GridSize {
+                columns: 20,
+                lines: 3,
+            },
+        );
+        wait_for(&terminal, "ready");
+        terminal.update_options(500, beam());
+        let cursor = terminal.frame(&Palette::default()).cursor.expect("cursor");
+        assert_eq!(cursor.shape, CursorShape::Beam);
+    }
+}

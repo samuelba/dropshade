@@ -1,5 +1,6 @@
 //! Layout: tab bar plus the active terminal, with the context menu and close dialog on top.
 
+use dropshade_term::colors::to_iced;
 use dropshade_term::{TerminalView, TerminalWidget};
 use iced::widget::{Space, button, column, container, mouse_area, opaque, pin, row, stack, text};
 use iced::{Element, Fill, Font, Point, Size, font};
@@ -28,19 +29,22 @@ impl App {
 
     fn body(&self) -> Element<'_, Message> {
         let state = BarState {
-            position: self.bar,
+            position: self.settings.bar,
             hovered: self.hovered,
             renaming: self
                 .renaming
                 .as_ref()
                 .map(|rename| (rename.id, rename.draft.as_str())),
-            colors: self.colors,
+            colors: self.settings.colors,
             width: self.window.width,
             tab_count: self.tabs.len(),
         };
         let tab_bar = bar::view(&self.tabs, state).map(Message::Tab);
-        let terminal = self.terminal();
-        match self.bar {
+        let terminal = match self.banner() {
+            Some(banner) => column![banner, self.terminal()].into(),
+            None => self.terminal(),
+        };
+        match self.settings.bar {
             BarPosition::Top => column![tab_bar, terminal].into(),
             BarPosition::Bottom => column![terminal, tab_bar].into(),
             BarPosition::Left => row![tab_bar, terminal].into(),
@@ -53,8 +57,8 @@ impl App {
             let session = &tab.content;
             let view = TerminalView::new(
                 &session.terminal,
-                &self.style,
-                &self.input,
+                &self.settings.style,
+                &self.settings.input,
                 Message::Interaction,
             )
             .cursor_visible(session.cursor_on || !session.terminal.cursor_blinks())
@@ -65,13 +69,34 @@ impl App {
         let message = self.error.as_deref().map_or_else(String::new, |error| {
             format!("Dropshade could not start a shell.\n\n{error}")
         });
-        container(text(message).color(self.colors.text))
+        container(text(message).color(self.settings.colors.text))
             .center(Fill)
             .into()
     }
 
+    /// A strip above the terminal explaining configuration problems.
+    fn banner(&self) -> Option<Element<'_, Message>> {
+        let palette = &self.settings.style.palette;
+        let (message, color) = match (&self.config_error, self.settings.warnings.as_slice()) {
+            (Some(error), _) => (
+                format!("Configuration error, still using the previous settings: {error}"),
+                palette.normal[1],
+            ),
+            (None, []) => return None,
+            (None, warnings) => (warnings.join("\n"), palette.normal[3]),
+        };
+        let colors = self.settings.colors;
+        Some(
+            container(text(message).size(TEXT_SIZE).color(to_iced(color, 1.0)))
+                .padding([6, 12])
+                .width(Fill)
+                .style(move |_| container::Style::default().background(colors.surface))
+                .into(),
+        )
+    }
+
     fn menu_layer(&self, menu: Menu) -> Element<'_, Message> {
-        let colors = self.colors;
+        let colors = self.settings.colors;
         let index = self.tabs.index_of(menu.id).unwrap_or_default();
         let last = self.tabs.len().saturating_sub(1);
         let item = |label: &'static str, message: Option<TabMessage>| {
@@ -100,7 +125,7 @@ impl App {
             .padding(MENU_PADDING)
             .width(MENU_WIDTH)
             .style(move |_| colors.surface_style());
-        let position = menu_position(self.bar, menu.position, self.window);
+        let position = menu_position(self.settings.bar, menu.position, self.window);
         let dismiss = mouse_area(Space::new().width(Fill).height(Fill))
             .on_press(Message::Tab(TabMessage::CloseMenu))
             .on_right_press(Message::Tab(TabMessage::CloseMenu));
@@ -108,7 +133,7 @@ impl App {
     }
 
     fn close_dialog(&self, pending: &PendingClose) -> Element<'_, Message> {
-        let colors = self.colors;
+        let colors = self.settings.colors;
         let bold = Font {
             weight: font::Weight::Bold,
             ..Font::DEFAULT

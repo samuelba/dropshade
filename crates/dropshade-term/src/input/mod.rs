@@ -1,9 +1,11 @@
 //! Translates key presses into the bytes a terminal application expects.
 
+mod bindings;
 mod kitty;
 mod paste;
 mod shortcut;
 
+pub use bindings::{Binding, BindingAction, Chord, Resolution, resolve};
 pub use paste::paste_bytes;
 pub use shortcut::{Shortcut, shortcut};
 
@@ -18,6 +20,8 @@ pub struct InputConfig {
     pub shift_enter: Option<Vec<u8>>,
     /// Enables the input method (IME) for composed and CJK input.
     pub ime: bool,
+    /// User keybindings, consulted before the default shortcuts.
+    pub bindings: Vec<Binding>,
 }
 
 impl Default for InputConfig {
@@ -25,6 +29,7 @@ impl Default for InputConfig {
         Self {
             shift_enter: Some(b"\x1b\r".to_vec()),
             ime: true,
+            bindings: Vec::new(),
         }
     }
 }

@@ -1,0 +1,186 @@
+//! Dropshade's configuration: the TOML file, themes and keybinding definitions.
+
+mod error;
+mod schema;
+pub mod theme;
+
+use std::path::{Path, PathBuf};
+
+pub use error::ConfigError;
+pub use schema::{
+    Appearance, Binding, Config, CursorShape, Font, Input, Scrollback, TabBarPosition, Terminal,
+    ThemeChoice, Unlimited,
+};
+
+/// The default configuration, documented; `dropshade config print-default` prints it.
+pub const DEFAULT_CONFIG: &str = include_str!("default.toml");
+
+/// `$XDG_CONFIG_HOME/dropshade`, or `None` when no home directory is known.
+pub fn config_dir() -> Option<PathBuf> {
+    directories::ProjectDirs::from("io.github", "samuelba", "dropshade")
+        .map(|dirs| dirs.config_dir().to_path_buf())
+}
+
+/// Parses and validates configuration text. `path` is only used in error messages.
+///
+/// # Errors
+///
+/// Fails with the position of a syntax error, an unknown key, or an out-of-range value.
+pub fn parse(text: &str, path: &Path) -> Result<Config, ConfigError> {
+    let config: Config = toml::from_str(text).map_err(|error| {
+        ConfigError::at(
+            path,
+            text,
+            error.span().map(|span| span.start),
+            error.message().trim(),
+        )
+    })?;
+    validate(&config).map_err(|message| ConfigError::at(path, text, None, message))?;
+    Ok(config)
+}
+
+fn validate(config: &Config) -> Result<(), String> {
+    if config.font.family.trim().is_empty() {
+        return Err("font.family must not be empty".into());
+    }
+    check_range("font.size", config.font.size, 4.0, 200.0)?;
+    check_range("font.line_height", config.font.line_height, 0.8, 3.0)?;
+    check_range(
+        "appearance.background_opacity",
+        config.appearance.background_opacity,
+        0.0,
+        1.0,
+    )?;
+    check_range("appearance.padding", config.appearance.padding, 0.0, 200.0)
+}
+
+fn check_range(key: &str, value: f32, min: f32, max: f32) -> Result<(), String> {
+    if (min..=max).contains(&value) {
+        Ok(())
+    } else {
+        Err(format!(
+            "{key} must be between {min} and {max}, but is {value}"
+        ))
+    }
+}
+
+/// The default location of the configuration file.
+pub fn default_path() -> Option<PathBuf> {
+    config_dir().map(|dir| dir.join("config.toml"))
+}
+
+/// The directory searched for theme files.
+pub fn themes_dir() -> Option<PathBuf> {
+    config_dir().map(|dir| dir.join("themes"))
+}
+
+/// Reads the configuration file; a missing file yields the defaults.
+///
+/// # Errors
+///
+/// Fails when the file exists but cannot be read or is invalid.
+pub fn load(path: &Path) -> Result<Config, ConfigError> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => parse(&text, path),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Config::default()),
+        Err(error) => Err(ConfigError::read(path, &error)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_str(text: &str) -> Result<Config, ConfigError> {
+        parse(text, Path::new("config.toml"))
+    }
+
+    #[test]
+    fn empty_file_gives_defaults() {
+        assert_eq!(parse_str("").expect("valid"), Config::default());
+    }
+
+    #[test]
+    fn documented_default_file_matches_the_built_in_defaults() {
+        assert_eq!(
+            parse_str(DEFAULT_CONFIG).expect("default file parses"),
+            Config::default()
+        );
+    }
+
+    #[test]
+    fn values_override_defaults() {
+        let config = parse_str(
+            r#"
+            [font]
+            family = "JetBrains Mono"
+            size = 13
+
+            [appearance]
+            theme = { dark = "dusk", light = "dawn" }
+            tab_bar = "left"
+
+            [terminal]
+            scrollback = "unlimited"
+
+            [keybindings]
+            "ctrl+shift+t" = "new-tab"
+            "ctrl+alt+l" = { send = "clear\r" }
+            "#,
+        )
+        .expect("valid");
+        assert_eq!(config.font.family, "JetBrains Mono");
+        assert!((config.font.size - 13.0).abs() < f32::EPSILON);
+        assert_eq!(config.appearance.theme.name(true), "dawn");
+        assert_eq!(config.appearance.theme.name(false), "dusk");
+        assert_eq!(config.appearance.tab_bar, TabBarPosition::Left);
+        assert_eq!(config.terminal.scrollback.lines(), usize::MAX);
+        assert_eq!(
+            config.keybindings["ctrl+shift+t"],
+            Binding::Action("new-tab".into())
+        );
+        assert_eq!(
+            config.keybindings["ctrl+alt+l"],
+            Binding::Send {
+                send: "clear\r".into()
+            }
+        );
+    }
+
+    #[test]
+    fn unknown_keys_are_reported_with_their_line() {
+        let error = parse_str("[font]\nsize = 12\nfamliy = \"x\"\n").expect_err("typo");
+        assert_eq!(error.line(), Some(3));
+        assert!(error.to_string().contains("famliy"), "{error}");
+        assert!(error.to_string().contains("config.toml:3"), "{error}");
+    }
+
+    #[test]
+    fn wrong_types_are_reported() {
+        let error = parse_str("[appearance]\ntab_bar = \"middle\"\n").expect_err("bad value");
+        assert_eq!(error.line(), Some(2));
+    }
+
+    #[test]
+    fn out_of_range_values_are_rejected() {
+        for (text, key) in [
+            ("[font]\nsize = 1", "font.size"),
+            ("[font]\nline_height = 9", "font.line_height"),
+            (
+                "[appearance]\nbackground_opacity = 1.5",
+                "appearance.background_opacity",
+            ),
+            ("[appearance]\npadding = -2", "appearance.padding"),
+            ("[font]\nfamily = \"\"", "font.family"),
+        ] {
+            let error = parse_str(text).expect_err(key);
+            assert!(error.to_string().contains(key), "{key}: {error}");
+        }
+    }
+
+    #[test]
+    fn a_missing_file_gives_defaults() {
+        let missing = Path::new("/nonexistent/dropshade/config.toml");
+        assert_eq!(load(missing).expect("defaults"), Config::default());
+    }
+}

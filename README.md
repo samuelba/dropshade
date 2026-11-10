@@ -25,8 +25,23 @@ staying on top and the slide animation.
 | Shift+PageUp/PageDown/Home/End | Scroll the scrollback |
 | Ctrl+click | Open a link |
 
-In tabs: middle-click closes, right-click opens a menu, and dragging reorders. Until the config file
-lands, `DROPSHADE_TAB_BAR=top|bottom|left|right` places the tab bar.
+In tabs: middle-click closes, right-click opens a menu, and dragging reorders. Every shortcut can be
+changed in the `[keybindings]` section of the configuration.
+
+## Configuration
+
+Dropshade reads `~/.config/dropshade/config.toml` and applies changes as soon as the file is saved.
+A broken file never takes effect: Dropshade keeps the previous settings and shows what is wrong.
+
+```sh
+dropshade config print-default > ~/.config/dropshade/config.toml   # documented defaults
+dropshade config check                                              # validate, with line numbers
+```
+
+Themes: `dusk` (dark) and `dawn` (light) are built in, and any
+[Alacritty theme](https://github.com/alacritty/alacritty-theme) dropped into
+`~/.config/dropshade/themes/` works by its file name. `theme = { dark = "dusk", light = "dawn" }`
+follows the system's light/dark setting.
 
 ## Building
 
@@ -60,6 +75,7 @@ your real session is never touched:
 | ---------------- | ---------------------------------------------------------------- |
 | `dropshade`      | The application                                                   |
 | `dropshade-term` | Terminal widget: pty, emulation, key encoding, iced canvas view |
+| `dropshade-config` | Configuration schema, validation, themes                     |
 
 The extension (`gnome-extension/`) is licensed GPL-2.0-or-later, as extensions.gnome.org requires.
 

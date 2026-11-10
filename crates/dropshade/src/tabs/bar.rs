@@ -34,22 +34,6 @@ impl BarPosition {
     }
 }
 
-impl std::str::FromStr for BarPosition {
-    type Err = String;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "top" => Ok(Self::Top),
-            "bottom" => Ok(Self::Bottom),
-            "left" => Ok(Self::Left),
-            "right" => Ok(Self::Right),
-            other => Err(format!(
-                "unknown tab bar position \"{other}\" (expected top, bottom, left or right)"
-            )),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum TabMessage {
     New,
@@ -218,7 +202,6 @@ fn icon_button(label: &str, color: Color, colors: UiColors) -> button::Button<'_
 
 #[cfg(test)]
 mod tests {
-    use super::BarPosition;
 
     #[test]
     fn tabs_share_the_bar_within_limits() {
@@ -227,14 +210,5 @@ mod tests {
         assert!(crowded > super::MIN_TAB_WIDTH && crowded < super::MAX_TAB_WIDTH);
         assert!((super::tab_width(300.0, 40) - super::MIN_TAB_WIDTH).abs() < f32::EPSILON);
         assert!(super::tab_width(1600.0, 0) <= super::MAX_TAB_WIDTH);
-    }
-
-    #[test]
-    fn positions_parse_case_insensitively() {
-        assert_eq!("top".parse(), Ok(BarPosition::Top));
-        assert_eq!(" Bottom ".parse(), Ok(BarPosition::Bottom));
-        assert_eq!("LEFT".parse(), Ok(BarPosition::Left));
-        assert_eq!("right".parse(), Ok(BarPosition::Right));
-        assert!("middle".parse::<BarPosition>().is_err());
     }
 }

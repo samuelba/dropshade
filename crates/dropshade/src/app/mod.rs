@@ -3,35 +3,35 @@
 mod session;
 mod update;
 mod view;
+mod watch;
 
+use std::path::PathBuf;
 use std::time::Duration;
 
-use dropshade_term::{InputConfig, Interaction, Palette, TermEvent, ViewStyle, metrics};
+use dropshade_config::Config;
+use dropshade_term::{Interaction, TermEvent};
 use iced::keyboard::{self, key::Named};
-use iced::{Event, Font, Point, Size, Subscription, Task, event, mouse, time, window};
+use iced::theme::Mode;
+use iced::{Event, Point, Size, Subscription, Task, event, mouse, system, time, window};
 
-use crate::tabs::{BarPosition, TabId, TabMessage, Tabs};
-use crate::theme::UiColors;
+use crate::settings::{self, Settings};
+use crate::tabs::{TabId, TabMessage, Tabs};
 use session::Session;
 
 pub const APP_NAME: &str = "Dropshade";
 pub const INITIAL_SIZE: Size = Size::new(1100.0, 640.0);
-const FONT_SIZE: f32 = 15.0;
-const LINE_HEIGHT: f32 = 1.25;
-const PADDING: f32 = 10.0;
-const BACKGROUND_OPACITY: f32 = 0.94;
 const BLINK_INTERVAL: Duration = Duration::from_millis(530);
 const BELL_DURATION: Duration = Duration::from_millis(120);
-/// Temporary until the config file exists (Phase 3): top, bottom, left or right.
-const TAB_BAR_ENV: &str = "DROPSHADE_TAB_BAR";
 
 #[derive(Debug)]
 pub struct App {
     tabs: Tabs<Session>,
-    style: ViewStyle,
-    input: InputConfig,
-    colors: UiColors,
-    bar: BarPosition,
+    config: Config,
+    config_path: Option<PathBuf>,
+    /// Why the config file could not be used; the last good settings stay active meanwhile.
+    config_error: Option<String>,
+    prefers_light: bool,
+    settings: Settings,
     hovered: Option<TabId>,
     renaming: Option<Rename>,
     menu: Option<Menu>,
@@ -72,26 +72,21 @@ pub enum Message {
     Escape,
     Enter,
     MouseReleased,
+    ConfigChanged,
+    SystemTheme(Mode),
 }
 
 impl App {
-    pub fn boot() -> (Self, Task<Message>) {
-        let font = Font::MONOSPACE;
-        let palette = Palette::DUSK;
-        let style = ViewStyle {
-            palette,
-            font,
-            font_size: FONT_SIZE,
-            cell: metrics::cell_size(font, FONT_SIZE, LINE_HEIGHT),
-            padding: PADDING,
-            background_opacity: BACKGROUND_OPACITY,
-        };
+    pub fn boot(config_path: Option<PathBuf>) -> (Self, Task<Message>) {
+        let (config, config_error) = load(config_path.as_deref());
+        let settings = settings::build(&config, false, dropshade_config::themes_dir().as_deref());
         let mut app = Self {
             tabs: Tabs::default(),
-            colors: UiColors::from_palette(&palette, BACKGROUND_OPACITY),
-            style,
-            input: InputConfig::default(),
-            bar: tab_bar_position(),
+            config,
+            config_path,
+            config_error,
+            prefers_light: false,
+            settings,
             hovered: None,
             renaming: None,
             menu: None,
@@ -101,8 +96,11 @@ impl App {
             window: INITIAL_SIZE,
             error: None,
         };
-        let task = app.open_tab(None);
-        (app, task)
+        let first_tab = app.open_tab(app.settings.working_directory.clone());
+        (
+            app,
+            Task::batch([first_tab, system::theme().map(Message::SystemTheme)]),
+        )
     }
 
     pub fn title(&self) -> String {
@@ -134,12 +132,62 @@ impl App {
         } else {
             Subscription::none()
         };
-        let resize = window::resize_events().map(|(_, size)| Message::WindowResized(size));
-        Subscription::batch([blink, bell, overlay_keys, drag_end, resize])
+        let config = self
+            .config_path
+            .clone()
+            .map_or_else(Subscription::none, watch::config_changes);
+        Subscription::batch([
+            blink,
+            bell,
+            overlay_keys,
+            drag_end,
+            config,
+            system::theme_changes().map(Message::SystemTheme),
+            window::resize_events().map(|(_, size)| Message::WindowResized(size)),
+        ])
     }
 
     fn overlay_open(&self) -> bool {
         self.renaming.is_some() || self.menu.is_some() || self.pending_close.is_some()
+    }
+
+    /// Re-reads the config file. A broken file keeps the current settings and shows why.
+    fn reload_config(&mut self) {
+        let Some(path) = self.config_path.as_deref() else {
+            return;
+        };
+        match dropshade_config::load(path) {
+            Ok(config) => {
+                self.config = config;
+                self.config_error = None;
+                self.apply_settings();
+            }
+            Err(error) => {
+                tracing::warn!(%error, "keeping the previous configuration");
+                self.config_error = Some(error.to_string());
+            }
+        }
+    }
+
+    fn apply_settings(&mut self) {
+        let themes = dropshade_config::themes_dir();
+        self.settings = settings::build(&self.config, self.prefers_light, themes.as_deref());
+        for tab in self.tabs.iter() {
+            tab.content
+                .terminal
+                .update_options(self.settings.scrollback_lines, self.settings.cursor_style);
+        }
+    }
+}
+
+fn load(path: Option<&std::path::Path>) -> (Config, Option<String>) {
+    match path.map(dropshade_config::load) {
+        Some(Ok(config)) => (config, None),
+        Some(Err(error)) => {
+            tracing::warn!(%error, "using the default configuration");
+            (Config::default(), Some(error.to_string()))
+        }
+        None => (Config::default(), None),
     }
 }
 
@@ -171,14 +219,4 @@ fn mouse_released(event: Event, _status: event::Status, _window: window::Id) -> 
         Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
     )
     .then_some(Message::MouseReleased)
-}
-
-fn tab_bar_position() -> BarPosition {
-    let Ok(value) = std::env::var(TAB_BAR_ENV) else {
-        return BarPosition::default();
-    };
-    value.parse().unwrap_or_else(|error: String| {
-        tracing::warn!(%error, "ignoring {TAB_BAR_ENV}");
-        BarPosition::default()
-    })
 }

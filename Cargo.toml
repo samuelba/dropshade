@@ -12,12 +12,18 @@ authors = ["Samuel Bachmann <samuel.bachmann@gmail.com>"]
 
 [workspace.dependencies]
 dropshade-term = { path = "crates/dropshade-term" }
+dropshade-config = { path = "crates/dropshade-config" }
 alacritty_terminal = "0.26"
 iced = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "tokio", "canvas", "advanced", "wayland", "x11", "web-colors"] }
 iced_graphics = "0.14"
 anyhow = "1"
 open = "5"
 unicode-width = "0.2"
+serde = { version = "1", features = ["derive"] }
+toml = "1"
+directories = "6"
+notify = "8"
+clap = { version = "4", features = ["derive"] }
 nix = { version = "0.31", default-features = false, features = ["process", "term"] }
 thiserror = "2"
 tracing = "0.1"
