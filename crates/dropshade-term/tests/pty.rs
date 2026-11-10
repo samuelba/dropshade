@@ -66,6 +66,44 @@ fn input_is_written_to_the_shell() {
 }
 
 #[test]
+fn reset_clears_the_screen_and_asks_the_shell_to_redraw() {
+    let terminal = spawn(
+        "exec cat",
+        GridSize {
+            columns: 40,
+            lines: 5,
+        },
+    );
+    terminal.write(b"before\r".to_vec());
+    wait_for(&terminal, "before");
+
+    terminal.reset();
+
+    let text = wait_for(&terminal, "^L");
+    assert!(!text.contains("before"), "screen was: {text:?}");
+    assert!(text.contains("^L"), "no redraw request: {text:?}");
+}
+
+#[test]
+fn reset_and_clear_asks_the_shell_to_redraw() {
+    let mut terminal = spawn(
+        "exec cat",
+        GridSize {
+            columns: 40,
+            lines: 5,
+        },
+    );
+    terminal.write(b"before\r".to_vec());
+    wait_for(&terminal, "before");
+
+    terminal.reset_and_clear();
+
+    let text = wait_for(&terminal, "^L");
+    assert!(!text.contains("before"), "screen was: {text:?}");
+    assert!(text.contains("^L"), "no redraw request: {text:?}");
+}
+
+#[test]
 fn resize_is_reported_to_the_child() {
     let mut terminal = spawn(
         "read _; stty size; sleep 2",

@@ -19,6 +19,7 @@ pub enum Command {
     SaveLayout(String),
     LoadLayout(String),
     OpenSettings,
+    OpenAbout,
 }
 
 /// The drop-down window settings the extension reads from the app.

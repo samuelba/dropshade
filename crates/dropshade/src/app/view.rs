@@ -21,11 +21,14 @@ impl App {
         if let Some(menu) = self.menu {
             layers.push(self.menu_layer(menu));
         }
-        if let Some(position) = self.terminal_menu {
-            layers.push(self.terminal_menu_layer(position));
+        if let Some(menu) = self.terminal_menu {
+            layers.push(self.terminal_menu_layer(menu));
         }
         if let Some(panel) = &self.settings_panel {
             layers.push(self.settings_layer(panel));
+        }
+        if self.about {
+            layers.push(self.about_layer());
         }
         if let Some(pending) = &self.pending_close {
             layers.push(self.close_dialog(pending));

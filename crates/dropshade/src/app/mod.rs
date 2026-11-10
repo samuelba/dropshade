@@ -1,5 +1,6 @@
 //! The Dropshade application: tabs of terminals plus the chrome around them.
 
+mod about;
 mod menu;
 mod panel;
 mod persist;
@@ -9,6 +10,7 @@ mod update;
 mod view;
 mod visibility;
 mod watch;
+mod zoom;
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -23,11 +25,14 @@ use ipc::WindowSettings;
 use crate::ipc::{self, Command};
 use crate::settings::{self, Settings};
 use crate::tabs::{TabId, TabMessage, Tabs};
+pub use about::AboutMessage;
 pub use menu::MenuAction;
+use menu::TerminalMenu;
 pub use panel::SettingsMessage;
 pub use persist::Startup;
 pub use search::SearchMessage;
 use session::Session;
+use zoom::Zoom;
 
 pub const APP_NAME: &str = "Dropshade";
 pub const INITIAL_SIZE: Size = Size::new(1100.0, 640.0);
@@ -36,6 +41,10 @@ const BELL_DURATION: Duration = Duration::from_millis(120);
 const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(3);
 
 #[derive(Debug)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent window and overlay flags, not one state"
+)]
 pub struct App {
     tabs: Tabs<Session>,
     config: Config,
@@ -49,8 +58,11 @@ pub struct App {
     menu: Option<Menu>,
     pending_close: Option<PendingClose>,
     search: Option<search::SearchBar>,
-    terminal_menu: Option<Point>,
+    terminal_menu: Option<TerminalMenu>,
     settings_panel: Option<panel::SettingsPanel>,
+    about: bool,
+    /// The font zoom of the terminals, on top of the configured size.
+    zoom: Zoom,
     dragging: Option<TabId>,
     bar_pointer: Point,
     window_size: Size,
@@ -95,6 +107,7 @@ pub enum Message {
     Search(SearchMessage),
     Menu(MenuAction),
     Settings(SettingsMessage),
+    About(AboutMessage),
     WindowResized(Size),
     Escape,
     Enter,
@@ -133,6 +146,8 @@ impl App {
             search: None,
             terminal_menu: None,
             settings_panel: None,
+            about: false,
+            zoom: Zoom::default(),
             dragging: None,
             bar_pointer: Point::ORIGIN,
             window_size: INITIAL_SIZE,
@@ -222,6 +237,7 @@ impl App {
             || self.search.is_some()
             || self.terminal_menu.is_some()
             || self.settings_panel.is_some()
+            || self.about
     }
 
     /// Re-reads the config file. A broken file keeps the current settings and shows why.
@@ -246,11 +262,16 @@ impl App {
 
     fn apply_settings(&mut self) {
         let themes = dropshade_config::themes_dir();
-        self.settings = settings::build(&self.config, self.prefers_light, themes.as_deref());
-        for tab in self.tabs.iter() {
-            tab.content
-                .terminal
-                .update_options(self.settings.scrollback_lines, self.settings.cursor_style);
+        let settings = settings::build(&self.config, self.prefers_light, themes.as_deref());
+        self.settings = if self.zoom.is_normal() {
+            settings
+        } else {
+            settings.zoomed(self.zoom.scale(), self.config.font.line_height)
+        };
+        for tab in self.tabs.iter_mut() {
+            let terminal = &mut tab.content.terminal;
+            terminal.update_options(self.settings.scrollback_lines, self.settings.cursor_style);
+            terminal.set_cell(self.settings.style.cell);
         }
     }
 }

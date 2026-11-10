@@ -7,6 +7,7 @@ pub mod input;
 pub mod links;
 pub mod metrics;
 pub mod mouse;
+mod reset;
 pub mod size;
 pub mod terminal;
 pub mod view;

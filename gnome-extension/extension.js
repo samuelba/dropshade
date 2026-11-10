@@ -20,6 +20,7 @@ export default class DropshadeExtension extends Extension {
         this._indicator = new Indicator(this.uuid, this.dir, {
             onToggle: () => this._toggle(),
             onSettings: () => this._openSettings(),
+            onAbout: () => this._openAbout(),
         });
         this._launcher = new AppLauncher(this._settings, {
             onWindow: window => {
@@ -73,6 +74,12 @@ export default class DropshadeExtension extends Extension {
         if (Main.overview.visible)
             Main.overview.hide();
         this._appSettings.openSettings();
+    }
+
+    _openAbout() {
+        if (Main.overview.visible)
+            Main.overview.hide();
+        this._appSettings.openAbout();
     }
 
     _show() {

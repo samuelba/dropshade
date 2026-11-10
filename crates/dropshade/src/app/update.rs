@@ -6,7 +6,9 @@ use dropshade_term::{Interaction, Notice, Shortcut, TermEvent, Terminal, links};
 use iced::widget::{Id, operation};
 use iced::{Task, clipboard};
 
-use super::{App, Menu, Message, PendingClose, Rename, SettingsMessage, session};
+use super::{
+    AboutMessage, App, Menu, Message, PendingClose, Rename, SettingsMessage, TerminalMenu, session,
+};
 use crate::tabs::{TabId, TabMessage, bar};
 
 impl App {
@@ -14,7 +16,7 @@ impl App {
         match message {
             Message::Term(id, event) => self.terminal_event(id, event),
             Message::Interaction(Interaction::ContextMenu(position)) => {
-                self.terminal_menu = Some(position);
+                self.terminal_menu = Some(TerminalMenu::at(position));
                 Task::none()
             }
             Message::Interaction(Interaction::Shortcut(shortcut)) => self.shortcut(shortcut),
@@ -41,9 +43,13 @@ impl App {
             Message::Search(message) => self.search_message(message),
             Message::Menu(action) => self.menu_action(action),
             Message::Settings(message) => self.settings_message(message),
+            Message::About(message) => self.about_message(message),
             Message::WindowResized(size) => {
                 self.window_size = size;
                 Task::none()
+            }
+            Message::Escape | Message::Enter if self.about => {
+                self.about_message(AboutMessage::Close)
             }
             Message::Escape if self.settings_panel.is_some() => {
                 self.settings_message(SettingsMessage::Close)
@@ -373,7 +379,7 @@ fn run_terminal_shortcut(terminal: &Terminal, shortcut: Shortcut) -> Task<Messag
     Task::none()
 }
 
-fn open_link(url: &str) {
+pub(super) fn open_link(url: &str) {
     if !links::is_openable(url) {
         tracing::warn!(url, "refusing to open a link with an unsupported scheme");
         return;

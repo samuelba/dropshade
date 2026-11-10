@@ -26,6 +26,7 @@ use crate::frame::{self, Frame};
 use crate::input::paste_bytes;
 use crate::links;
 use crate::mouse::CellPosition;
+use crate::reset;
 use crate::size::{CellSize, GridSize, Side};
 use crate::view::ScrollPosition;
 
@@ -33,6 +34,12 @@ use crate::view::ScrollPosition;
 #[derive(Debug, Clone)]
 pub struct EventProxy {
     sender: mpsc::UnboundedSender<Event>,
+}
+
+impl EventProxy {
+    pub(crate) fn new(sender: mpsc::UnboundedSender<Event>) -> Self {
+        Self { sender }
+    }
 }
 
 impl EventListener for EventProxy {
@@ -169,7 +176,7 @@ impl Terminal {
         options: SpawnOptions,
     ) -> Result<(Self, impl Stream<Item = Event> + Send + 'static), SpawnError> {
         let (sender, receiver) = mpsc::unbounded();
-        let proxy = EventProxy { sender };
+        let proxy = EventProxy::new(sender);
         let config = Config {
             scrolling_history: options.scrollback_lines,
             kitty_keyboard: options.kitty_keyboard,
@@ -248,6 +255,37 @@ impl Terminal {
         self.size = size;
         self.term.lock().resize(size);
         self.send(Msg::Resize(size.window_size(self.cell)));
+    }
+
+    /// Adopts a new cell size, after a font or zoom change. The grid follows on the next layout.
+    pub fn set_cell(&mut self, cell: CellSize) {
+        if cell == self.cell {
+            return;
+        }
+        self.cell = cell;
+        self.send(Msg::Resize(self.size.window_size(cell)));
+    }
+
+    /// Resets the emulator state (modes, charsets, the alternate screen) and clears the screen
+    /// into the scrollback.
+    pub fn reset(&self) {
+        reset::soft(&mut self.term.lock());
+        self.redraw_prompt();
+    }
+
+    /// A full reset: the emulator state, the screen and the scrollback.
+    pub fn reset_and_clear(&mut self) {
+        self.clear_search();
+        reset::full(&mut self.term.lock());
+        self.redraw_prompt();
+    }
+
+    /// Sends Ctrl+L so a shell waiting at its prompt draws it again on the cleared screen. Other
+    /// programs get nothing, since many of them would print the control character.
+    fn redraw_prompt(&self) {
+        if self.foreground_process().is_none() {
+            self.write(&b"\x0c"[..]);
+        }
     }
 
     /// Applies changed settings to a running terminal.
