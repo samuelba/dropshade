@@ -23,6 +23,7 @@ export default class DropshadeExtension extends Extension {
             onAbout: () => this._openAbout(),
         });
         this._launcher = new AppLauncher(this._settings, {
+            downloadUrl: `${this.metadata.url}/releases/latest`,
             onWindow: window => {
                 this._dropdown.attach(window);
                 this._indicator.running = true;
