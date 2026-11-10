@@ -3,9 +3,6 @@ name: Packages
 # Builds every release artifact, so packaging breaks show up before a release. The release
 # workflow calls this one and uploads the results.
 on:
-  push:
-    branches:
-      - main
   pull_request:
     paths:
       - Cargo.toml
