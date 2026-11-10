@@ -18,6 +18,7 @@ pub enum Command {
     NewTab(Option<PathBuf>),
     SaveLayout(String),
     LoadLayout(String),
+    OpenSettings,
 }
 
 /// The drop-down window settings the extension reads from the app.

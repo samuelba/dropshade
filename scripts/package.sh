@@ -20,9 +20,10 @@ cargo build --release --locked -p dropshade
 binary="$root/target/release/dropshade"
 
 echo "== GNOME Shell extension"
-mkdir -p "$stage/extension/schemas"
+mkdir -p "$stage/extension/schemas" "$stage/extension/icons"
 cp gnome-extension/*.js gnome-extension/metadata.json gnome-extension/LICENSE "$stage/extension/"
 cp gnome-extension/schemas/*.gschema.xml "$stage/extension/schemas/"
+cp gnome-extension/icons/*.svg "$stage/extension/icons/"
 (cd "$stage/extension" && zip -qr "$dist/$uuid.shell-extension.zip" .)
 
 echo "== tarball"

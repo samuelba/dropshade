@@ -7,6 +7,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {AppSettings} from './app-settings.js';
 import {ShellService} from './dbus.js';
 import {Dropdown} from './dropdown.js';
+import {Indicator} from './indicator.js';
 import {AppLauncher} from './launcher.js';
 
 const SHORTCUT_KEY = 'toggle-shortcut';
@@ -16,9 +17,19 @@ export default class DropshadeExtension extends Extension {
         this._settings = this.getSettings();
         this._appSettings = new AppSettings(this._settings);
         this._dropdown = new Dropdown(this._appSettings);
+        this._indicator = new Indicator(this.uuid, this.dir, {
+            onToggle: () => this._toggle(),
+            onSettings: () => this._openSettings(),
+        });
         this._launcher = new AppLauncher(this._settings, {
-            onWindow: window => this._dropdown.attach(window),
-            onExit: () => this._dropdown.detach(),
+            onWindow: window => {
+                this._dropdown.attach(window);
+                this._indicator.running = true;
+            },
+            onExit: () => {
+                this._dropdown.detach();
+                this._indicator.running = false;
+            },
         });
         Main.wm.addKeybinding(
             SHORTCUT_KEY,
@@ -38,11 +49,13 @@ export default class DropshadeExtension extends Extension {
         Main.wm.removeKeybinding(SHORTCUT_KEY);
         this._service.destroy();
         this._launcher.destroy();
+        this._indicator.destroy();
         this._dropdown.destroy();
         this._appSettings.destroy();
         this._appSettings = null;
         this._service = null;
         this._launcher = null;
+        this._indicator = null;
         this._dropdown = null;
         this._settings = null;
     }
@@ -54,6 +67,12 @@ export default class DropshadeExtension extends Extension {
             this._dropdown.toggle();
         else
             this._launcher.launch();
+    }
+
+    _openSettings() {
+        if (Main.overview.visible)
+            Main.overview.hide();
+        this._appSettings.openSettings();
     }
 
     _show() {

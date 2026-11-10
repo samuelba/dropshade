@@ -7,7 +7,7 @@ use std::process::{Command, ExitCode};
 pub const UUID: &str = "dropshade@samuelba.dev";
 const SCHEMA_ID: &str = "org.gnome.shell.extensions.dropshade";
 
-const FILES: [(&str, &str); 8] = [
+const FILES: [(&str, &str); 10] = [
     (
         "metadata.json",
         include_str!("../../../gnome-extension/metadata.json"),
@@ -26,10 +26,18 @@ const FILES: [(&str, &str); 8] = [
     ),
     ("dbus.js", include_str!("../../../gnome-extension/dbus.js")),
     (
+        "indicator.js",
+        include_str!("../../../gnome-extension/indicator.js"),
+    ),
+    (
         "app-settings.js",
         include_str!("../../../gnome-extension/app-settings.js"),
     ),
     ("LICENSE", include_str!("../../../gnome-extension/LICENSE")),
+    (
+        "icons/dropshade-symbolic.svg",
+        include_str!("../../../gnome-extension/icons/dropshade-symbolic.svg"),
+    ),
     (
         "schemas/org.gnome.shell.extensions.dropshade.gschema.xml",
         include_str!(

@@ -52,6 +52,11 @@ impl Service {
         self.send(Command::LoadLayout(name.to_owned()))
     }
 
+    /// Shows the window with the settings panel open.
+    fn open_settings(&self) -> fdo::Result<()> {
+        self.send(Command::OpenSettings)
+    }
+
     #[zbus(property)]
     fn hotkey(&self) -> String {
         self.window.hotkey.clone()
@@ -123,4 +128,20 @@ pub async fn publish(connection: &Connection, window: WindowSettings) -> zbus::R
         service.hide_on_unfocus_changed(emitter).await?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use iced::futures::channel::mpsc;
+
+    use super::*;
+
+    #[test]
+    fn open_settings_is_forwarded_to_the_app() {
+        let (commands, mut received) = mpsc::unbounded();
+        let window = WindowSettings::from(&dropshade_config::Window::default());
+        let service = Service { commands, window };
+        service.open_settings().expect("send");
+        assert_eq!(received.try_recv().expect("queued"), Command::OpenSettings);
+    }
 }

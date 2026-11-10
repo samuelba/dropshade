@@ -11,6 +11,7 @@ const INTERFACE = `
     <property name="Monitor" type="s" access="read"/>
     <property name="AnimationDuration" type="u" access="read"/>
     <property name="HideOnUnfocus" type="b" access="read"/>
+    <method name="OpenSettings"/>
   </interface>
 </node>`;
 
@@ -60,6 +61,21 @@ export class AppSettings {
 
     get hideOnUnfocus() {
         return this._values.hideOnUnfocus;
+    }
+
+    /** Asks the running app to show its settings panel. */
+    openSettings() {
+        if (!this._proxy) {
+            console.error('Dropshade: cannot open the settings, the app is not running');
+            return;
+        }
+        this._proxy.call('OpenSettings', null, Gio.DBusCallFlags.NONE, -1, null, (proxy, result) => {
+            try {
+                proxy.call_finish(result);
+            } catch (error) {
+                console.error(`Dropshade: cannot open the settings: ${error.message}`);
+            }
+        });
     }
 
     destroy() {
