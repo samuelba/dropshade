@@ -70,7 +70,8 @@ cargo build --release
 ```
 
 Press <kbd>F12</kbd> (configurable as `window.hotkey`) and the terminal slides down; press it again
-to hide it. The extension starts Dropshade on the first press.
+to hide it. The extension starts Dropshade on the first press. While it runs, an icon in the top
+bar does the same on a click; right-click it to open the settings.
 
 | Command | What it does |
 | ------- | ------------ |

@@ -64,6 +64,10 @@ impl App {
                 let tabs = self.load_layout(&name);
                 Task::batch([tabs, self.visibility(Visibility::Show)])
             }
+            Command::OpenSettings => {
+                let settings = self.open_settings();
+                Task::batch([settings, self.visibility(Visibility::Show)])
+            }
         }
     }
 
