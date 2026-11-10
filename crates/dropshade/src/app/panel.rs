@@ -10,6 +10,7 @@ use iced::widget::{
 use iced::{Element, Fill, Font, Length, Point, Task, font};
 
 use super::{App, Message};
+use crate::screens::{self, Screen, ScreenChoice};
 
 const MENU_WIDTH: f32 = 180.0;
 const MENU_ITEM_HEIGHT: f32 = 30.0;
@@ -43,6 +44,9 @@ pub enum SettingsMessage {
     Blink(bool),
     Scrollbar(bool),
     Restore(bool),
+    Screen(ScreenChoice),
+    /// The connected screens arrived from the compositor (`None` if it could not be asked).
+    Screens(Option<Vec<Screen>>),
     OpenFile,
     Close,
 }
@@ -55,13 +59,16 @@ pub enum Slider {
     Width,
 }
 
-/// Slider values while they are being dragged; written to the file on release.
-#[derive(Debug, Clone, Copy)]
+/// Slider values while they are being dragged (written to the file on release), and the
+/// connected screens.
+#[derive(Debug, Clone)]
 pub(super) struct SettingsPanel {
     font_size: f32,
     opacity: f32,
     height: f32,
     width: f32,
+    /// Unknown until the compositor answers.
+    screens: Option<Vec<Screen>>,
 }
 
 impl App {
@@ -72,10 +79,7 @@ impl App {
             MenuAction::Paste => dropshade_term::Shortcut::Paste,
             MenuAction::NewTab => dropshade_term::Shortcut::NewTab,
             MenuAction::Find => dropshade_term::Shortcut::Search,
-            MenuAction::Settings => {
-                self.open_settings();
-                return Task::none();
-            }
+            MenuAction::Settings => return self.open_settings(),
             MenuAction::Dismiss => return Task::none(),
         };
         self.update(Message::Interaction(dropshade_term::Interaction::Shortcut(
@@ -83,7 +87,7 @@ impl App {
         )))
     }
 
-    fn open_settings(&mut self) {
+    fn open_settings(&mut self) -> Task<Message> {
         let config = &self.config;
         #[allow(clippy::cast_possible_truncation)]
         let panel = SettingsPanel {
@@ -91,8 +95,25 @@ impl App {
             opacity: config.appearance.background_opacity,
             height: config.window.height as f32,
             width: config.window.width as f32,
+            screens: None,
         };
         self.settings_panel = Some(panel);
+        let connection = self.ipc.clone();
+        Task::perform(
+            async move {
+                let connection = match connection {
+                    Some(connection) => connection,
+                    None => zbus::Connection::session().await?,
+                };
+                screens::connected(&connection).await
+            },
+            |result| {
+                let screens = result
+                    .inspect_err(|error| tracing::warn!(%error, "cannot list the screens"))
+                    .ok();
+                Message::Settings(SettingsMessage::Screens(screens))
+            },
+        )
     }
 
     pub(super) fn settings_message(&mut self, message: SettingsMessage) -> Task<Message> {
@@ -105,7 +126,6 @@ impl App {
             SettingsMessage::Height(value) => panel.height = value,
             SettingsMessage::Width(value) => panel.width = value,
             SettingsMessage::Commit(slider) => {
-                let panel = *panel;
                 let (section, key, value) = match slider {
                     Slider::FontSize => ("font", "size", panel.font_size),
                     Slider::Opacity => ("appearance", "background_opacity", panel.opacity),
@@ -132,6 +152,11 @@ impl App {
             SettingsMessage::Restore(on) => {
                 self.write_setting("session", "restore", SettingValue::Bool(on));
             }
+            SettingsMessage::Screen(choice) => {
+                let value = SettingValue::Text(choice.monitor.as_str().to_owned());
+                self.write_setting("window", "monitor", value);
+            }
+            SettingsMessage::Screens(screens) => panel.screens = screens,
             SettingsMessage::OpenFile => self.open_config_file(),
             SettingsMessage::Close => self.settings_panel = None,
         }
@@ -213,7 +238,7 @@ impl App {
         stack![dismiss, pin(card).position(anchor)].into()
     }
 
-    pub(super) fn settings_layer(&self, panel: SettingsPanel) -> Element<'_, Message> {
+    pub(super) fn settings_layer(&self, panel: &SettingsPanel) -> Element<'_, Message> {
         let colors = self.settings.colors;
         let config = &self.config;
         let current_theme = config.appearance.theme.name(self.prefers_light).to_owned();
@@ -280,6 +305,7 @@ impl App {
                 percent(panel.width),
                 colors
             ),
+            screen_setting(panel.screens.as_deref(), &config.window.monitor),
             cursor_setting(cursor, config.appearance.cursor_blink),
             setting(
                 "Scrollbar",
@@ -345,6 +371,24 @@ fn slider_setting(
                 .width(Length::Fixed(48.0)),
         ]
         .spacing(8),
+    )
+}
+
+fn screen_setting(
+    screens: Option<&[Screen]>,
+    current: &dropshade_config::Monitor,
+) -> Element<'static, Message> {
+    let choices = screens::choices(screens, current);
+    let selected = choices
+        .iter()
+        .find(|choice| &choice.monitor == current)
+        .cloned();
+    setting(
+        "Screen",
+        pick_list(choices, selected, |choice| {
+            Message::Settings(SettingsMessage::Screen(choice))
+        })
+        .text_size(TEXT_SIZE),
     )
 }
 
