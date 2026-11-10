@@ -7,13 +7,19 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+publish = false
 
 [dependencies]
 alacritty_terminal.workspace = true
 iced.workspace = true
 iced_graphics.workspace = true
 thiserror.workspace = true
+unicode-width.workspace = true
 tracing.workspace = true
+nix.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+alacritty_terminal.workspace = true

@@ -1,5 +1,14 @@
 //! Translates key presses into the bytes a terminal application expects.
 
+mod bindings;
+mod kitty;
+mod paste;
+mod shortcut;
+
+pub use bindings::{Binding, BindingAction, Chord, Resolution, resolve};
+pub use paste::paste_bytes;
+pub use shortcut::{Shortcut, shortcut};
+
 use alacritty_terminal::term::TermMode;
 use iced::keyboard::key::Named;
 use iced::keyboard::{Key, Modifiers};
@@ -7,14 +16,20 @@ use iced::keyboard::{Key, Modifiers};
 /// User-configurable input behaviour.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InputConfig {
-    /// Bytes sent for Shift+Enter. `None` sends a plain carriage return.
+    /// Bytes sent for Shift+Enter outside the kitty protocol. `None` sends a plain carriage return.
     pub shift_enter: Option<Vec<u8>>,
+    /// Enables the input method (IME) for composed and CJK input.
+    pub ime: bool,
+    /// User keybindings, consulted before the default shortcuts.
+    pub bindings: Vec<Binding>,
 }
 
 impl Default for InputConfig {
     fn default() -> Self {
         Self {
             shift_enter: Some(b"\x1b\r".to_vec()),
+            ime: true,
+            bindings: Vec::new(),
         }
     }
 }
@@ -33,6 +48,13 @@ const ESC: u8 = 0x1b;
 pub fn encode(press: KeyPress<'_>, mode: TermMode, config: &InputConfig) -> Option<Vec<u8>> {
     if press.modifiers.logo() {
         return None;
+    }
+    if mode.intersects(TermMode::KITTY_KEYBOARD_PROTOCOL) {
+        match kitty::encode(press, mode) {
+            kitty::Encoding::Bytes(bytes) => return Some(bytes),
+            kitty::Encoding::Ignore => return None,
+            kitty::Encoding::Legacy => {}
+        }
     }
     match press.key {
         Key::Named(named) => encode_named(*named, press.modifiers, mode, config),
@@ -222,7 +244,10 @@ mod tests {
             Some(b"\x1b\r".to_vec())
         );
 
-        let plain = InputConfig { shift_enter: None };
+        let plain = InputConfig {
+            shift_enter: None,
+            ..InputConfig::default()
+        };
         let key = Key::Named(Named::Enter);
         let bytes = encode(
             KeyPress {
@@ -348,6 +373,21 @@ mod tests {
             named(Named::F12, Modifiers::CTRL),
             Some(b"\x1b[24;5~".to_vec())
         );
+    }
+
+    #[test]
+    fn kitty_mode_takes_over_shift_enter() {
+        let key = Key::Named(Named::Enter);
+        let bytes = encode(
+            KeyPress {
+                key: &key,
+                modifiers: Modifiers::SHIFT,
+                text: None,
+            },
+            TermMode::DISAMBIGUATE_ESC_CODES,
+            &InputConfig::default(),
+        );
+        assert_eq!(bytes, Some(b"\x1b[13;2u".to_vec()));
     }
 
     #[test]

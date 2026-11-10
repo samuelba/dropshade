@@ -37,6 +37,18 @@ pub fn cell_size(font: Font, size: f32, line_height: f32) -> CellSize {
         .unwrap_or(fallback)
 }
 
+/// Whether a font family is installed (case-insensitive), so a typo can be reported.
+pub fn font_installed(family: &str) -> bool {
+    let Ok(mut system) = font_system().write() else {
+        return true;
+    };
+    system.raw().db().faces().any(|face| {
+        face.families
+            .iter()
+            .any(|(name, _)| name.eq_ignore_ascii_case(family))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -50,5 +62,10 @@ mod tests {
             cell.width
         );
         assert!((cell.height - 19.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn made_up_fonts_are_not_installed() {
+        assert!(!font_installed("Definitely Not A Real Font 42"));
     }
 }

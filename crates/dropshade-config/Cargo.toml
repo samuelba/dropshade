@@ -1,0 +1,20 @@
+[package]
+name = "dropshade-config"
+description = "Configuration file, themes and keybinding definitions for Dropshade"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+serde.workspace = true
+toml.workspace = true
+toml_edit.workspace = true
+thiserror.workspace = true
+directories.workspace = true
+
+[lints]
+workspace = true

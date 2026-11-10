@@ -1,152 +1,223 @@
 //! Dropshade: a drop-down terminal for Linux.
 
-use dropshade_term::{
-    InputConfig, Interaction, Notice, Palette, SpawnOptions, TermEvent, Terminal, TerminalView,
-    ViewStyle, metrics,
-};
-use iced::widget::{canvas, container, text};
-use iced::window::settings::PlatformSpecific;
-use iced::{Color, Element, Fill, Font, Size, Task, Theme, window};
+mod app;
+mod cli;
+mod extension;
+mod ipc;
+mod settings;
+mod tabs;
+mod theme;
+
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+
+use clap::{Parser, Subcommand};
+use iced::{Color, Theme};
 use tracing_subscriber::EnvFilter;
 
-const APP_ID: &str = "io.github.samuelba.Dropshade";
-const APP_NAME: &str = "Dropshade";
-const FONT_SIZE: f32 = 15.0;
-const LINE_HEIGHT: f32 = 1.25;
-const PADDING: f32 = 10.0;
-const BACKGROUND_OPACITY: f32 = 0.94;
+use app::{App, Startup};
+use cli::{Outcome, Request};
+use ipc::client::Visibility;
+
 const SHELL_LAUNCHED_ENV: &str = "DROPSHADE_SHELL_LAUNCHED";
 
-fn main() -> iced::Result {
+#[derive(Debug, Parser)]
+#[command(version, about = "A drop-down terminal for Linux")]
+struct Cli {
+    /// Read this configuration file instead of ~/.config/dropshade/config.toml.
+    #[arg(long, value_name = "PATH", global = true)]
+    config: Option<PathBuf>,
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// Show the terminal if it is hidden, hide it if it is in front.
+    Toggle,
+    /// Show the terminal (the default when no command is given).
+    Show,
+    /// Hide the terminal.
+    Hide,
+    /// Open a new tab, in DIR or the current tab's directory.
+    NewTab {
+        #[arg(long, value_name = "DIR")]
+        cwd: Option<PathBuf>,
+    },
+    /// Save or open sets of tabs.
+    #[command(subcommand)]
+    Layout(LayoutCommand),
+    /// Inspect the configuration file.
+    #[command(subcommand)]
+    Config(ConfigCommand),
+    /// Manage the companion GNOME Shell extension.
+    #[command(subcommand)]
+    GnomeExtension(ExtensionCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum ConfigCommand {
+    /// Print the default configuration, with documentation for every setting.
+    PrintDefault,
+    /// Print where the configuration file is read from.
+    Path,
+    /// Check the configuration file and report every problem.
+    Check,
+}
+
+#[derive(Debug, Subcommand)]
+enum LayoutCommand {
+    /// Save the open tabs (names and directories) as a layout.
+    Save { name: String },
+    /// Open the tabs of a saved layout.
+    Load { name: String },
+    /// List the saved layouts.
+    List,
+}
+
+#[derive(Debug, Subcommand)]
+enum ExtensionCommand {
+    /// Install (or update) the extension for the current user.
+    Install,
+}
+
+fn main() -> ExitCode {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .init();
-    dropshade_term::setup_env();
-    let managed = is_shell_managed(std::env::var(SHELL_LAUNCHED_ENV).ok().as_deref());
+    let cli = Cli::parse();
+    let config_path = cli.config.or_else(dropshade_config::default_path);
+    let request = match cli.command {
+        Some(Command::Config(command)) => return config_command(&command, config_path.as_deref()),
+        Some(Command::GnomeExtension(ExtensionCommand::Install)) => return extension::install(),
+        Some(Command::Layout(LayoutCommand::List)) => return list_layouts(),
+        Some(Command::Layout(LayoutCommand::Save { name })) => match valid_layout(name) {
+            Ok(name) => Request::SaveLayout(name),
+            Err(code) => return code,
+        },
+        Some(Command::Layout(LayoutCommand::Load { name })) => match valid_layout(name) {
+            Ok(name) => Request::LoadLayout(name),
+            Err(code) => return code,
+        },
+        Some(Command::Toggle) => Request::Visibility(Visibility::Toggle),
+        Some(Command::Show) | None => Request::Visibility(Visibility::Show),
+        Some(Command::Hide) => Request::Visibility(Visibility::Hide),
+        Some(Command::NewTab { cwd }) => match cwd.map(std::path::absolute).transpose() {
+            Ok(cwd) => Request::NewTab(cwd),
+            Err(error) => {
+                eprintln!("dropshade: invalid --cwd: {error}");
+                return ExitCode::FAILURE;
+            }
+        },
+    };
+    launch(&request, config_path)
+}
 
-    iced::application(App::boot, App::update, App::view)
+fn launch(request: &Request, config_path: Option<PathBuf>) -> ExitCode {
+    let managed = is_shell_managed(std::env::var(SHELL_LAUNCHED_ENV).ok().as_deref());
+    match cli::hand_off(request, managed) {
+        Ok(Outcome::Handled) => ExitCode::SUCCESS,
+        Ok(Outcome::RunHere { startup }) => run(config_path, managed, startup),
+        Err(error) => {
+            eprintln!("dropshade: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run(config_path: Option<PathBuf>, managed: bool, startup: Startup) -> ExitCode {
+    dropshade_term::setup_env();
+    let boot = move || App::boot(config_path.clone(), managed, startup.clone());
+    let result = iced::daemon(boot, App::update, App::view)
         .title(App::title)
-        .window(window::Settings {
-            size: Size::new(1100.0, 640.0),
-            transparent: true,
-            decorations: !managed,
-            platform_specific: PlatformSpecific {
-                application_id: APP_ID.to_owned(),
-                ..PlatformSpecific::default()
-            },
-            ..window::Settings::default()
+        .theme(App::theme)
+        .subscription(App::subscription)
+        // FIFO presentation stalls under Mutter: a commit carrying a wp_fifo_v1 barrier can wait
+        // forever for a repaint, freezing the drop-down until it is hidden and shown again.
+        // Without vsync, wgpu picks mailbox or immediate; winit still paces redraws with frame
+        // callbacks, and ICED_PRESENT_MODE overrides this choice.
+        .settings(iced::Settings {
+            vsync: false,
+            ..iced::Settings::default()
         })
         .style(|_, theme: &Theme| iced::theme::Style {
             background_color: Color::TRANSPARENT,
             text_color: theme.palette().text,
         })
-        .run()
+        .run();
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("dropshade: {error}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
-#[derive(Debug)]
-enum App {
-    Running(Session),
-    Failed(String),
-}
-
-#[derive(Debug)]
-struct Session {
-    terminal: Terminal,
-    style: ViewStyle,
-    input: InputConfig,
-}
-
-#[derive(Debug, Clone)]
-enum Message {
-    Term(TermEvent),
-    Interaction(Interaction),
-}
-
-impl App {
-    fn boot() -> (Self, Task<Message>) {
-        let font = Font::MONOSPACE;
-        let cell = metrics::cell_size(font, FONT_SIZE, LINE_HEIGHT);
-        let style = ViewStyle {
-            palette: Palette::DUSK,
-            font,
-            font_size: FONT_SIZE,
-            cell,
-            padding: PADDING,
-            background_opacity: BACKGROUND_OPACITY,
-        };
-        match Terminal::spawn(SpawnOptions {
-            cell,
-            ..SpawnOptions::default()
-        }) {
-            Ok((terminal, events)) => {
-                let session = Session {
-                    terminal,
-                    style,
-                    input: InputConfig::default(),
-                };
-                (Self::Running(session), Task::run(events, Message::Term))
+fn config_command(command: &ConfigCommand, path: Option<&Path>) -> ExitCode {
+    match command {
+        ConfigCommand::PrintDefault => {
+            print!("{}", dropshade_config::DEFAULT_CONFIG);
+            ExitCode::SUCCESS
+        }
+        ConfigCommand::Path => match path {
+            Some(path) => {
+                println!("{}", path.display());
+                ExitCode::SUCCESS
             }
-            Err(error) => {
-                tracing::error!(%error, "could not start the shell");
-                (Self::Failed(error.to_string()), Task::none())
-            }
-        }
+            None => no_config_path(),
+        },
+        ConfigCommand::Check => path.map_or_else(no_config_path, check_config),
     }
+}
 
-    fn title(&self) -> String {
-        match self {
-            Self::Running(session) => session.terminal.title().unwrap_or(APP_NAME).to_owned(),
-            Self::Failed(_) => APP_NAME.to_owned(),
+fn check_config(path: &Path) -> ExitCode {
+    let config = match dropshade_config::load(path) {
+        Ok(config) => config,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
         }
+    };
+    let themes = dropshade_config::themes_dir();
+    let warnings = settings::build(&config, false, themes.as_deref()).warnings;
+    if warnings.is_empty() {
+        println!("{}: OK", path.display());
+        return ExitCode::SUCCESS;
     }
-
-    fn update(&mut self, message: Message) -> Task<Message> {
-        let Self::Running(session) = self else {
-            return Task::none();
-        };
-        match message {
-            Message::Term(event) => {
-                match session.terminal.handle_event(event, &session.style.palette) {
-                    Some(Notice::Exited(_)) => iced::exit(),
-                    _ => Task::none(),
-                }
-            }
-            Message::Interaction(interaction) => {
-                apply(&mut session.terminal, interaction);
-                Task::none()
-            }
-        }
+    for warning in warnings {
+        eprintln!("{}: {warning}", path.display());
     }
+    ExitCode::FAILURE
+}
 
-    fn view(&self) -> Element<'_, Message> {
-        match self {
-            Self::Running(session) => canvas(TerminalView::new(
-                &session.terminal,
-                &session.style,
-                &session.input,
-                Message::Interaction,
-            ))
-            .width(Fill)
-            .height(Fill)
-            .into(),
-            Self::Failed(error) => container(text(format!(
-                "Dropshade could not start a shell.\n\n{error}"
-            )))
-            .center(Fill)
-            .into(),
+fn valid_layout(name: String) -> Result<String, ExitCode> {
+    let Some(dir) = dropshade_session::layouts_dir() else {
+        eprintln!("dropshade: no config directory (HOME is not set)");
+        return Err(ExitCode::FAILURE);
+    };
+    match dropshade_session::layout_path(&dir, &name) {
+        Ok(_) => Ok(name),
+        Err(error) => {
+            eprintln!("dropshade: {error}");
+            Err(ExitCode::FAILURE)
         }
     }
 }
 
-fn apply(terminal: &mut Terminal, interaction: Interaction) {
-    match interaction {
-        Interaction::Input(bytes) => {
-            terminal.scroll_to_bottom();
-            terminal.write(bytes);
-        }
-        Interaction::Resize(size) => terminal.resize(size),
-        Interaction::Scroll(lines) => terminal.scroll(lines),
+fn list_layouts() -> ExitCode {
+    let Some(dir) = dropshade_session::layouts_dir() else {
+        return no_config_path();
+    };
+    for name in dropshade_session::list_layouts(&dir) {
+        println!("{name}");
     }
+    ExitCode::SUCCESS
+}
+
+fn no_config_path() -> ExitCode {
+    eprintln!("dropshade: no configuration path (HOME is not set); pass --config");
+    ExitCode::FAILURE
 }
 
 /// Whether the GNOME Shell extension started the app and therefore owns window placement.
@@ -156,7 +227,7 @@ fn is_shell_managed(env_value: Option<&str>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_shell_managed;
+    use super::*;
 
     #[test]
     fn only_the_extension_marker_enables_managed_mode() {
@@ -164,5 +235,49 @@ mod tests {
         assert!(!is_shell_managed(Some("0")));
         assert!(!is_shell_managed(Some("")));
         assert!(!is_shell_managed(None));
+    }
+
+    #[test]
+    fn cli_parses_window_commands() {
+        let cli = Cli::try_parse_from(["dropshade", "new-tab", "--cwd", "/tmp"]).expect("valid");
+        assert!(matches!(
+            cli.command,
+            Some(Command::NewTab { cwd: Some(_) })
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["dropshade", "toggle"])
+                .expect("valid")
+                .command,
+            Some(Command::Toggle)
+        ));
+        assert!(
+            Cli::try_parse_from(["dropshade"])
+                .expect("valid")
+                .command
+                .is_none()
+        );
+        let save = Cli::try_parse_from(["dropshade", "layout", "save", "work"]).expect("valid");
+        assert!(matches!(
+            save.command,
+            Some(Command::Layout(LayoutCommand::Save { .. }))
+        ));
+        let install =
+            Cli::try_parse_from(["dropshade", "gnome-extension", "install"]).expect("valid");
+        assert!(matches!(
+            install.command,
+            Some(Command::GnomeExtension(ExtensionCommand::Install))
+        ));
+    }
+
+    #[test]
+    fn cli_parses_config_commands() {
+        let cli = Cli::try_parse_from(["dropshade", "--config", "/tmp/x.toml", "config", "check"])
+            .expect("valid");
+        assert_eq!(cli.config.as_deref(), Some(Path::new("/tmp/x.toml")));
+        assert!(matches!(
+            cli.command,
+            Some(Command::Config(ConfigCommand::Check))
+        ));
+        assert!(Cli::try_parse_from(["dropshade", "config", "explode"]).is_err());
     }
 }

@@ -1,0 +1,80 @@
+# Dropshade configuration
+# Location: ~/.config/dropshade/config.toml. Changes apply as soon as the file is saved.
+# Every setting is optional; the values below are the defaults.
+
+[font]
+# An installed font family, or "monospace" for the system's default monospace font.
+family = "monospace"
+size = 15.0
+# Line height as a multiple of the font size.
+line_height = 1.25
+
+[appearance]
+# Built-in: "dusk" (dark), "dawn" (light). Any Alacritty theme file placed in
+# ~/.config/dropshade/themes/<name>.toml can be used by its name.
+# To follow the system's light/dark setting: theme = { dark = "dusk", light = "dawn" }
+theme = "dusk"
+# 0.0 (fully transparent) to 1.0 (opaque).
+background_opacity = 0.94
+# Space around the terminal, in pixels.
+padding = 10.0
+# Where the tabs are: "top", "bottom", "left" or "right".
+tab_bar = "top"
+# "block", "beam" or "underline". Applications can still change it.
+cursor_shape = "block"
+cursor_blink = false
+# Overlay scrollbar at the right edge, shown once there is scrollback.
+scrollbar = true
+
+[terminal]
+# Program to run; empty means your login shell.
+shell = ""
+shell_args = []
+# Lines kept for scrolling back, or "unlimited" (kept in memory, so it can grow large).
+scrollback = 10000
+# Directory for the first tab; empty means your home directory.
+working_directory = ""
+
+[terminal.env]
+# Extra environment variables, e.g. EDITOR = "nvim"
+
+[input]
+# Sent for Shift+Enter unless the application uses the kitty keyboard protocol (Claude Code
+# does, and then gets Shift+Enter directly). Empty sends a plain Enter.
+shift_enter = "\u001b\r"
+# Input methods for composed and CJK text.
+ime = true
+# Also copy selected text to the clipboard (it always goes to the primary selection).
+copy_on_select = false
+
+[window]
+# These settings are used by the GNOME Shell extension that shows and hides the terminal.
+# Global shortcut in GNOME accelerator syntax, e.g. "F12", "<Super>grave", "<Control><Alt>t".
+hotkey = "F12"
+# Size as a fraction of the monitor's work area (the screen minus the top bar).
+width = 1.0
+height = 0.5
+# "pointer" (the monitor under the mouse), "primary", or a connector name such as "DP-1".
+monitor = "pointer"
+# Slide animation in milliseconds; 0 turns it off.
+animation_duration = 180
+# Hide the terminal when you click into another window.
+hide_on_unfocus = false
+
+[session]
+# Reopen the tabs (their names and directories) that were open when Dropshade last quit.
+restore = true
+# Always start with this layout from ~/.config/dropshade/layouts/<name>.toml instead.
+# Save the current tabs as a layout with: dropshade layout save <name>
+layout = ""
+
+[keybindings]
+# Override or add shortcuts. Values are action names, "none" to pass the key to the terminal,
+# or { send = "text" } to type text. Examples:
+# "ctrl+shift+t" = "new-tab"
+# "ctrl+alt+l" = { send = "clear\r" }
+# "ctrl+tab" = "none"
+#
+# Actions: copy, paste, paste-primary, new-tab, close-tab, next-tab, previous-tab,
+# move-tab-left, move-tab-right, rename-tab, go-to-tab-1 … go-to-tab-9,
+# scroll-page-up, scroll-page-down, scroll-to-top, scroll-to-bottom

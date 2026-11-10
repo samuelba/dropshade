@@ -1,5 +1,5 @@
 {
-  "uuid": "dropshade@samuelba.github.io",
+  "uuid": "dropshade@samuelba.dev",
   "name": "Dropshade",
   "description": "Companion for the Dropshade drop-down terminal: global hotkey, placement, staying on top and the slide animation.",
   "shell-version": ["50"],

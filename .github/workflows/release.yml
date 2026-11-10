@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      # Also drops merge commits and rebased copies from the notes of the release pull request.
+      - uses: samuelba/actions/release-please@563bf7ae6023a9191920575d554f912a7389a888 # v1.1.0
+        id: release
+        with:
+          # A fine-grained PAT lets CI run on the release pull request. Without it, the release still works.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+
+  packages:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/packages.yml
+
+  upload:
+    needs: [release-please, packages]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: packages-*
+          path: dist
+          merge-multiple: true
+      - name: Attach the packages to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ needs.release-please.outputs.tag_name }}" dist/* --clobber --repo "${{ github.repository }}"

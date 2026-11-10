@@ -7,12 +7,61 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+publish = false
 
 [dependencies]
 dropshade-term.workspace = true
+dropshade-config.workspace = true
+dropshade-session.workspace = true
+notify.workspace = true
+clap.workspace = true
+directories.workspace = true
 iced.workspace = true
+open.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+zbus = { version = "6", default-features = false, features = ["tokio", "proxy", "service"] }
+tokio = { version = "1", default-features = false, features = ["rt", "time", "signal", "macros"] }
 
 [lints]
 workspace = true
+
+[package.metadata.deb]
+name = "dropshade"
+maintainer = "Samuel Bachmann <samuel.bachmann@gmail.com>"
+copyright = "2026, Samuel Bachmann"
+license-file = ["../../LICENSE", "0"]
+extended-description = """\
+A drop-down terminal for Linux: press a key and it slides down over your windows, press it \
+again and it is gone. Native on Wayland, with a GNOME Shell extension for placement, staying \
+on top and the slide animation. Tabs, sessions, layouts, themes and a live-reloading config."""
+section = "x11"
+priority = "optional"
+depends = "$auto"
+assets = [
+    ["target/release/dropshade", "usr/bin/", "755"],
+    ["../../packaging/dev.samuelba.Dropshade.desktop", "usr/share/applications/", "644"],
+    ["../../packaging/dev.samuelba.Dropshade.metainfo.xml", "usr/share/metainfo/", "644"],
+    ["../../packaging/icons/hicolor/scalable/apps/dev.samuelba.Dropshade.svg", "usr/share/icons/hicolor/scalable/apps/", "644"],
+    ["../../packaging/icons/hicolor/symbolic/apps/dev.samuelba.Dropshade-symbolic.svg", "usr/share/icons/hicolor/symbolic/apps/", "644"],
+    ["../../gnome-extension/*.js", "usr/share/gnome-shell/extensions/dropshade@samuelba.dev/", "644"],
+    ["../../gnome-extension/metadata.json", "usr/share/gnome-shell/extensions/dropshade@samuelba.dev/", "644"],
+    ["../../gnome-extension/LICENSE", "usr/share/gnome-shell/extensions/dropshade@samuelba.dev/", "644"],
+    ["../../gnome-extension/schemas/org.gnome.shell.extensions.dropshade.gschema.xml", "usr/share/glib-2.0/schemas/", "644"],
+    ["../../README.md", "usr/share/doc/dropshade/", "644"],
+]
+
+[package.metadata.generate-rpm]
+license = "MIT AND GPL-2.0-or-later"
+assets = [
+    { source = "target/release/dropshade", dest = "/usr/bin/dropshade", mode = "755" },
+    { source = "../../packaging/dev.samuelba.Dropshade.desktop", dest = "/usr/share/applications/dev.samuelba.Dropshade.desktop", mode = "644" },
+    { source = "../../packaging/dev.samuelba.Dropshade.metainfo.xml", dest = "/usr/share/metainfo/dev.samuelba.Dropshade.metainfo.xml", mode = "644" },
+    { source = "../../packaging/icons/hicolor/scalable/apps/dev.samuelba.Dropshade.svg", dest = "/usr/share/icons/hicolor/scalable/apps/dev.samuelba.Dropshade.svg", mode = "644" },
+    { source = "../../packaging/icons/hicolor/symbolic/apps/dev.samuelba.Dropshade-symbolic.svg", dest = "/usr/share/icons/hicolor/symbolic/apps/dev.samuelba.Dropshade-symbolic.svg", mode = "644" },
+    { source = "../../gnome-extension/*.js", dest = "/usr/share/gnome-shell/extensions/dropshade@samuelba.dev/", mode = "644" },
+    { source = "../../gnome-extension/metadata.json", dest = "/usr/share/gnome-shell/extensions/dropshade@samuelba.dev/metadata.json", mode = "644" },
+    { source = "../../gnome-extension/LICENSE", dest = "/usr/share/gnome-shell/extensions/dropshade@samuelba.dev/LICENSE", mode = "644" },
+    { source = "../../gnome-extension/schemas/org.gnome.shell.extensions.dropshade.gschema.xml", dest = "/usr/share/glib-2.0/schemas/org.gnome.shell.extensions.dropshade.gschema.xml", mode = "644" },
+    { source = "../../README.md", dest = "/usr/share/doc/dropshade/README.md", mode = "644", doc = true },
+]

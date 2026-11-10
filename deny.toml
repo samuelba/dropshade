@@ -7,6 +7,11 @@ targets = [
 [advisories]
 version = 2
 yanked = "deny"
+ignore = [
+    # ttf-parser comes in through iced's text stack (cosmic-text, fontdb); revisit when iced
+    # moves to its successor.
+    { id = "RUSTSEC-2026-0192", reason = "transitive via iced/cosmic-text; no maintained alternative in iced 0.14" },
+]
 
 [licenses]
 version = 2

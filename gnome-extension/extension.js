@@ -4,6 +4,7 @@ import Shell from 'gi://Shell';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
+import {AppSettings} from './app-settings.js';
 import {ShellService} from './dbus.js';
 import {Dropdown} from './dropdown.js';
 import {AppLauncher} from './launcher.js';
@@ -13,7 +14,8 @@ const SHORTCUT_KEY = 'toggle-shortcut';
 export default class DropshadeExtension extends Extension {
     enable() {
         this._settings = this.getSettings();
-        this._dropdown = new Dropdown(this._settings);
+        this._appSettings = new AppSettings(this._settings);
+        this._dropdown = new Dropdown(this._appSettings);
         this._launcher = new AppLauncher(this._settings, {
             onWindow: window => this._dropdown.attach(window),
             onExit: () => this._dropdown.detach(),
@@ -37,6 +39,8 @@ export default class DropshadeExtension extends Extension {
         this._service.destroy();
         this._launcher.destroy();
         this._dropdown.destroy();
+        this._appSettings.destroy();
+        this._appSettings = null;
         this._service = null;
         this._launcher = null;
         this._dropdown = null;

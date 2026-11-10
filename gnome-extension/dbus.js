@@ -1,7 +1,7 @@
 import Gio from 'gi://Gio';
 
-const BUS_NAME = 'io.github.samuelba.Dropshade.Shell';
-const OBJECT_PATH = '/io/github/samuelba/Dropshade/Shell';
+const BUS_NAME = 'dev.samuelba.Dropshade.Shell';
+const OBJECT_PATH = '/dev/samuelba/Dropshade/Shell';
 const INTERFACE = `
 <node>
   <interface name="${BUS_NAME}">

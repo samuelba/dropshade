@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.samuelba.Dropshade</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Dropshade</name>
+  <summary>A drop-down terminal that slides over your windows</summary>
+  <description>
+    <p>
+      Press a key and Dropshade slides down from the top of the screen; press it again and it is
+      gone. It runs natively on Wayland, with a small GNOME Shell extension that places it, keeps it
+      above other windows and animates it.
+    </p>
+    <ul>
+      <li>Tabs that can be renamed, reordered and placed on any side of the window</li>
+      <li>Tabs and their directories come back after a restart; save sets of tabs as layouts</li>
+      <li>Themes, fonts, transparency and keybindings in one live-reloading config file</li>
+      <li>Kitty keyboard protocol, so Shift+Enter works in tools like Claude Code</li>
+      <li>Mouse reporting, hyperlinks, input methods and bracketed paste</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">dev.samuelba.Dropshade.desktop</launchable>
+  <url type="homepage">https://github.com/samuelba/dropshade</url>
+  <url type="bugtracker">https://github.com/samuelba/dropshade/issues</url>
+  <url type="vcs-browser">https://github.com/samuelba/dropshade</url>
+  <developer id="dev.samuelba">
+    <name>Samuel Bachmann</name>
+  </developer>
+  <provides>
+    <binary>dropshade</binary>
+  </provides>
+  <categories>
+    <category>System</category>
+    <category>TerminalEmulator</category>
+  </categories>
+  <branding>
+    <color type="primary" scheme_preference="light">#f7f5f0</color>
+    <color type="primary" scheme_preference="dark">#16181d</color>
+  </branding>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-11-10"/>
+  </releases>
+</component>

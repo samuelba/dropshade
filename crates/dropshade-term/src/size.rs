@@ -3,6 +3,8 @@
 use alacritty_terminal::event::WindowSize;
 use alacritty_terminal::grid::Dimensions;
 
+use crate::mouse::CellPosition;
+
 /// Terminal size in cells.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct GridSize {
@@ -36,6 +38,40 @@ impl GridSize {
             cell_width: cell.width.round() as u16,
             cell_height: cell.height.round() as u16,
         }
+    }
+}
+
+/// Which half of a cell the pointer is over; selections include a cell only past its middle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    Left,
+    Right,
+}
+
+impl GridSize {
+    /// The viewport cell under a point relative to the terminal's top-left corner, clamped to
+    /// the grid so drags outside the terminal still select up to its edge.
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss
+    )]
+    pub fn cell_at(self, x: f32, y: f32, cell: CellSize, padding: f32) -> (CellPosition, Side) {
+        let max_x = self.columns as f32 * cell.width - 1.0;
+        let max_y = self.lines as f32 * cell.height - 1.0;
+        let x = (x - padding).clamp(0.0, max_x);
+        let y = (y - padding).clamp(0.0, max_y);
+        let column = (x / cell.width) as usize;
+        let side = if x - column as f32 * cell.width < cell.width / 2.0 {
+            Side::Left
+        } else {
+            Side::Right
+        };
+        let position = CellPosition {
+            column,
+            line: (y / cell.height) as usize,
+        };
+        (position, side)
     }
 }
 
@@ -77,6 +113,39 @@ mod tests {
                 columns: 100,
                 lines: 20
             }
+        );
+    }
+
+    #[test]
+    fn cell_at_accounts_for_padding_and_cell_halves() {
+        let grid = GridSize {
+            columns: 10,
+            lines: 5,
+        };
+        let at = |x, y| grid.cell_at(x, y, CELL, 4.0);
+        assert_eq!(
+            at(4.0, 4.0),
+            (CellPosition { column: 0, line: 0 }, Side::Left)
+        );
+        assert_eq!(
+            at(4.0 + 8.0 * 3.0 + 5.0, 4.0 + 16.0 * 2.0 + 1.0),
+            (CellPosition { column: 3, line: 2 }, Side::Right)
+        );
+    }
+
+    #[test]
+    fn cell_at_clamps_to_the_grid() {
+        let grid = GridSize {
+            columns: 10,
+            lines: 5,
+        };
+        assert_eq!(
+            grid.cell_at(-50.0, -50.0, CELL, 4.0),
+            (CellPosition { column: 0, line: 0 }, Side::Left)
+        );
+        assert_eq!(
+            grid.cell_at(5000.0, 5000.0, CELL, 4.0),
+            (CellPosition { column: 9, line: 4 }, Side::Right)
         );
     }
 

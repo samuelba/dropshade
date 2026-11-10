@@ -1,0 +1,18 @@
+[Desktop Entry]
+Type=Application
+Name=Dropshade
+GenericName=Terminal
+Comment=A drop-down terminal that slides over your windows
+Exec=dropshade
+Icon=dev.samuelba.Dropshade
+Terminal=false
+Categories=System;TerminalEmulator;
+Keywords=terminal;shell;console;command;prompt;drop-down;quake;guake;
+StartupNotify=true
+StartupWMClass=dev.samuelba.Dropshade
+SingleMainWindow=true
+Actions=new-tab;
+
+[Desktop Action new-tab]
+Name=New Tab
+Exec=dropshade new-tab
