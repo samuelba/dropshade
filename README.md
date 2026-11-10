@@ -43,12 +43,29 @@ Themes: `dusk` (dark) and `dawn` (light) are built in, and any
 `~/.config/dropshade/themes/` works by its file name. `theme = { dark = "dusk", light = "dawn" }`
 follows the system's light/dark setting.
 
-## Building
+## Getting started
 
 ```sh
 cargo build --release
-./target/release/dropshade
+./target/release/dropshade gnome-extension install   # once; then log out and back in
 ```
+
+Press <kbd>F12</kbd> (configurable as `window.hotkey`) and the terminal slides down; press it again
+to hide it. The extension starts Dropshade on the first press.
+
+| Command | What it does |
+| ------- | ------------ |
+| `dropshade` / `dropshade show` | Show the terminal, starting it if needed |
+| `dropshade toggle` / `hide` | Show or hide it |
+| `dropshade new-tab [--cwd DIR]` | Open a tab (in DIR or the current tab's directory) |
+| `dropshade gnome-extension install` | Install or update the GNOME Shell extension |
+| `dropshade config print-default \| path \| check` | Inspect the configuration |
+
+There is only ever one instance: running `dropshade` again hands the request to the running one.
+
+Without the extension (other desktops, or before logging back in), Dropshade runs as an ordinary
+window: hiding closes the window while the tabs keep running, and showing opens it again. Bind
+`dropshade toggle` to a keyboard shortcut in your desktop's settings to use it as a drop-down.
 
 Runtime requirements: a Wayland or X11 session, Vulkan or OpenGL drivers, and `libxkbcommon`.
 
@@ -67,7 +84,8 @@ GNOME Shell whose D-Bus session, dconf database and extension directory live und
 your real session is never touched:
 
 ```sh
-./scripts/gnome-smoke.sh   # headless: toggles three times, checks window state, takes screenshots
+./scripts/gnome-smoke.sh              # headless, with the extension: windows, tabs, config, CLI
+./scripts/gnome-smoke.sh --fallback   # headless, without it: the app manages its own window
 ./scripts/gnome-dev.sh     # nested window you can use (needs: sudo dnf install mutter-devkit)
 ```
 

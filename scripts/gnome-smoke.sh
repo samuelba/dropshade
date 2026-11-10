@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Headless smoke test for the GNOME extension. Runs a throwaway GNOME Shell whose D-Bus session,
+# Headless smoke test for the GNOME extension (or, with --fallback, for the app without it). Runs a throwaway GNOME Shell whose D-Bus session,
 # dconf database, runtime dir and extension dir all live under target/gnome-smoke, so the real
 # session's settings are never touched. A dev-only helper extension enables unsafe mode inside
 # that shell so the test can inspect windows (Eval) and take screenshots.
@@ -35,4 +35,8 @@ export XDG_CACHE_HOME="$dev/cache" XDG_RUNTIME_DIR="$dev/runtime"
 export SMOKE_DEV="$dev" SMOKE_ROOT="$root" SMOKE_UUID="$uuid" SMOKE_DEVTOOLS="$devtools"
 export SMOKE_REAL_DCONF="$HOME/.config/dconf/user"
 
-exec dbus-run-session -- bash "$root/scripts/gnome-smoke-session.sh"
+session="gnome-smoke-session.sh"
+if [[ "${1:-}" == "--fallback" ]]; then
+    session="gnome-smoke-fallback-session.sh"
+fi
+exec dbus-run-session -- bash "$root/scripts/$session"

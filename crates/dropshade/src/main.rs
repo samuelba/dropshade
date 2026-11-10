@@ -1,6 +1,9 @@
 //! Dropshade: a drop-down terminal for Linux.
 
 mod app;
+mod cli;
+mod extension;
+mod ipc;
 mod settings;
 mod tabs;
 mod theme;
@@ -9,13 +12,13 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use iced::window::settings::PlatformSpecific;
-use iced::{Color, Theme, window};
+use iced::{Color, Theme};
 use tracing_subscriber::EnvFilter;
 
-use app::{App, INITIAL_SIZE};
+use app::App;
+use cli::{Outcome, Request};
+use ipc::client::Visibility;
 
-const APP_ID: &str = "io.github.samuelba.Dropshade";
 const SHELL_LAUNCHED_ENV: &str = "DROPSHADE_SHELL_LAUNCHED";
 
 #[derive(Debug, Parser)]
@@ -30,9 +33,23 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Show the terminal if it is hidden, hide it if it is in front.
+    Toggle,
+    /// Show the terminal (the default when no command is given).
+    Show,
+    /// Hide the terminal.
+    Hide,
+    /// Open a new tab, in DIR or the current tab's directory.
+    NewTab {
+        #[arg(long, value_name = "DIR")]
+        cwd: Option<PathBuf>,
+    },
     /// Inspect the configuration file.
     #[command(subcommand)]
     Config(ConfigCommand),
+    /// Manage the companion GNOME Shell extension.
+    #[command(subcommand)]
+    GnomeExtension(ExtensionCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -45,52 +62,66 @@ enum ConfigCommand {
     Check,
 }
 
+#[derive(Debug, Subcommand)]
+enum ExtensionCommand {
+    /// Install (or update) the extension for the current user.
+    Install,
+}
+
 fn main() -> ExitCode {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .init();
     let cli = Cli::parse();
     let config_path = cli.config.or_else(dropshade_config::default_path);
-    match cli.command {
-        Some(Command::Config(command)) => config_command(&command, config_path.as_deref()),
-        None => run(config_path),
+    let request = match cli.command {
+        Some(Command::Config(command)) => return config_command(&command, config_path.as_deref()),
+        Some(Command::GnomeExtension(ExtensionCommand::Install)) => return extension::install(),
+        Some(Command::Toggle) => Request::Visibility(Visibility::Toggle),
+        Some(Command::Show) | None => Request::Visibility(Visibility::Show),
+        Some(Command::Hide) => Request::Visibility(Visibility::Hide),
+        Some(Command::NewTab { cwd }) => match cwd.map(std::path::absolute).transpose() {
+            Ok(cwd) => Request::NewTab(cwd),
+            Err(error) => {
+                eprintln!("dropshade: invalid --cwd: {error}");
+                return ExitCode::FAILURE;
+            }
+        },
+    };
+    launch(&request, config_path)
+}
+
+fn launch(request: &Request, config_path: Option<PathBuf>) -> ExitCode {
+    let managed = is_shell_managed(std::env::var(SHELL_LAUNCHED_ENV).ok().as_deref());
+    match cli::hand_off(request, managed) {
+        Ok(Outcome::Handled) => ExitCode::SUCCESS,
+        Ok(Outcome::RunHere { first_directory }) => run(config_path, managed, first_directory),
+        Err(error) => {
+            eprintln!("dropshade: {error}");
+            ExitCode::FAILURE
+        }
     }
 }
 
-fn run(config_path: Option<PathBuf>) -> ExitCode {
+fn run(config_path: Option<PathBuf>, managed: bool, first_directory: Option<PathBuf>) -> ExitCode {
     dropshade_term::setup_env();
-    let managed = is_shell_managed(std::env::var(SHELL_LAUNCHED_ENV).ok().as_deref());
-
-    let result = iced::application(
-        move || App::boot(config_path.clone()),
-        App::update,
-        App::view,
-    )
-    .title(App::title)
-    .subscription(App::subscription)
-    // FIFO presentation stalls under Mutter: a commit carrying a wp_fifo_v1 barrier can wait
-    // forever for a repaint, freezing the drop-down until it is hidden and shown again.
-    // Without vsync, wgpu picks mailbox or immediate; winit still paces redraws with frame
-    // callbacks, and ICED_PRESENT_MODE overrides this choice.
-    .settings(iced::Settings {
-        vsync: false,
-        ..iced::Settings::default()
-    })
-    .window(window::Settings {
-        size: INITIAL_SIZE,
-        transparent: true,
-        decorations: !managed,
-        platform_specific: PlatformSpecific {
-            application_id: APP_ID.to_owned(),
-            ..PlatformSpecific::default()
-        },
-        ..window::Settings::default()
-    })
-    .style(|_, theme: &Theme| iced::theme::Style {
-        background_color: Color::TRANSPARENT,
-        text_color: theme.palette().text,
-    })
-    .run();
+    let boot = move || App::boot(config_path.clone(), managed, first_directory.clone());
+    let result = iced::daemon(boot, App::update, App::view)
+        .title(App::title)
+        .subscription(App::subscription)
+        // FIFO presentation stalls under Mutter: a commit carrying a wp_fifo_v1 barrier can wait
+        // forever for a repaint, freezing the drop-down until it is hidden and shown again.
+        // Without vsync, wgpu picks mailbox or immediate; winit still paces redraws with frame
+        // callbacks, and ICED_PRESENT_MODE overrides this choice.
+        .settings(iced::Settings {
+            vsync: false,
+            ..iced::Settings::default()
+        })
+        .style(|_, theme: &Theme| iced::theme::Style {
+            background_color: Color::TRANSPARENT,
+            text_color: theme.palette().text,
+        })
+        .run();
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
@@ -157,6 +188,33 @@ mod tests {
         assert!(!is_shell_managed(Some("0")));
         assert!(!is_shell_managed(Some("")));
         assert!(!is_shell_managed(None));
+    }
+
+    #[test]
+    fn cli_parses_window_commands() {
+        let cli = Cli::try_parse_from(["dropshade", "new-tab", "--cwd", "/tmp"]).expect("valid");
+        assert!(matches!(
+            cli.command,
+            Some(Command::NewTab { cwd: Some(_) })
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["dropshade", "toggle"])
+                .expect("valid")
+                .command,
+            Some(Command::Toggle)
+        ));
+        assert!(
+            Cli::try_parse_from(["dropshade"])
+                .expect("valid")
+                .command
+                .is_none()
+        );
+        let install =
+            Cli::try_parse_from(["dropshade", "gnome-extension", "install"]).expect("valid");
+        assert!(matches!(
+            install.command,
+            Some(Command::GnomeExtension(ExtensionCommand::Install))
+        ));
     }
 
     #[test]

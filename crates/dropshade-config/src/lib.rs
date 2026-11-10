@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 
 pub use error::ConfigError;
 pub use schema::{
-    Appearance, Binding, Config, CursorShape, Font, Input, Scrollback, TabBarPosition, Terminal,
-    ThemeChoice, Unlimited,
+    Appearance, Binding, Config, CursorShape, Font, Input, Monitor, Scrollback, TabBarPosition,
+    Terminal, ThemeChoice, Unlimited, Window,
 };
 
 /// The default configuration, documented; `dropshade config print-default` prints it.
@@ -51,7 +51,32 @@ fn validate(config: &Config) -> Result<(), String> {
         0.0,
         1.0,
     )?;
-    check_range("appearance.padding", config.appearance.padding, 0.0, 200.0)
+    check_range("appearance.padding", config.appearance.padding, 0.0, 200.0)?;
+    check_fraction("window.width", config.window.width, 0.2)?;
+    check_fraction("window.height", config.window.height, 0.1)?;
+    if config.window.animation_duration > 2000 {
+        return Err(format!(
+            "window.animation_duration must be at most 2000 ms, but is {}",
+            config.window.animation_duration
+        ));
+    }
+    if config.window.hotkey.trim().is_empty() {
+        return Err("window.hotkey must not be empty".into());
+    }
+    if config.window.monitor.as_str().is_empty() {
+        return Err("window.monitor must not be empty".into());
+    }
+    Ok(())
+}
+
+fn check_fraction(key: &str, value: f64, min: f64) -> Result<(), String> {
+    if (min..=1.0).contains(&value) {
+        Ok(())
+    } else {
+        Err(format!(
+            "{key} must be between {min} and 1.0, but is {value}"
+        ))
+    }
 }
 
 fn check_range(key: &str, value: f32, min: f32, max: f32) -> Result<(), String> {
@@ -172,6 +197,44 @@ mod tests {
             ),
             ("[appearance]\npadding = -2", "appearance.padding"),
             ("[font]\nfamily = \"\"", "font.family"),
+        ] {
+            let error = parse_str(text).expect_err(key);
+            assert!(error.to_string().contains(key), "{key}: {error}");
+        }
+    }
+
+    #[test]
+    fn window_section_configures_the_drop_down() {
+        let config = parse_str(
+            "[window]\nhotkey = \"<Super>grave\"\nwidth = 0.8\nheight = 0.4\nmonitor = \"DP-1\"\n\
+             animation_duration = 0\nhide_on_unfocus = true\n",
+        )
+        .expect("valid");
+        assert_eq!(config.window.hotkey, "<Super>grave");
+        assert!((config.window.width - 0.8).abs() < f64::EPSILON);
+        assert_eq!(config.window.monitor, Monitor::Connector("DP-1".into()));
+        assert_eq!(config.window.animation_duration, 0);
+        assert!(config.window.hide_on_unfocus);
+        assert_eq!(
+            parse_str("[window]\nmonitor = \"primary\"")
+                .expect("valid")
+                .window
+                .monitor,
+            Monitor::Primary
+        );
+    }
+
+    #[test]
+    fn window_values_are_validated() {
+        for (text, key) in [
+            ("[window]\nheight = 0.0", "window.height"),
+            ("[window]\nwidth = 1.5", "window.width"),
+            (
+                "[window]\nanimation_duration = 99999",
+                "window.animation_duration",
+            ),
+            ("[window]\nhotkey = \"\"", "window.hotkey"),
+            ("[window]\nmonitor = \" \"", "window.monitor"),
         ] {
             let error = parse_str(text).expect_err(key);
             assert!(error.to_string().contains(key), "{key}: {error}");

@@ -3,6 +3,7 @@
 mod session;
 mod update;
 mod view;
+mod visibility;
 mod watch;
 
 use std::path::PathBuf;
@@ -13,7 +14,9 @@ use dropshade_term::{Interaction, TermEvent};
 use iced::keyboard::{self, key::Named};
 use iced::theme::Mode;
 use iced::{Event, Point, Size, Subscription, Task, event, mouse, system, time, window};
+use ipc::WindowSettings;
 
+use crate::ipc::{self, Command};
 use crate::settings::{self, Settings};
 use crate::tabs::{TabId, TabMessage, Tabs};
 use session::Session;
@@ -38,8 +41,14 @@ pub struct App {
     pending_close: Option<PendingClose>,
     dragging: Option<TabId>,
     bar_pointer: Point,
-    window: Size,
+    window_size: Size,
     error: Option<String>,
+    /// The window, while it is open; without the extension, hiding closes it.
+    window: Option<window::Id>,
+    focused: bool,
+    /// Started by the GNOME Shell extension, which owns showing and hiding.
+    managed: bool,
+    ipc: Option<zbus::Connection>,
 }
 
 #[derive(Debug)]
@@ -74,10 +83,20 @@ pub enum Message {
     MouseReleased,
     ConfigChanged,
     SystemTheme(Mode),
+    Ipc(Command),
+    IpcReady(Result<zbus::Connection, String>),
+    WindowClosed(window::Id),
+    CloseRequested,
+    WindowFocused(bool),
+    Done,
 }
 
 impl App {
-    pub fn boot(config_path: Option<PathBuf>) -> (Self, Task<Message>) {
+    pub fn boot(
+        config_path: Option<PathBuf>,
+        managed: bool,
+        first_directory: Option<PathBuf>,
+    ) -> (Self, Task<Message>) {
         let (config, config_error) = load(config_path.as_deref());
         let settings = settings::build(&config, false, dropshade_config::themes_dir().as_deref());
         let mut app = Self {
@@ -93,17 +112,22 @@ impl App {
             pending_close: None,
             dragging: None,
             bar_pointer: Point::ORIGIN,
-            window: INITIAL_SIZE,
+            window_size: INITIAL_SIZE,
             error: None,
+            window: None,
+            focused: false,
+            managed,
+            ipc: None,
         };
-        let first_tab = app.open_tab(app.settings.working_directory.clone());
-        (
-            app,
-            Task::batch([first_tab, system::theme().map(Message::SystemTheme)]),
-        )
+        let directory = first_directory.or_else(|| app.settings.working_directory.clone());
+        let first_tab = app.open_tab(directory);
+        let open = app.open_window();
+        let service = app.start_service();
+        let theme = system::theme().map(Message::SystemTheme);
+        (app, Task::batch([first_tab, open, service, theme]))
     }
 
-    pub fn title(&self) -> String {
+    pub fn title(&self, _window: window::Id) -> String {
         self.tabs
             .active()
             .map_or_else(|| APP_NAME.to_owned(), |tab| tab.label().to_owned())
@@ -144,6 +168,13 @@ impl App {
             config,
             system::theme_changes().map(Message::SystemTheme),
             window::resize_events().map(|(_, size)| Message::WindowResized(size)),
+            window::close_requests().map(|_| Message::CloseRequested),
+            window::close_events().map(Message::WindowClosed),
+            window::events().filter_map(|(_, event)| match event {
+                window::Event::Focused => Some(Message::WindowFocused(true)),
+                window::Event::Unfocused => Some(Message::WindowFocused(false)),
+                _ => None,
+            }),
         ])
     }
 
@@ -152,21 +183,23 @@ impl App {
     }
 
     /// Re-reads the config file. A broken file keeps the current settings and shows why.
-    fn reload_config(&mut self) {
+    fn reload_config(&mut self) -> Task<Message> {
         let Some(path) = self.config_path.as_deref() else {
-            return;
+            return Task::none();
         };
         match dropshade_config::load(path) {
             Ok(config) => {
                 self.config = config;
                 self.config_error = None;
                 self.apply_settings();
+                return self.publish_window_settings();
             }
             Err(error) => {
                 tracing::warn!(%error, "keeping the previous configuration");
                 self.config_error = Some(error.to_string());
             }
         }
+        Task::none()
     }
 
     fn apply_settings(&mut self) {

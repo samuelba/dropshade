@@ -16,7 +16,7 @@ const DIALOG_WIDTH: f32 = 380.0;
 const TEXT_SIZE: f32 = 13.0;
 
 impl App {
-    pub fn view(&self) -> Element<'_, Message> {
+    pub fn view(&self, _window: iced::window::Id) -> Element<'_, Message> {
         let mut layers = vec![self.body()];
         if let Some(menu) = self.menu {
             layers.push(self.menu_layer(menu));
@@ -36,7 +36,7 @@ impl App {
                 .as_ref()
                 .map(|rename| (rename.id, rename.draft.as_str())),
             colors: self.settings.colors,
-            width: self.window.width,
+            width: self.window_size.width,
             tab_count: self.tabs.len(),
         };
         let tab_bar = bar::view(&self.tabs, state).map(Message::Tab);
@@ -125,7 +125,7 @@ impl App {
             .padding(MENU_PADDING)
             .width(MENU_WIDTH)
             .style(move |_| colors.surface_style());
-        let position = menu_position(self.settings.bar, menu.position, self.window);
+        let position = menu_position(self.settings.bar, menu.position, self.window_size);
         let dismiss = mouse_area(Space::new().width(Fill).height(Fill))
             .on_press(Message::Tab(TabMessage::CloseMenu))
             .on_right_press(Message::Tab(TabMessage::CloseMenu));

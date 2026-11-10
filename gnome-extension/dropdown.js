@@ -7,10 +7,11 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
  * the window list, and slides it in and out.
  */
 export class Dropdown {
-    constructor(settings) {
-        this._settings = settings;
+    constructor(prefs) {
+        this._prefs = prefs;
         this._window = null;
         this._signals = [];
+        this._focusId = global.display.connect('notify::focus-window', () => this._onFocusChanged());
     }
 
     get attached() {
@@ -86,7 +87,17 @@ export class Dropdown {
     }
 
     destroy() {
+        global.display.disconnect(this._focusId);
         this.detach();
+    }
+
+    _onFocusChanged() {
+        const window = this._window;
+        if (!window || window.minimized || !this._prefs.hideOnUnfocus)
+            return;
+        const focused = global.display.focus_window;
+        if (focused && focused !== window)
+            this.hide();
     }
 
     _isShown() {
@@ -94,14 +105,25 @@ export class Dropdown {
         return window !== null && !window.minimized && window.has_focus();
     }
 
-    _targetRect() {
+    _monitorIndex() {
         const display = global.display;
-        const monitor = this._settings.get_string('monitor') === 'primary'
-            ? display.get_primary_monitor()
-            : display.get_current_monitor();
-        const area = Main.layoutManager.getWorkAreaForMonitor(monitor);
-        const width = Math.round(area.width * this._settings.get_double('width-fraction'));
-        const height = Math.round(area.height * this._settings.get_double('height-fraction'));
+        switch (this._prefs.monitor) {
+        case 'primary':
+            return display.get_primary_monitor();
+        case 'pointer':
+            return display.get_current_monitor();
+        default: {
+            const manager = global.backend.get_monitor_manager();
+            const index = manager.get_monitor_for_connector(this._prefs.monitor);
+            return index >= 0 ? index : display.get_current_monitor();
+        }
+        }
+    }
+
+    _targetRect() {
+        const area = Main.layoutManager.getWorkAreaForMonitor(this._monitorIndex());
+        const width = Math.round(area.width * this._prefs.width);
+        const height = Math.round(area.height * this._prefs.height);
         return {
             x: area.x + Math.round((area.width - width) / 2),
             y: area.y,
@@ -115,7 +137,7 @@ export class Dropdown {
         actor.translation_y = from;
         actor.ease({
             translation_y: to,
-            duration: this._settings.get_uint('animation-duration'),
+            duration: this._prefs.animationDuration,
             mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
             onComplete,
         });

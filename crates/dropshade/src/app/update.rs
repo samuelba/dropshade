@@ -35,7 +35,7 @@ impl App {
             }
             Message::Tab(message) => self.tab_message(message),
             Message::WindowResized(size) => {
-                self.window = size;
+                self.window_size = size;
                 Task::none()
             }
             Message::Escape => {
@@ -45,13 +45,31 @@ impl App {
                 Task::none()
             }
             Message::Enter if self.pending_close.is_some() => self.confirm_close(),
-            Message::Enter => Task::none(),
             Message::MouseReleased => {
                 self.dragging = None;
                 Task::none()
             }
-            Message::ConfigChanged => {
-                self.reload_config();
+            Message::ConfigChanged => self.reload_config(),
+            Message::Ipc(command) => self.command(command),
+            Message::IpcReady(Ok(connection)) => {
+                self.ipc = Some(connection);
+                Task::none()
+            }
+            Message::IpcReady(Err(error)) => {
+                tracing::warn!(%error, "D-Bus service unavailable; the CLI and the extension cannot reach this instance");
+                Task::none()
+            }
+            Message::Enter | Message::Done => Task::none(),
+            Message::WindowClosed(id) => {
+                if self.window == Some(id) {
+                    self.window = None;
+                    self.focused = false;
+                }
+                Task::none()
+            }
+            Message::CloseRequested => self.visibility(crate::ipc::client::Visibility::Hide),
+            Message::WindowFocused(focused) => {
+                self.focused = focused;
                 Task::none()
             }
             Message::SystemTheme(mode) => {

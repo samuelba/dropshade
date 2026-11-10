@@ -12,6 +12,7 @@ pub struct Config {
     pub appearance: Appearance,
     pub terminal: Terminal,
     pub input: Input,
+    pub window: Window,
     /// Chord (e.g. `"ctrl+shift+t"`) to action name or `{ send = "text" }`.
     pub keybindings: BTreeMap<String, Binding>,
 }
@@ -165,6 +166,69 @@ impl Default for Input {
             shift_enter: "\u{1b}\r".into(),
             ime: true,
             copy_on_select: false,
+        }
+    }
+}
+
+/// How the GNOME Shell extension shows the drop-down window.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Window {
+    /// Global shortcut in GNOME accelerator syntax, e.g. "F12" or "<Super>grave".
+    pub hotkey: String,
+    /// Width as a fraction of the monitor's work area.
+    pub width: f64,
+    /// Height as a fraction of the monitor's work area.
+    pub height: f64,
+    pub monitor: Monitor,
+    /// Slide animation length in milliseconds; 0 disables it.
+    pub animation_duration: u32,
+    /// Hide the terminal when another window gets the focus.
+    pub hide_on_unfocus: bool,
+}
+
+impl Default for Window {
+    fn default() -> Self {
+        Self {
+            hotkey: "F12".into(),
+            width: 1.0,
+            height: 0.5,
+            monitor: Monitor::default(),
+            animation_duration: 180,
+            hide_on_unfocus: false,
+        }
+    }
+}
+
+/// The monitor the terminal drops down on.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Monitor {
+    /// The monitor under the mouse pointer.
+    #[default]
+    Pointer,
+    Primary,
+    /// A monitor by connector name, such as "DP-1" or "eDP-1".
+    Connector(String),
+}
+
+impl<'de> Deserialize<'de> for Monitor {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let name = String::deserialize(deserializer)?;
+        Ok(match name.trim() {
+            "pointer" | "mouse" => Self::Pointer,
+            "primary" => Self::Primary,
+            connector => Self::Connector(connector.to_owned()),
+        })
+    }
+}
+
+impl Monitor {
+    /// The value sent to the GNOME Shell extension.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Pointer => "pointer",
+            Self::Primary => "primary",
+            Self::Connector(name) => name,
         }
     }
 }
