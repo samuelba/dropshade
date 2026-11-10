@@ -45,14 +45,13 @@ pub fn build(config: &Config, prefers_light: bool, themes_dir: Option<&Path>) ->
         |colors| palette(&colors),
     );
     let font = font(&config.font.family, &mut warnings);
-    let opacity = config.appearance.background_opacity;
     let style = ViewStyle {
         palette,
         font,
         font_size: config.font.size,
         cell: metrics::cell_size(font, config.font.size, config.font.line_height),
         padding: config.appearance.padding,
-        background_opacity: opacity,
+        background_opacity: config.appearance.background_opacity,
         scrollbar: config.appearance.scrollbar,
     };
     let input = InputConfig {
@@ -63,7 +62,7 @@ pub fn build(config: &Config, prefers_light: bool, themes_dir: Option<&Path>) ->
     };
     let terminal = &config.terminal;
     Settings {
-        colors: UiColors::from_palette(&palette, opacity),
+        colors: UiColors::from_palette(&palette),
         style,
         input,
         bar: bar_position(config.appearance.tab_bar),

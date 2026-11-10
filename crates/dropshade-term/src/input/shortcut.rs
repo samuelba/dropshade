@@ -24,6 +24,27 @@ pub enum Shortcut {
     GoToTab(u8),
 }
 
+impl Shortcut {
+    /// Every action name a keybinding accepts, apart from `go-to-tab-1` to `go-to-tab-9`.
+    pub const NAMES: [&'static str; 15] = [
+        "copy",
+        "paste",
+        "paste-primary",
+        "scroll-page-up",
+        "scroll-page-down",
+        "scroll-to-top",
+        "scroll-to-bottom",
+        "new-tab",
+        "close-tab",
+        "next-tab",
+        "previous-tab",
+        "move-tab-left",
+        "move-tab-right",
+        "rename-tab",
+        "search",
+    ];
+}
+
 impl std::str::FromStr for Shortcut {
     type Err = String;
 
@@ -200,5 +221,12 @@ mod tests {
         assert_eq!(character("c", Modifiers::CTRL), None);
         assert_eq!(named(Named::PageUp, Modifiers::empty()), None);
         assert_eq!(named(Named::Insert, Modifiers::empty()), None);
+    }
+
+    #[test]
+    fn every_listed_name_parses() {
+        for name in Shortcut::NAMES {
+            assert!(name.parse::<Shortcut>().is_ok(), "{name}");
+        }
     }
 }

@@ -22,14 +22,11 @@ pub struct UiColors {
 }
 
 impl UiColors {
-    pub fn from_palette(palette: &Palette, opacity: f32) -> Self {
+    pub fn from_palette(palette: &Palette) -> Self {
         let bg = to_iced(palette.background, 1.0);
         let fg = to_iced(palette.foreground, 1.0);
         Self {
-            bar: Color {
-                a: opacity,
-                ..mix(bg, fg, 0.04)
-            },
+            bar: mix(bg, fg, 0.04),
             hover: mix(bg, fg, 0.08),
             active: mix(bg, fg, 0.13),
             surface: mix(bg, fg, 0.07),
@@ -130,6 +127,31 @@ impl UiColors {
         }
     }
 
+    /// A sidebar entry: highlighted while its page is shown.
+    pub fn nav_button(self, active: bool, status: button::Status) -> button::Style {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        let background = if active {
+            Some(self.active)
+        } else if hovered {
+            Some(self.hover)
+        } else {
+            None
+        };
+        button::Style {
+            background: background.map(Background::Color),
+            text_color: if active || hovered {
+                self.text
+            } else {
+                self.muted
+            },
+            border: Border {
+                radius: (RADIUS - 2.0).into(),
+                ..Border::default()
+            },
+            ..button::Style::default()
+        }
+    }
+
     pub fn accent_button(self, status: button::Status) -> button::Style {
         let background = match status {
             button::Status::Hovered | button::Status::Pressed => mix(self.accent, self.text, 0.2),
@@ -173,9 +195,9 @@ mod tests {
     #[test]
     fn colors_follow_the_palette() {
         let palette = Palette::default();
-        let colors = UiColors::from_palette(&palette, 0.9);
+        let colors = UiColors::from_palette(&palette);
         assert_eq!(colors.accent, to_iced(palette.cursor, 1.0));
-        assert!((colors.bar.a - 0.9).abs() < f32::EPSILON);
+        assert!((colors.bar.a - 1.0).abs() < f32::EPSILON);
         let luminance = |c: Color| c.r + c.g + c.b;
         assert!(luminance(colors.active) > luminance(colors.hover));
         assert!(luminance(colors.hover) > luminance(to_iced(palette.background, 1.0)));

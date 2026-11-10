@@ -1,5 +1,6 @@
 //! The Dropshade application: tabs of terminals plus the chrome around them.
 
+mod menu;
 mod panel;
 mod persist;
 mod search;
@@ -22,7 +23,8 @@ use ipc::WindowSettings;
 use crate::ipc::{self, Command};
 use crate::settings::{self, Settings};
 use crate::tabs::{TabId, TabMessage, Tabs};
-pub use panel::{MenuAction, SettingsMessage};
+pub use menu::MenuAction;
+pub use panel::SettingsMessage;
 pub use persist::Startup;
 pub use search::SearchMessage;
 use session::Session;

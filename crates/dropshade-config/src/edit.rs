@@ -10,11 +10,16 @@ use crate::{ConfigError, parse};
 pub enum SettingValue {
     Bool(bool),
     Float(f64),
+    Integer(i64),
     Text(String),
+    List(Vec<String>),
+    /// An inline table of strings, such as `{ send = "clear\r" }`.
+    Pairs(Vec<(String, String)>),
 }
 
-/// Sets `section.key` in the file at `path`, creating the file and the section when missing.
-/// The result is validated first, so an out-of-range value never reaches the file.
+/// Sets `key` in `section` of the file at `path`, creating the file and the section when
+/// missing. `section` may be dotted (`"terminal.env"`) to reach a nested table. The result is
+/// validated first, so an invalid value never reaches the file.
 ///
 /// # Errors
 ///
@@ -26,6 +31,37 @@ pub fn set_value(
     key: &str,
     value: SettingValue,
 ) -> Result<(), ConfigError> {
+    edit(path, |document| {
+        let table = section_mut(document, section)?;
+        let item = toml_edit::value(to_toml(value));
+        // Replacing only the value keeps comments attached to the key.
+        match table.get_mut(key) {
+            Some(existing) => *existing = item,
+            None => {
+                table.insert(key, item);
+            }
+        }
+        Ok(())
+    })
+}
+
+/// Removes `key` from `section`, so the built-in default applies again. Removing a key that is
+/// not set does nothing.
+///
+/// # Errors
+///
+/// Fails like [`set_value`].
+pub fn remove_value(path: &Path, section: &str, key: &str) -> Result<(), ConfigError> {
+    edit(path, |document| {
+        section_mut(document, section)?.remove(key);
+        Ok(())
+    })
+}
+
+fn edit(
+    path: &Path,
+    change: impl FnOnce(&mut toml_edit::DocumentMut) -> Result<(), String>,
+) -> Result<(), ConfigError> {
     let original = match std::fs::read_to_string(path) {
         Ok(text) => text,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
@@ -35,24 +71,25 @@ pub fn set_value(
         original.parse().map_err(|error: toml_edit::TomlError| {
             ConfigError::at(path, &original, None, error.message().trim())
         })?;
-    let table = document
-        .entry(section)
-        .or_insert_with(toml_edit::table)
-        .as_table_like_mut()
-        .ok_or_else(|| {
-            ConfigError::at(path, &original, None, format!("[{section}] is not a table"))
-        })?;
-    let item = toml_edit::value(to_toml(value));
-    // Replacing only the value keeps comments attached to the key.
-    match table.get_mut(key) {
-        Some(existing) => *existing = item,
-        None => {
-            table.insert(key, item);
-        }
-    }
+    change(&mut document).map_err(|message| ConfigError::at(path, &original, None, message))?;
     let updated = document.to_string();
     parse(&updated, path)?;
     write_atomically(path, &updated).map_err(|error| ConfigError::read(path, &error))
+}
+
+fn section_mut<'a>(
+    document: &'a mut toml_edit::DocumentMut,
+    section: &str,
+) -> Result<&'a mut dyn toml_edit::TableLike, String> {
+    let mut table: &mut dyn toml_edit::TableLike = document.as_table_mut();
+    for name in section.split('.') {
+        table = table
+            .entry(name)
+            .or_insert_with(toml_edit::table)
+            .as_table_like_mut()
+            .ok_or_else(|| format!("[{section}] is not a table"))?;
+    }
+    Ok(table)
 }
 
 fn to_toml(value: SettingValue) -> toml_edit::Value {
@@ -60,7 +97,14 @@ fn to_toml(value: SettingValue) -> toml_edit::Value {
         SettingValue::Bool(value) => value.into(),
         // Sliders produce values like 0.8999999; two decimals is plenty for every setting.
         SettingValue::Float(value) => ((value * 100.0).round() / 100.0).into(),
+        SettingValue::Integer(value) => value.into(),
         SettingValue::Text(value) => value.into(),
+        SettingValue::List(items) => items.iter().collect::<toml_edit::Array>().into(),
+        SettingValue::Pairs(pairs) => pairs
+            .into_iter()
+            .map(|(key, value)| (key, toml_edit::Value::from(value)))
+            .collect::<toml_edit::InlineTable>()
+            .into(),
     }
 }
 
@@ -150,5 +194,56 @@ mod tests {
             crate::load(&path).expect("valid").appearance.theme,
             crate::ThemeChoice::Single("dawn".into())
         );
+    }
+
+    #[test]
+    fn nested_tables_lists_and_inline_tables_are_written() {
+        let path = temp_file("nested", Some("[terminal]\nshell = \"/bin/zsh\"\n"));
+        set_value(
+            &path,
+            "terminal",
+            "shell_args",
+            SettingValue::List(vec!["-l".into(), "-i".into()]),
+        )
+        .expect("list");
+        set_value(&path, "terminal", "scrollback", SettingValue::Integer(500)).expect("integer");
+        set_value(
+            &path,
+            "terminal.env",
+            "EDITOR",
+            SettingValue::Text("nvim".into()),
+        )
+        .expect("nested");
+        set_value(
+            &path,
+            "keybindings",
+            "ctrl+alt+l",
+            SettingValue::Pairs(vec![("send".into(), "clear\r".into())]),
+        )
+        .expect("inline table");
+        let config = crate::load(&path).expect("valid");
+        assert_eq!(config.terminal.shell_args, ["-l", "-i"]);
+        assert_eq!(config.terminal.scrollback.lines(), 500);
+        assert_eq!(config.terminal.env["EDITOR"], "nvim");
+        assert_eq!(
+            config.keybindings["ctrl+alt+l"],
+            crate::Binding::Send {
+                send: "clear\r".into()
+            }
+        );
+    }
+
+    #[test]
+    fn removed_keys_fall_back_to_the_defaults() {
+        let path = temp_file(
+            "remove",
+            Some("[terminal.env]\nEDITOR = \"nvim\"\n[font]\nsize = 20.0\n"),
+        );
+        remove_value(&path, "terminal.env", "EDITOR").expect("remove");
+        remove_value(&path, "font", "size").expect("remove");
+        remove_value(&path, "font", "never-set").expect("absent keys are fine");
+        let config = crate::load(&path).expect("valid");
+        assert!(config.terminal.env.is_empty());
+        assert_eq!(config.font, crate::Font::default());
     }
 }

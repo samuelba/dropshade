@@ -6,7 +6,7 @@ use dropshade_term::{Interaction, Notice, Shortcut, TermEvent, Terminal, links};
 use iced::widget::{Id, operation};
 use iced::{Task, clipboard};
 
-use super::{App, Menu, Message, PendingClose, Rename, session};
+use super::{App, Menu, Message, PendingClose, Rename, SettingsMessage, session};
 use crate::tabs::{TabId, TabMessage, bar};
 
 impl App {
@@ -45,10 +45,12 @@ impl App {
                 self.window_size = size;
                 Task::none()
             }
+            Message::Escape if self.settings_panel.is_some() => {
+                self.settings_message(SettingsMessage::Close)
+            }
             Message::Escape => {
                 self.close_search();
                 self.terminal_menu = None;
-                self.settings_panel = None;
                 self.renaming = None;
                 self.menu = None;
                 self.pending_close = None;
