@@ -24,7 +24,7 @@ impl App {
         if let Some(position) = self.terminal_menu {
             layers.push(self.terminal_menu_layer(position));
         }
-        if let Some(panel) = self.settings_panel {
+        if let Some(panel) = &self.settings_panel {
             layers.push(self.settings_layer(panel));
         }
         if let Some(pending) = &self.pending_close {

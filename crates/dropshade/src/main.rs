@@ -4,6 +4,7 @@ mod app;
 mod cli;
 mod extension;
 mod ipc;
+mod screens;
 mod settings;
 mod tabs;
 mod theme;
