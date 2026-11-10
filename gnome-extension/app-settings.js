@@ -12,6 +12,7 @@ const INTERFACE = `
     <property name="AnimationDuration" type="u" access="read"/>
     <property name="HideOnUnfocus" type="b" access="read"/>
     <method name="OpenSettings"/>
+    <method name="OpenAbout"/>
   </interface>
 </node>`;
 
@@ -65,22 +66,31 @@ export class AppSettings {
 
     /** Asks the running app to show its settings panel. */
     openSettings() {
-        if (!this._proxy) {
-            console.error('Dropshade: cannot open the settings, the app is not running');
-            return;
-        }
-        this._proxy.call('OpenSettings', null, Gio.DBusCallFlags.NONE, -1, null, (proxy, result) => {
-            try {
-                proxy.call_finish(result);
-            } catch (error) {
-                console.error(`Dropshade: cannot open the settings: ${error.message}`);
-            }
-        });
+        this._callApp('OpenSettings', 'open the settings');
+    }
+
+    /** Asks the running app to show its About dialog. */
+    openAbout() {
+        this._callApp('OpenAbout', 'open the about dialog');
     }
 
     destroy() {
         Gio.bus_unwatch_name(this._watchId);
         this._disconnect();
+    }
+
+    _callApp(method, action) {
+        if (!this._proxy) {
+            console.error(`Dropshade: cannot ${action}, the app is not running`);
+            return;
+        }
+        this._proxy.call(method, null, Gio.DBusCallFlags.NONE, -1, null, (proxy, result) => {
+            try {
+                proxy.call_finish(result);
+            } catch (error) {
+                console.error(`Dropshade: cannot ${action}: ${error.message}`);
+            }
+        });
     }
 
     _connect(info) {

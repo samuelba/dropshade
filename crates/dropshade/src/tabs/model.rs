@@ -91,25 +91,17 @@ impl<T> Tabs<T> {
         self.entries.iter().position(|tab| tab.id == id)
     }
 
-    /// Adds a tab after the active one and activates it.
+    /// Appends a tab at the end and activates it.
     pub fn insert(&mut self, content: T) -> TabId {
         let id = TabId(self.next_id);
         self.next_id += 1;
-        let index = if self.entries.is_empty() {
-            0
-        } else {
-            self.active + 1
-        };
-        self.entries.insert(
-            index,
-            Tab {
-                id,
-                title: None,
-                custom_name: None,
-                content,
-            },
-        );
-        self.active = index;
+        self.entries.push(Tab {
+            id,
+            title: None,
+            custom_name: None,
+            content,
+        });
+        self.active = self.entries.len() - 1;
         id
     }
 
@@ -203,13 +195,13 @@ mod tests {
     }
 
     #[test]
-    fn inserting_adds_after_the_active_tab_and_activates_it() {
+    fn inserting_appends_at_the_end_and_activates_it() {
         let (mut tabs, ids) = tabs(3);
         assert_eq!(order(&tabs), vec![0, 1, 2]);
         assert_eq!(active(&tabs), Some(2));
         tabs.activate(ids[0]);
         tabs.insert(9);
-        assert_eq!(order(&tabs), vec![0, 9, 1, 2]);
+        assert_eq!(order(&tabs), vec![0, 1, 2, 9]);
         assert_eq!(active(&tabs), Some(9));
     }
 

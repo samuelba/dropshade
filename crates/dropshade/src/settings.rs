@@ -80,6 +80,17 @@ pub fn build(config: &Config, prefers_light: bool, themes_dir: Option<&Path>) ->
     }
 }
 
+impl Settings {
+    /// These settings with the terminal font scaled by `scale`.
+    #[must_use]
+    pub fn zoomed(mut self, scale: f32, line_height: f32) -> Self {
+        let size = self.style.font_size * scale;
+        self.style.font_size = size;
+        self.style.cell = metrics::cell_size(self.style.font, size, line_height);
+        self
+    }
+}
+
 fn rgb(color: Rgb8) -> Rgb {
     Rgb {
         r: color.r,
@@ -208,6 +219,15 @@ mod tests {
         assert_eq!(settings.shell, None);
         assert_eq!(settings.input.shift_enter.as_deref(), Some(&b"\x1b\r"[..]));
         assert_eq!(settings.scrollback_lines, 10_000);
+    }
+
+    #[test]
+    fn zooming_scales_the_font_and_the_cells() {
+        let normal = settings("");
+        let zoomed = normal.clone().zoomed(2.0, 1.25);
+        assert!((zoomed.style.font_size - 2.0 * normal.style.font_size).abs() < f32::EPSILON);
+        assert!(zoomed.style.cell.width > normal.style.cell.width);
+        assert!(zoomed.style.cell.height > normal.style.cell.height);
     }
 
     #[test]

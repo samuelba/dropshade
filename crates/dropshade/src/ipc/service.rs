@@ -57,6 +57,11 @@ impl Service {
         self.send(Command::OpenSettings)
     }
 
+    /// Shows the window with the About dialog open.
+    fn open_about(&self) -> fdo::Result<()> {
+        self.send(Command::OpenAbout)
+    }
+
     #[zbus(property)]
     fn hotkey(&self) -> String {
         self.window.hotkey.clone()
@@ -143,5 +148,14 @@ mod tests {
         let service = Service { commands, window };
         service.open_settings().expect("send");
         assert_eq!(received.try_recv().expect("queued"), Command::OpenSettings);
+    }
+
+    #[test]
+    fn open_about_is_forwarded_to_the_app() {
+        let (commands, mut received) = mpsc::unbounded();
+        let window = WindowSettings::from(&dropshade_config::Window::default());
+        let service = Service { commands, window };
+        service.open_about().expect("send");
+        assert_eq!(received.try_recv().expect("queued"), Command::OpenAbout);
     }
 }

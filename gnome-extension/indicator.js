@@ -8,11 +8,11 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 
 /**
  * The top bar icon shown while Dropshade runs: a click toggles the terminal, a right click opens a
- * menu with the settings.
+ * menu with the settings and the about dialog.
  */
 const IndicatorButton = GObject.registerClass(
 class DropshadeIndicatorButton extends PanelMenu.Button {
-    _init(iconFile, {onToggle, onSettings}) {
+    _init(iconFile, {onToggle, onSettings, onAbout}) {
         super._init(0.5, 'Dropshade');
         this._onToggle = onToggle;
 
@@ -21,6 +21,7 @@ class DropshadeIndicatorButton extends PanelMenu.Button {
             style_class: 'system-status-icon',
         }));
         this.menu.addAction('Settings…', onSettings);
+        this.menu.addAction('About Dropshade', onAbout);
 
         // The stock gesture opens the menu on any button; only the secondary one should.
         this.remove_action(this._clickGesture);

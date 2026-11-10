@@ -68,6 +68,10 @@ impl App {
                 let settings = self.open_settings();
                 Task::batch([settings, self.visibility(Visibility::Show)])
             }
+            Command::OpenAbout => {
+                let about = self.open_about();
+                Task::batch([about, self.visibility(Visibility::Show)])
+            }
         }
     }
 
