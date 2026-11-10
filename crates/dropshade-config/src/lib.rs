@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 pub use error::ConfigError;
 pub use schema::{
     Appearance, Binding, Config, CursorShape, Font, Input, Monitor, Scrollback, Session,
-    TabBarPosition, TabWidth, Terminal, ThemeChoice, Unlimited, Window,
+    TabBarPosition, TabWidth, Terminal, ThemeChoice, Unlimited, Updates, Window,
 };
 
 /// The default configuration, documented; `dropshade config print-default` prints it.
@@ -250,6 +250,13 @@ mod tests {
         assert!(!config.session.restore);
         assert_eq!(config.session.layout, "work");
         assert!(Config::default().session.restore);
+    }
+
+    #[test]
+    fn update_checks_are_on_by_default_and_can_be_turned_off() {
+        assert!(Config::default().updates.check);
+        let config = parse_str("[updates]\ncheck = false\n").expect("valid");
+        assert!(!config.updates.check);
     }
 
     #[test]

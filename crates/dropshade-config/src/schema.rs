@@ -14,6 +14,7 @@ pub struct Config {
     pub input: Input,
     pub window: Window,
     pub session: Session,
+    pub updates: Updates,
     /// Chord (e.g. `"ctrl+shift+t"`) to action name or `{ send = "text" }`.
     pub keybindings: BTreeMap<String, Binding>,
 }
@@ -201,6 +202,20 @@ impl Default for Session {
             restore: true,
             layout: String::new(),
         }
+    }
+}
+
+/// Looking for newer releases.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Updates {
+    /// Ask GitHub for the latest release on start and notify when it is newer.
+    pub check: bool,
+}
+
+impl Default for Updates {
+    fn default() -> Self {
+        Self { check: true }
     }
 }
 

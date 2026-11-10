@@ -44,6 +44,7 @@ impl App {
             Message::Menu(action) => self.menu_action(action),
             Message::Settings(message) => self.settings_message(message),
             Message::About(message) => self.about_message(message),
+            Message::ReleaseChecked(result) => self.release_checked(result),
             Message::WindowResized(size) => {
                 self.window_size = size;
                 Task::none()

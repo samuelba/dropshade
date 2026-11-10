@@ -128,6 +128,11 @@ impl App {
             item("Settings…", Some(MenuAction::Settings)),
             item("About Dropshade", Some(MenuAction::About)),
         ];
+        let items = if self.release.is_some() {
+            items.push(item("Update Available…", Some(MenuAction::About)))
+        } else {
+            items
+        };
         let anchor = menu_position(menu.position, self.window_size);
         let card = container(items)
             .padding(CARD_PADDING)

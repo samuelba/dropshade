@@ -374,6 +374,11 @@ fn session(ctx: Ctx<'_>) -> Element<'static, Message> {
             "A layout replaces the reopened tabs. Save one with: dropshade layout save NAME",
             ctx.colors,
         ),
+        hinted(
+            switch(ctx, "Check for updates", Switch::CheckUpdates),
+            "Asks GitHub for the latest release on start and notifies you once per new version.",
+            ctx.colors,
+        ),
     ]
     .spacing(12)
     .into()

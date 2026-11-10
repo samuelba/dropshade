@@ -61,6 +61,8 @@ pub struct App {
     terminal_menu: Option<TerminalMenu>,
     settings_panel: Option<panel::SettingsPanel>,
     about: bool,
+    /// A newer release than this build, once the check found one.
+    release: Option<crate::release::Release>,
     /// The font zoom of the terminals, on top of the configured size.
     zoom: Zoom,
     dragging: Option<TabId>,
@@ -108,6 +110,7 @@ pub enum Message {
     Menu(MenuAction),
     Settings(SettingsMessage),
     About(AboutMessage),
+    ReleaseChecked(Result<Option<crate::release::Release>, String>),
     WindowResized(Size),
     Escape,
     Enter,
@@ -147,6 +150,7 @@ impl App {
             terminal_menu: None,
             settings_panel: None,
             about: false,
+            release: None,
             zoom: Zoom::default(),
             dragging: None,
             bar_pointer: Point::ORIGIN,
@@ -163,7 +167,8 @@ impl App {
         let open = app.open_window();
         let service = app.start_service();
         let theme = system::theme().map(Message::SystemTheme);
-        (app, Task::batch([first_tab, open, service, theme]))
+        let release = app.check_release();
+        (app, Task::batch([first_tab, open, service, theme, release]))
     }
 
     pub fn theme(&self, _window: window::Id) -> iced::Theme {

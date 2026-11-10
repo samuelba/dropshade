@@ -71,6 +71,11 @@ restore = true
 # Save the current tabs as a layout with: dropshade layout save <name>
 layout = ""
 
+[updates]
+# Ask GitHub for the latest release on start; a newer one is announced with a notification
+# and a download link in About Dropshade.
+check = true
+
 [keybindings]
 # Override or add shortcuts. Values are action names, "none" to pass the key to the terminal,
 # or { send = "text" } to type text. Examples:

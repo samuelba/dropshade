@@ -186,6 +186,7 @@ pub enum Switch {
     Ime,
     CopyOnSelect,
     Restore,
+    CheckUpdates,
 }
 
 impl Switch {
@@ -204,6 +205,7 @@ impl Switch {
             Self::Ime => config.input.ime,
             Self::CopyOnSelect => config.input.copy_on_select,
             Self::Restore => config.session.restore,
+            Self::CheckUpdates => config.updates.check,
         }
     }
 
@@ -216,6 +218,7 @@ impl Switch {
             Self::Ime => ("input", "ime"),
             Self::CopyOnSelect => ("input", "copy_on_select"),
             Self::Restore => ("session", "restore"),
+            Self::CheckUpdates => ("updates", "check"),
             Self::FollowSystem | Self::UnlimitedScrollback => return None,
         })
     }
