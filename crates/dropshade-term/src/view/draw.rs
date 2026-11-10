@@ -3,10 +3,10 @@
 use alacritty_terminal::vte::ansi::CursorShape;
 use iced::widget::canvas::{self, Geometry, Stroke, Text};
 use iced::widget::text::{LineHeight, Shaping};
-use iced::{Color, Font, Pixels, Point, Rectangle, Renderer, Size, font};
+use iced::{Color, Font, Pixels, Point, Rectangle, Renderer, Size, font, mouse};
 use unicode_width::UnicodeWidthStr;
 
-use super::{TerminalView, ViewState};
+use super::{TerminalView, ViewState, scrollbar};
 use crate::colors::to_iced;
 use crate::frame::{Cursor, Run};
 
@@ -20,6 +20,7 @@ impl<Message> TerminalView<'_, Message> {
         state: &ViewState,
         renderer: &Renderer,
         bounds: Rectangle,
+        cursor: mouse::Cursor,
     ) -> Geometry {
         let snapshot = self.terminal.frame(&self.style.palette);
         let mut canvas = canvas::Frame::new(renderer, bounds.size());
@@ -34,11 +35,31 @@ impl<Message> TerminalView<'_, Message> {
                 self.draw_preedit(&mut canvas, cursor, preedit);
             }
         }
+        self.draw_scrollbar(&mut canvas, state, bounds, cursor);
         if self.bell {
             let flash = to_iced(self.style.palette.foreground, BELL_OPACITY);
             canvas.fill_rectangle(Point::ORIGIN, bounds.size(), flash);
         }
         canvas.into_geometry()
+    }
+
+    /// Shows the scrollbar whenever there is scrollback, emphasised while hovered or dragged.
+    fn draw_scrollbar(
+        &self,
+        canvas: &mut canvas::Frame,
+        state: &ViewState,
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) {
+        let Some(geometry) = self.scrollbar(bounds) else {
+            return;
+        };
+        let hovered = cursor
+            .position_in(bounds)
+            .is_some_and(|point| geometry.contains(point));
+        let active = hovered || state.scrollbar.dragging();
+        let color = to_iced(self.style.palette.foreground, 1.0);
+        scrollbar::draw(canvas, geometry, active, color);
     }
 
     fn origin(&self, row: usize, column: usize) -> Point {

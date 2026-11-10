@@ -325,6 +325,7 @@ fn apply(terminal: &mut Terminal, interaction: Interaction) -> Task<Message> {
         }
         Interaction::Resize(size) => terminal.resize(size),
         Interaction::Scroll(lines) => terminal.scroll(lines),
+        Interaction::ScrollTo(offset) => terminal.scroll_to(offset),
         Interaction::Select { kind, at, side } => terminal.select(kind, at, side),
         Interaction::ExtendSelection { at, side } => terminal.extend_selection(at, side),
         Interaction::FinishSelection => {

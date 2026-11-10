@@ -22,6 +22,7 @@ fn style() -> ViewStyle {
         cell: CELL,
         padding: 10.0,
         background_opacity: 1.0,
+        scrollbar: true,
     }
 }
 

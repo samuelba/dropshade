@@ -53,6 +53,7 @@ pub fn build(config: &Config, prefers_light: bool, themes_dir: Option<&Path>) ->
         cell: metrics::cell_size(font, config.font.size, config.font.line_height),
         padding: config.appearance.padding,
         background_opacity: opacity,
+        scrollbar: config.appearance.scrollbar,
     };
     let input = InputConfig {
         shift_enter: Some(config.input.shift_enter.as_bytes().to_vec())

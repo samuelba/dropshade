@@ -21,7 +21,9 @@ pub use size::{CellSize, GridSize};
 pub use terminal::{
     ForegroundProcess, Notice, SearchDirection, SelectionKind, SpawnError, SpawnOptions, Terminal,
 };
-pub use view::{Interaction, PointerState, TerminalView, TerminalWidget, ViewState, ViewStyle};
+pub use view::{
+    Interaction, PointerState, ScrollPosition, TerminalView, TerminalWidget, ViewState, ViewStyle,
+};
 
 /// Sets `TERM` and `COLORTERM` for child shells. Call once at startup, before spawning threads.
 pub fn setup_env() {

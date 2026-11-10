@@ -27,6 +27,7 @@ use crate::input::paste_bytes;
 use crate::links;
 use crate::mouse::CellPosition;
 use crate::size::{CellSize, GridSize, Side};
+use crate::view::ScrollPosition;
 
 /// Forwards emulator events from the pty thread to the UI.
 #[derive(Debug, Clone)]
@@ -279,6 +280,27 @@ impl Terminal {
 
     pub fn scroll_to_top(&self) {
         self.term.lock().scroll_display(Scroll::Top);
+    }
+
+    /// Scrolls so the viewport is `offset` lines above the live end of the output.
+    pub fn scroll_to(&self, offset: usize) {
+        let mut term = self.term.lock();
+        let grid = term.grid();
+        let lines = |value: usize| i32::try_from(value).unwrap_or(i32::MAX);
+        let target = lines(offset.min(grid.history_size()));
+        let delta = target.saturating_sub(lines(grid.display_offset()));
+        term.scroll_display(Scroll::Delta(delta));
+    }
+
+    /// How much scrollback there is and how far the viewport is scrolled into it.
+    pub fn scroll_position(&self) -> ScrollPosition {
+        let term = self.term.lock();
+        let grid = term.grid();
+        ScrollPosition {
+            history: grid.history_size(),
+            offset: grid.display_offset(),
+            screen: grid.screen_lines(),
+        }
     }
 
     /// Starts a selection at a viewport cell.

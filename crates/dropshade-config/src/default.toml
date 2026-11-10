@@ -23,6 +23,8 @@ tab_bar = "top"
 # "block", "beam" or "underline". Applications can still change it.
 cursor_shape = "block"
 cursor_blink = false
+# Overlay scrollbar at the right edge, shown once there is scrollback.
+scrollbar = true
 
 [terminal]
 # Program to run; empty means your login shell.

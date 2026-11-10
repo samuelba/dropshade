@@ -144,7 +144,7 @@ impl<Message> Widget<Message, Theme, Renderer> for TerminalWidget<'_, Message> {
         _theme: &Theme,
         _style: &renderer::Style,
         layout: Layout<'_>,
-        _cursor: mouse::Cursor,
+        cursor: mouse::Cursor,
         _viewport: &Rectangle,
     ) {
         let bounds = layout.bounds();
@@ -153,7 +153,7 @@ impl<Message> Widget<Message, Theme, Renderer> for TerminalWidget<'_, Message> {
         }
         let state = tree.state.downcast_ref::<ViewState>();
         renderer.with_translation(Vector::new(bounds.x, bounds.y), |renderer| {
-            let geometry = self.view.render(state, renderer, bounds);
+            let geometry = self.view.render(state, renderer, bounds, cursor);
             renderer.draw_geometry(geometry);
         });
     }

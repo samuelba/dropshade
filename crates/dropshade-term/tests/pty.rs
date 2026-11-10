@@ -178,6 +178,30 @@ mod events {
         assert!(terminal.child_pid() > 0);
         assert!(terminal.cell().width > 0.0);
     }
+
+    #[test]
+    fn scroll_to_moves_to_an_absolute_offset_within_the_scrollback() {
+        let terminal = spawn(
+            "seq 1 100; sleep 2",
+            GridSize {
+                columns: 20,
+                lines: 3,
+            },
+        );
+        super::wait_for(&terminal, "100");
+        let live = terminal.scroll_position();
+        assert_eq!((live.offset, live.screen), (0, 3));
+        assert!(live.history >= 97);
+        terminal.scroll_to(40);
+        assert_eq!(terminal.scroll_position().offset, 40);
+        terminal.scroll_to(10);
+        assert_eq!(terminal.scroll_position().offset, 10);
+        terminal.scroll_to(usize::MAX);
+        assert_eq!(terminal.scroll_position().offset, live.history);
+        assert!(super::screen_text(&terminal).starts_with('1'));
+        terminal.scroll_to(0);
+        assert!(super::screen_text(&terminal).contains("100"));
+    }
 }
 
 #[test]

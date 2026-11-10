@@ -47,6 +47,7 @@ pub struct Appearance {
     pub tab_bar: TabBarPosition,
     pub cursor_shape: CursorShape,
     pub cursor_blink: bool,
+    pub scrollbar: bool,
 }
 
 impl Default for Appearance {
@@ -58,6 +59,7 @@ impl Default for Appearance {
             tab_bar: TabBarPosition::Top,
             cursor_shape: CursorShape::Block,
             cursor_blink: false,
+            scrollbar: true,
         }
     }
 }

@@ -41,6 +41,7 @@ pub enum SettingsMessage {
     TabBar(String),
     Cursor(String),
     Blink(bool),
+    Scrollbar(bool),
     Restore(bool),
     OpenFile,
     Close,
@@ -124,6 +125,9 @@ impl App {
             }
             SettingsMessage::Blink(on) => {
                 self.write_setting("appearance", "cursor_blink", SettingValue::Bool(on));
+            }
+            SettingsMessage::Scrollbar(on) => {
+                self.write_setting("appearance", "scrollbar", SettingValue::Bool(on));
             }
             SettingsMessage::Restore(on) => {
                 self.write_setting("session", "restore", SettingValue::Bool(on));
@@ -277,6 +281,11 @@ impl App {
                 colors
             ),
             cursor_setting(cursor, config.appearance.cursor_blink),
+            setting(
+                "Scrollbar",
+                toggler(config.appearance.scrollbar)
+                    .on_toggle(|on| Message::Settings(SettingsMessage::Scrollbar(on)))
+            ),
             setting(
                 "Reopen tabs on start",
                 toggler(config.session.restore)

@@ -2,6 +2,7 @@
 
 mod draw;
 mod pointer;
+mod scrollbar;
 mod widget;
 
 use std::time::Instant;
@@ -18,7 +19,10 @@ use crate::size::{CellSize, GridSize, Side};
 use crate::terminal::{SelectionKind, Terminal};
 
 pub use pointer::PointerState;
+pub use scrollbar::ScrollPosition;
 pub use widget::TerminalWidget;
+
+use scrollbar::{Outcome, ScrollbarState};
 
 const WHEEL_LINES_PER_NOTCH: f32 = 3.0;
 
@@ -31,6 +35,7 @@ pub struct ViewStyle {
     pub cell: CellSize,
     pub padding: f32,
     pub background_opacity: f32,
+    pub scrollbar: bool,
 }
 
 /// Something the user did that the application should apply to the terminal.
@@ -39,6 +44,8 @@ pub enum Interaction {
     Input(Vec<u8>),
     Resize(GridSize),
     Scroll(i32),
+    /// Scroll so the viewport is this many lines above the live end (from the scrollbar).
+    ScrollTo(usize),
     Shortcut(Shortcut),
     Select {
         kind: SelectionKind,
@@ -62,6 +69,7 @@ pub enum Interaction {
 #[derive(Debug)]
 pub struct ViewState {
     pointer: PointerState,
+    scrollbar: ScrollbarState,
     focused: bool,
     /// Text the input method is composing, shown at the cursor until it is committed.
     preedit: Option<String>,
@@ -71,6 +79,7 @@ impl Default for ViewState {
     fn default() -> Self {
         Self {
             pointer: PointerState::default(),
+            scrollbar: ScrollbarState::default(),
             focused: true,
             preedit: None,
         }
@@ -192,6 +201,35 @@ impl<'a, Message> TerminalView<'a, Message> {
         }
     }
 
+    fn scrollbar(&self, bounds: Rectangle) -> Option<scrollbar::Geometry> {
+        if !self.style.scrollbar {
+            return None;
+        }
+        scrollbar::geometry(bounds.size(), self.terminal.scroll_position())
+    }
+
+    fn mouse_event(
+        &self,
+        state: &mut ViewState,
+        event: &mouse::Event,
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> Option<Action<Message>> {
+        let ctx = self.pointer_context(bounds, cursor);
+        let current = self.terminal.scroll_position().offset;
+        let geometry = self.scrollbar(bounds);
+        match scrollbar::handle(&mut state.scrollbar, event, geometry, ctx.position, current) {
+            Outcome::Captured(Some(interaction)) => {
+                Some(Action::publish((self.on_interaction)(interaction)).and_capture())
+            }
+            Outcome::Captured(None) => Some(Action::request_redraw().and_capture()),
+            Outcome::Ignored => {
+                let interaction = pointer::handle(&mut state.pointer, event, ctx)?;
+                Some(Action::publish((self.on_interaction)(interaction)).and_capture())
+            }
+        }
+    }
+
     fn key_pressed(&self, press: KeyPress<'_>) -> Option<Interaction> {
         match input::resolve(press.key, press.modifiers, &self.input.bindings) {
             Resolution::Shortcut(shortcut) => Some(Interaction::Shortcut(shortcut)),
@@ -276,11 +314,7 @@ impl<Message> canvas::Program<Message> for TerminalView<'_, Message> {
                 let interaction = self.wheel(&state.pointer, *delta, ctx)?;
                 Some(Action::publish((self.on_interaction)(interaction)).and_capture())
             }
-            Event::Mouse(mouse_event) => {
-                let ctx = self.pointer_context(bounds, cursor);
-                let interaction = pointer::handle(&mut state.pointer, mouse_event, ctx)?;
-                Some(Action::publish((self.on_interaction)(interaction)).and_capture())
-            }
+            Event::Mouse(mouse_event) => self.mouse_event(state, mouse_event, bounds, cursor),
             _ => None,
         }
     }
@@ -291,9 +325,18 @@ impl<Message> canvas::Program<Message> for TerminalView<'_, Message> {
         bounds: Rectangle,
         cursor: mouse::Cursor,
     ) -> mouse::Interaction {
+        if state.scrollbar.dragging() {
+            return mouse::Interaction::default();
+        }
         let Some(position) = cursor.position_in(bounds) else {
             return mouse::Interaction::default();
         };
+        if self
+            .scrollbar(bounds)
+            .is_some_and(|geometry| geometry.contains(position))
+        {
+            return mouse::Interaction::default();
+        }
         if state.pointer.modifiers.control() {
             let (cell, _) = self.terminal.size().cell_at(
                 position.x,
@@ -314,9 +357,9 @@ impl<Message> canvas::Program<Message> for TerminalView<'_, Message> {
         renderer: &Renderer,
         _theme: &Theme,
         bounds: Rectangle,
-        _cursor: mouse::Cursor,
+        cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
-        vec![self.render(state, renderer, bounds)]
+        vec![self.render(state, renderer, bounds, cursor)]
     }
 }
 
