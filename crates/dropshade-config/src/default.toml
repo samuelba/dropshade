@@ -51,13 +51,17 @@ ime = true
 copy_on_select = false
 
 [window]
-# These settings are used by the GNOME Shell extension that shows and hides the terminal.
+# How the terminal drops down. Dropshade applies these on desktops with layer shell (COSMIC,
+# KDE Plasma, Sway, Hyprland, ...), the GNOME Shell extension on GNOME, on the next show.
 # Global shortcut in GNOME accelerator syntax, e.g. "F12", "<Super>grave", "<Control><Alt>t".
+# GNOME only: elsewhere, bind "dropshade toggle" to a key in the desktop's keyboard settings.
 hotkey = "F12"
 # Size as a fraction of the monitor's work area (the screen minus the top bar).
 width = 1.0
 height = 0.5
 # "pointer" (the monitor under the mouse), "primary", or a connector name such as "DP-1".
+# Outside GNOME, "pointer" and "primary" both mean the screen the compositor picks, usually the
+# focused one.
 monitor = "pointer"
 # Slide animation in milliseconds; 0 turns it off.
 animation_duration = 180

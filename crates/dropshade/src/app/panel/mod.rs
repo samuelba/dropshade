@@ -12,7 +12,7 @@ use dropshade_config::edit::{SettingValue, remove_value, set_value};
 use dropshade_term::input::Chord;
 use iced::Task;
 
-use super::{App, Message};
+use super::{App, Host, Message};
 use crate::screens::{self, Screen, ScreenChoice};
 use fields::{Field, Slider, Switch};
 
@@ -167,6 +167,13 @@ impl App {
             binding_action: fields::action_names().remove(0),
             ..SettingsPanel::default()
         });
+        if self.host == Host::Layer {
+            let screens = crate::wayland::probe()
+                .map(|compositor| compositor.screens)
+                .inspect_err(|error| tracing::warn!(%error, "cannot list the screens"))
+                .ok();
+            return Task::done(Message::Settings(SettingsMessage::Screens(screens)));
+        }
         let connection = self.ipc.clone();
         Task::perform(
             async move {

@@ -10,12 +10,14 @@ A drop-down terminal for Linux, written in Rust. Press a hotkey and it slides do
 windows; press it again and it is gone.
 
 Dropshade is a native Wayland app built on [iced](https://iced.rs) and
-[`alacritty_terminal`](https://crates.io/crates/alacritty_terminal). On GNOME, a small companion
-Shell extension handles the parts Wayland leaves to the compositor: the global hotkey, placement,
-staying on top and the slide animation.
+[`alacritty_terminal`](https://crates.io/crates/alacritty_terminal). Wayland leaves placement and
+staying on top to the compositor: on COSMIC, KDE Plasma, Sway, Hyprland and other compositors with
+[layer shell](https://wayland.app/protocols/wlr-layer-shell-unstable-v1), Dropshade does both
+itself. On GNOME, a small companion Shell extension handles them, plus the global hotkey and the
+slide animation.
 
-> **Status:** early development. Tabs, the terminal core and the GNOME drop-down work; the config
-> file, session restore and packages are on the way.
+> **Status:** early development. Tabs, the terminal core and the drop-down on GNOME and COSMIC
+> work; the config file, session restore and packages are on the way.
 
 ## Shortcuts
 
@@ -77,6 +79,20 @@ notification once per version and a download link in About Dropshade. Turn this 
 
 ```sh
 cargo build --release
+```
+
+Building needs the `libxkbcommon` development files (`libxkbcommon-devel` on Fedora,
+`libxkbcommon-dev` on Debian and Ubuntu). Running needs a Wayland or X11 session, Vulkan or OpenGL
+drivers, and `libxkbcommon`.
+
+How the terminal drops down depends on the desktop. Dropshade picks the right way on its own.
+
+### GNOME
+
+Mutter, GNOME's compositor, does not let apps place themselves over other windows, so a small
+companion Shell extension shows and hides Dropshade:
+
+```sh
 ./target/release/dropshade gnome-extension install   # once; then log out and back in
 # Upgrading from a build before the dev.samuelba.Dropshade rename:
 # gnome-extensions uninstall dropshade@samuelba.github.io
@@ -85,6 +101,24 @@ cargo build --release
 Press <kbd>F12</kbd> (configurable as `window.hotkey`) and the terminal slides down; press it again
 to hide it. The extension starts Dropshade on the first press. While it runs, an icon in the top
 bar does the same on a click; right-click it to open the settings or the About dialog.
+
+### COSMIC, KDE Plasma, Sway, Hyprland and other layer-shell desktops
+
+These compositors support [layer shell](https://wayland.app/protocols/wlr-layer-shell-unstable-v1),
+so no extension is needed: Dropshade slides down over your windows by itself, on the screen in
+`window.monitor`, sized and animated by the `[window]` settings.
+
+Add a custom shortcut in your desktop's keyboard settings that runs `dropshade toggle` (use the
+full path if the binary is not on your `PATH`). The first press starts Dropshade. `window.hotkey`
+is GNOME syntax and not used here.
+
+### Other desktops and X11
+
+Without layer shell or the extension (X11, or GNOME before logging back in), Dropshade runs as an
+ordinary window: hiding closes the window while the tabs keep running, and showing opens it again.
+Bind `dropshade toggle` to a key to use it as a drop-down.
+
+### Commands
 
 | Command | What it does |
 | ------- | ------------ |
@@ -95,12 +129,6 @@ bar does the same on a click; right-click it to open the settings or the About d
 | `dropshade config print-default \| path \| check` | Inspect the configuration |
 
 There is only ever one instance: running `dropshade` again hands the request to the running one.
-
-Without the extension (other desktops, or before logging back in), Dropshade runs as an ordinary
-window: hiding closes the window while the tabs keep running, and showing opens it again. Bind
-`dropshade toggle` to a keyboard shortcut in your desktop's settings to use it as a drop-down.
-
-Runtime requirements: a Wayland or X11 session, Vulkan or OpenGL drivers, and `libxkbcommon`.
 
 ## Sessions and layouts
 

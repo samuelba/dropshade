@@ -10,7 +10,7 @@ use iced::{Color, Element, Fill, Font, Length, Padding, font};
 
 use super::fields::{self, Field, Slider, Switch};
 use super::{BindingKind, Choice, LayoutChoice, Section, SettingsMessage, SettingsPanel};
-use crate::app::{App, Message};
+use crate::app::{App, Host, Message};
 use crate::screens::{self, Screen};
 use crate::theme::UiColors;
 
@@ -72,7 +72,7 @@ impl App {
         let body = match ctx.panel.section {
             Section::Appearance => appearance(ctx, self.prefers_light),
             Section::Font => font_section(ctx),
-            Section::Window => window(ctx, self.managed),
+            Section::Window => window(ctx, self.host),
             Section::Terminal => terminal(ctx),
             Section::Input => input(ctx),
             Section::Session => session(ctx),
@@ -232,22 +232,35 @@ fn font_section(ctx: Ctx<'_>) -> Element<'static, Message> {
     .into()
 }
 
-fn window(ctx: Ctx<'_>, managed: bool) -> Element<'static, Message> {
-    let note: Element<'static, Message> = if managed {
-        Space::new().into()
-    } else {
-        hint(
-            "These apply when the GNOME Shell extension shows Dropshade.",
-            ctx.colors,
-        )
-    };
-    column![
-        note,
+fn window(ctx: Ctx<'_>, host: Host) -> Element<'static, Message> {
+    let hotkey = || {
         hinted(
             text_row(ctx, "Hotkey", Field::Hotkey, "F12"),
             "GNOME accelerator syntax, such as F12 or <Super>grave.",
             ctx.colors,
+        )
+    };
+    let (note, hotkey): (Element<'static, Message>, Element<'static, Message>) = match host {
+        Host::Shell => (Space::new().into(), hotkey()),
+        Host::Layer => (
+            hint(
+                "Bind \"dropshade toggle\" to a key in your desktop's keyboard settings. \
+                 Changes apply the next time the terminal drops down.",
+                ctx.colors,
+            ),
+            Space::new().into(),
         ),
+        Host::Window => (
+            hint(
+                "These apply when the GNOME Shell extension shows Dropshade.",
+                ctx.colors,
+            ),
+            hotkey(),
+        ),
+    };
+    column![
+        note,
+        hotkey,
         screen(ctx.panel.screens.as_deref(), &ctx.config.window.monitor),
         slider_row(ctx, Slider::Width),
         slider_row(ctx, Slider::Height),

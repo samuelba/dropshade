@@ -9,6 +9,7 @@ use iced::{Task, clipboard};
 use super::{
     AboutMessage, App, Menu, Message, PendingClose, Rename, SettingsMessage, TerminalMenu, session,
 };
+use crate::ipc::client::Visibility;
 use crate::tabs::{TabId, TabMessage, bar};
 
 impl App {
@@ -78,7 +79,7 @@ impl App {
                 tracing::warn!(%error, "D-Bus service unavailable; the CLI and the extension cannot reach this instance");
                 Task::none()
             }
-            Message::Enter | Message::Done => Task::none(),
+            Message::Enter | Message::Done | Message::Layer(_) => Task::none(),
             Message::SaveSession => {
                 self.save_session();
                 Task::none()
@@ -87,18 +88,14 @@ impl App {
                 self.save_session();
                 iced::exit()
             }
+            Message::WindowOpened(id, size) => self.window_opened(id, size),
             Message::WindowClosed(id) => {
-                if self.window == Some(id) {
-                    self.window = None;
-                    self.focused = false;
-                }
+                self.window_closed(id);
                 Task::none()
             }
-            Message::CloseRequested => self.visibility(crate::ipc::client::Visibility::Hide),
-            Message::WindowFocused(focused) => {
-                self.focused = focused;
-                Task::none()
-            }
+            Message::CloseRequested => self.visibility(Visibility::Hide),
+            Message::WindowFocused(focused) => self.window_focused(focused),
+            Message::Slide => self.slide_step(),
             Message::SystemTheme(mode) => {
                 let prefers_light = mode == iced::theme::Mode::Light;
                 if prefers_light != self.prefers_light {

@@ -50,7 +50,7 @@ install -Dm755 "$binary" "$appdir/usr/bin/dropshade"
 install -Dm644 "packaging/icons/hicolor/symbolic/apps/$app_id-symbolic.svg" \
     "$appdir/usr/share/icons/hicolor/symbolic/apps/$app_id-symbolic.svg"
 install -Dm644 "packaging/$app_id.metainfo.xml" "$appdir/usr/share/metainfo/$app_id.appdata.xml"
-# winit loads these with dlopen, so linuxdeploy cannot find them on its own.
+# winit loads the Wayland libraries with dlopen, so linuxdeploy cannot find them on its own.
 libraries=()
 for library in libxkbcommon.so.0 libwayland-client.so.0 libwayland-cursor.so.0; do
     path="$(ldconfig -p | awk -v lib="$library" '$1 == lib { print $NF; exit }')"

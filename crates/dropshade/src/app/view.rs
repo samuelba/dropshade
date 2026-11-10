@@ -16,7 +16,14 @@ const DIALOG_WIDTH: f32 = 380.0;
 const TEXT_SIZE: f32 = 13.0;
 
 impl App {
-    pub fn view(&self, _window: iced::window::Id) -> Element<'_, Message> {
+    pub fn view(&self, window: iced::window::Id) -> Element<'_, Message> {
+        if self
+            .dropdown
+            .as_ref()
+            .is_some_and(|dropdown| dropdown.id == window && dropdown.measuring())
+        {
+            return Space::new().into();
+        }
         let mut layers = vec![self.body()];
         if let Some(menu) = self.menu {
             layers.push(self.menu_layer(menu));

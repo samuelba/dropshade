@@ -1,6 +1,7 @@
 //! The Dropshade application: tabs of terminals plus the chrome around them.
 
 mod about;
+mod dropdown;
 mod menu;
 mod panel;
 mod persist;
@@ -20,18 +21,21 @@ use dropshade_term::{Interaction, TermEvent};
 use iced::keyboard::{self, key::Named};
 use iced::theme::Mode;
 use iced::{Event, Point, Size, Subscription, Task, event, mouse, system, time, window};
+use iced_layershell::actions::LayerShellCustomActionWithId;
 use ipc::WindowSettings;
 
 use crate::ipc::{self, Command};
 use crate::settings::{self, Settings};
 use crate::tabs::{TabId, TabMessage, Tabs};
 pub use about::AboutMessage;
+pub use dropdown::NAMESPACE as LAYER_NAMESPACE;
 pub use menu::MenuAction;
 use menu::TerminalMenu;
 pub use panel::SettingsMessage;
 pub use persist::Startup;
 pub use search::SearchMessage;
 use session::Session;
+pub use visibility::APP_ID;
 use zoom::Zoom;
 
 pub const APP_NAME: &str = "Dropshade";
@@ -39,12 +43,20 @@ pub const INITIAL_SIZE: Size = Size::new(1100.0, 640.0);
 const BLINK_INTERVAL: Duration = Duration::from_millis(530);
 const BELL_DURATION: Duration = Duration::from_millis(120);
 const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(3);
+const SLIDE_INTERVAL: Duration = Duration::from_millis(8);
+
+/// Who shows, hides and places the window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Host {
+    /// The GNOME Shell extension, which started this process.
+    Shell,
+    /// Dropshade itself, as a layer-shell surface the compositor keeps on top.
+    Layer,
+    /// Nobody: an ordinary window that hiding closes.
+    Window,
+}
 
 #[derive(Debug)]
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "independent window and overlay flags, not one state"
-)]
 pub struct App {
     tabs: Tabs<Session>,
     config: Config,
@@ -71,9 +83,10 @@ pub struct App {
     error: Option<String>,
     /// The window, while it is open; without the extension, hiding closes it.
     window: Option<window::Id>,
+    /// The layer-shell surface, while it is shown or sliding.
+    dropdown: Option<dropdown::Dropdown>,
     focused: bool,
-    /// Started by the GNOME Shell extension, which owns showing and hiding.
-    managed: bool,
+    host: Host,
     ipc: Option<zbus::Connection>,
     session_path: Option<PathBuf>,
     /// The last snapshot written, to skip saves when nothing changed.
@@ -119,18 +132,34 @@ pub enum Message {
     SystemTheme(Mode),
     Ipc(Command),
     IpcReady(Result<zbus::Connection, String>),
+    WindowOpened(window::Id, Size),
     WindowClosed(window::Id),
     CloseRequested,
     WindowFocused(bool),
     SaveSession,
     Terminate,
+    /// A step of the drop-down's slide.
+    Slide,
+    /// A request for the layer-shell runner; the plain window runner never sees one.
+    Layer(LayerShellCustomActionWithId),
     Done,
+}
+
+impl TryInto<LayerShellCustomActionWithId> for Message {
+    type Error = Self;
+
+    fn try_into(self) -> Result<LayerShellCustomActionWithId, Self> {
+        match self {
+            Self::Layer(action) => Ok(action),
+            message => Err(message),
+        }
+    }
 }
 
 impl App {
     pub fn boot(
         config_path: Option<PathBuf>,
-        managed: bool,
+        host: Host,
         startup: Startup,
     ) -> (Self, Task<Message>) {
         let (config, config_error) = load(config_path.as_deref());
@@ -157,8 +186,9 @@ impl App {
             window_size: INITIAL_SIZE,
             error: None,
             window: None,
+            dropdown: None,
             focused: false,
-            managed,
+            host,
             ipc: None,
             session_path: dropshade_session::session_path(),
             saved: None,
@@ -215,8 +245,18 @@ impl App {
         } else {
             Subscription::none()
         };
+        let slide = if self
+            .dropdown
+            .as_ref()
+            .is_some_and(dropdown::Dropdown::animating)
+        {
+            time::every(SLIDE_INTERVAL).map(|_| Message::Slide)
+        } else {
+            Subscription::none()
+        };
         Subscription::batch([
             autosave,
+            slide,
             Subscription::run(termination_signals),
             blink,
             bell,
@@ -227,7 +267,8 @@ impl App {
             window::resize_events().map(|(_, size)| Message::WindowResized(size)),
             window::close_requests().map(|_| Message::CloseRequested),
             window::close_events().map(Message::WindowClosed),
-            window::events().filter_map(|(_, event)| match event {
+            window::events().filter_map(|(id, event)| match event {
+                window::Event::Opened { size, .. } => Some(Message::WindowOpened(id, size)),
                 window::Event::Focused => Some(Message::WindowFocused(true)),
                 window::Event::Unfocused => Some(Message::WindowFocused(false)),
                 _ => None,

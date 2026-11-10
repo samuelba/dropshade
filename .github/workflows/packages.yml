@@ -41,7 +41,7 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-deb,cargo-generate-rpm
-      - run: sudo apt-get update && sudo apt-get install -y zip libxkbcommon0 libwayland-client0 libwayland-cursor0 dpkg-dev
+      - run: sudo apt-get update && sudo apt-get install -y zip libxkbcommon-dev libwayland-client0 libwayland-cursor0 dpkg-dev
       - name: Fetch linuxdeploy
         run: |
           curl -fsSLo "$RUNNER_TEMP/linuxdeploy" \

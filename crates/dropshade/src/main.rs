@@ -9,6 +9,7 @@ mod screens;
 mod settings;
 mod tabs;
 mod theme;
+mod wayland;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -17,7 +18,7 @@ use clap::{Parser, Subcommand};
 use iced::{Color, Theme};
 use tracing_subscriber::EnvFilter;
 
-use app::{App, Startup};
+use app::{APP_ID, App, Host, LAYER_NAMESPACE, Startup};
 use cli::{Outcome, Request};
 use ipc::client::Visibility;
 
@@ -119,7 +120,7 @@ fn launch(request: &Request, config_path: Option<PathBuf>) -> ExitCode {
     let managed = is_shell_managed(std::env::var(SHELL_LAUNCHED_ENV).ok().as_deref());
     match cli::hand_off(request, managed) {
         Ok(Outcome::Handled) => ExitCode::SUCCESS,
-        Ok(Outcome::RunHere { startup }) => run(config_path, managed, startup),
+        Ok(Outcome::RunHere { startup }) => run(config_path, host(managed), startup),
         Err(error) => {
             eprintln!("dropshade: {error}");
             ExitCode::FAILURE
@@ -127,10 +128,68 @@ fn launch(request: &Request, config_path: Option<PathBuf>) -> ExitCode {
     }
 }
 
-fn run(config_path: Option<PathBuf>, managed: bool, startup: Startup) -> ExitCode {
+/// The GNOME Shell extension if it started this process, else layer shell where the compositor
+/// offers it.
+fn host(managed: bool) -> Host {
+    if managed {
+        return Host::Shell;
+    }
+    match wayland::probe() {
+        Ok(compositor) if compositor.layer_shell => Host::Layer,
+        Ok(_) => Host::Window,
+        Err(error) => {
+            tracing::debug!(%error, "no layer shell");
+            Host::Window
+        }
+    }
+}
+
+fn run(config_path: Option<PathBuf>, host: Host, startup: Startup) -> ExitCode {
     dropshade_term::setup_env();
-    let boot = move || App::boot(config_path.clone(), managed, startup.clone());
-    let result = iced::daemon(boot, App::update, App::view)
+    tracing::debug!(?host, "showing and hiding");
+    let boot = move || App::boot(config_path.clone(), host, startup.clone());
+    let result = match host {
+        Host::Layer => run_layer(boot),
+        Host::Shell | Host::Window => run_window(boot),
+    };
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("dropshade: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn style(_: &App, theme: &Theme) -> iced::theme::Style {
+    iced::theme::Style {
+        background_color: Color::TRANSPARENT,
+        text_color: theme.palette().text,
+    }
+}
+
+fn run_layer(boot: impl Fn() -> (App, iced::Task<app::Message>) + 'static) -> Result<(), String> {
+    use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
+
+    iced_layershell::daemon(boot, LAYER_NAMESPACE, App::update, App::view)
+        .theme(App::theme)
+        .subscription(App::subscription)
+        .style(style)
+        .settings(Settings {
+            id: Some(APP_ID.to_owned()),
+            // The app opens its surface itself, on the configured screen.
+            layer_settings: LayerShellSettings {
+                start_mode: StartMode::Background,
+                ..LayerShellSettings::default()
+            },
+            ..Settings::default()
+        })
+        .run()
+        .map_err(|error| error.to_string())
+}
+
+fn run_window(boot: impl Fn() -> (App, iced::Task<app::Message>) + 'static) -> Result<(), String> {
+    iced::daemon(boot, App::update, App::view)
         .title(App::title)
         .theme(App::theme)
         .subscription(App::subscription)
@@ -142,18 +201,9 @@ fn run(config_path: Option<PathBuf>, managed: bool, startup: Startup) -> ExitCod
             vsync: false,
             ..iced::Settings::default()
         })
-        .style(|_, theme: &Theme| iced::theme::Style {
-            background_color: Color::TRANSPARENT,
-            text_color: theme.palette().text,
-        })
-        .run();
-    match result {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("dropshade: {error}");
-            ExitCode::FAILURE
-        }
-    }
+        .style(style)
+        .run()
+        .map_err(|error| error.to_string())
 }
 
 fn config_command(command: &ConfigCommand, path: Option<&Path>) -> ExitCode {
