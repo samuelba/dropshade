@@ -45,6 +45,7 @@ pub struct Appearance {
     pub background_opacity: f32,
     pub padding: f32,
     pub tab_bar: TabBarPosition,
+    pub tab_width: TabWidth,
     pub cursor_shape: CursorShape,
     pub cursor_blink: bool,
     pub scrollbar: bool,
@@ -57,6 +58,7 @@ impl Default for Appearance {
             background_opacity: 0.94,
             padding: 10.0,
             tab_bar: TabBarPosition::Top,
+            tab_width: TabWidth::Fixed,
             cursor_shape: CursorShape::Block,
             cursor_blink: false,
             scrollbar: true,
@@ -96,6 +98,16 @@ pub enum TabBarPosition {
     Bottom,
     Left,
     Right,
+}
+
+/// How wide the tabs of a top or bottom tab bar are.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TabWidth {
+    /// Every tab gets the same share of the bar.
+    Fixed,
+    /// Each tab is as wide as its name, up to the same maximum.
+    Fit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

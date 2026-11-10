@@ -1,6 +1,6 @@
 //! The settings panel's layout: a section list on the left, the section's settings on the right.
 
-use dropshade_config::{Config, CursorShape, TabBarPosition, ThemeChoice, theme};
+use dropshade_config::{Config, CursorShape, TabBarPosition, TabWidth, ThemeChoice, theme};
 use dropshade_term::colors::to_iced;
 use iced::widget::{
     Column, Space, button, column, container, opaque, pick_list, row, scrollable, slider, text,
@@ -23,6 +23,7 @@ const VALUE_WIDTH: f32 = 56.0;
 const TEXT_SIZE: f32 = 13.0;
 const HINT_SIZE: f32 = 11.5;
 const BAR_POSITIONS: [&str; 4] = ["top", "bottom", "left", "right"];
+const TAB_WIDTHS: [&str; 2] = ["fixed", "fit"];
 const CURSOR_SHAPES: [&str; 3] = ["block", "beam", "underline"];
 
 /// Everything a section needs to draw itself.
@@ -199,6 +200,16 @@ fn appearance(ctx: Ctx<'_>, prefers_light: bool) -> Element<'static, Message> {
             strings(&BAR_POSITIONS),
             bar_name(appearance.tab_bar),
             Choice::TabBar
+        ),
+        hinted(
+            choice(
+                "Tab width",
+                strings(&TAB_WIDTHS),
+                tab_width_name(appearance.tab_width),
+                Choice::TabWidth
+            ),
+            "\"fit\" sizes top and bottom tabs to their names.",
+            ctx.colors,
         ),
         cursor,
         switch(ctx, "Scrollbar", Switch::Scrollbar),
@@ -613,6 +624,13 @@ fn bar_name(position: TabBarPosition) -> &'static str {
         TabBarPosition::Bottom => "bottom",
         TabBarPosition::Left => "left",
         TabBarPosition::Right => "right",
+    }
+}
+
+fn tab_width_name(width: TabWidth) -> &'static str {
+    match width {
+        TabWidth::Fixed => "fixed",
+        TabWidth::Fit => "fit",
     }
 }
 

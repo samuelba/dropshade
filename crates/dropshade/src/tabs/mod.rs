@@ -3,5 +3,5 @@
 pub mod bar;
 pub mod model;
 
-pub use bar::{BarPosition, BarState, TabMessage};
+pub use bar::{BarPosition, BarState, TabMessage, TabSizing};
 pub use model::{TabId, Tabs};

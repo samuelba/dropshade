@@ -62,6 +62,7 @@ pub enum Choice {
     DarkTheme,
     LightTheme,
     TabBar,
+    TabWidth,
     Cursor,
 }
 
@@ -288,6 +289,7 @@ impl App {
             Choice::DarkTheme => self.write("appearance", "theme", theme_pair(name, light)),
             Choice::LightTheme => self.write("appearance", "theme", theme_pair(dark, name)),
             Choice::TabBar => self.write("appearance", "tab_bar", SettingValue::Text(name)),
+            Choice::TabWidth => self.write("appearance", "tab_width", SettingValue::Text(name)),
             Choice::Cursor => self.write("appearance", "cursor_shape", SettingValue::Text(name)),
         }
     }

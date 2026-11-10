@@ -20,6 +20,9 @@ background_opacity = 0.94
 padding = 10.0
 # Where the tabs are: "top", "bottom", "left" or "right".
 tab_bar = "top"
+# Tab width in a top or bottom bar: "fixed" (all tabs equally wide) or "fit" (each tab as
+# wide as its name, up to the same maximum).
+tab_width = "fixed"
 # "block", "beam" or "underline". Applications can still change it.
 cursor_shape = "block"
 cursor_blink = false
