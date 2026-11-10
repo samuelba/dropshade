@@ -40,4 +40,23 @@ sleep 2
 echo "    mirrored hotkey: $(gsettings --schemadir "$SMOKE_ROOT/gnome-extension/schemas" get org.gnome.shell.extensions.dropshade toggle-shortcut)"
 echo "14. new tab from the command line"
 "$dropshade_cli" new-tab --cwd /tmp; sleep 2; type_text "pwd"; sleep 1; shot 14-new-tab
+app_pid() {
+    call --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
+        --method org.freedesktop.DBus.GetConnectionUnixProcessID io.github.samuelba.Dropshade |
+        sed -E 's/.*uint32 ([0-9]+).*/\1/'
+}
+echo "15. tabs survive a logout (SIGTERM) and come back on the next start"
+sleep 4
+pid="$(app_pid)"; kill -TERM "$pid"; sleep 2
+echo "    app $pid still running: $(kill -0 "$pid" 2>/dev/null && echo yes || echo no)"
+sed 's/^/    | /' "$XDG_STATE_HOME/dropshade/session.toml"
+"$dropshade_cli" show; sleep 5; inspect; shot 15-restored
+echo "16. layouts"
+"$dropshade_cli" layout save work; sleep 1
+echo "    layouts: $("$dropshade_cli" layout list | tr '\n' ' ')"
+"$dropshade_cli" layout load work; sleep 3; shot 16-layout-loaded
+echo "17. a hand-written layout with a startup command"
+printf '[[tab]]\nname = "scripted"\ncwd = "/tmp"\ncommand = "echo from-layout"\n' \
+    > "$XDG_CONFIG_HOME/dropshade/layouts/scripted.toml"
+"$dropshade_cli" layout load scripted; sleep 3; shot 17-scripted
 echo "screenshots: $SMOKE_DEV/out"

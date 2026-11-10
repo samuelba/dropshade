@@ -56,6 +56,14 @@ impl App {
                 let tab = self.open_tab(directory);
                 Task::batch([tab, self.visibility(Visibility::Show)])
             }
+            Command::SaveLayout(name) => {
+                self.save_layout(&name);
+                Task::none()
+            }
+            Command::LoadLayout(name) => {
+                let tabs = self.load_layout(&name);
+                Task::batch([tabs, self.visibility(Visibility::Show)])
+            }
         }
     }
 

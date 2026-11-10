@@ -13,6 +13,7 @@ pub struct Config {
     pub terminal: Terminal,
     pub input: Input,
     pub window: Window,
+    pub session: Session,
     /// Chord (e.g. `"ctrl+shift+t"`) to action name or `{ send = "text" }`.
     pub keybindings: BTreeMap<String, Binding>,
 }
@@ -166,6 +167,25 @@ impl Default for Input {
             shift_enter: "\u{1b}\r".into(),
             ime: true,
             copy_on_select: false,
+        }
+    }
+}
+
+/// What Dropshade opens when it starts.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Session {
+    /// Reopen the tabs (names and directories) that were open when Dropshade last quit.
+    pub restore: bool,
+    /// Always start with this layout from ~/.config/dropshade/layouts instead; empty for none.
+    pub layout: String,
+}
+
+impl Default for Session {
+    fn default() -> Self {
+        Self {
+            restore: true,
+            layout: String::new(),
         }
     }
 }

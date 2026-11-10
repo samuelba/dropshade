@@ -1,5 +1,6 @@
 //! The Dropshade application: tabs of terminals plus the chrome around them.
 
+mod persist;
 mod session;
 mod update;
 mod view;
@@ -19,12 +20,14 @@ use ipc::WindowSettings;
 use crate::ipc::{self, Command};
 use crate::settings::{self, Settings};
 use crate::tabs::{TabId, TabMessage, Tabs};
+pub use persist::Startup;
 use session::Session;
 
 pub const APP_NAME: &str = "Dropshade";
 pub const INITIAL_SIZE: Size = Size::new(1100.0, 640.0);
 const BLINK_INTERVAL: Duration = Duration::from_millis(530);
 const BELL_DURATION: Duration = Duration::from_millis(120);
+const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(3);
 
 #[derive(Debug)]
 pub struct App {
@@ -49,6 +52,9 @@ pub struct App {
     /// Started by the GNOME Shell extension, which owns showing and hiding.
     managed: bool,
     ipc: Option<zbus::Connection>,
+    session_path: Option<PathBuf>,
+    /// The last snapshot written, to skip saves when nothing changed.
+    saved: Option<dropshade_session::Snapshot>,
 }
 
 #[derive(Debug)]
@@ -88,6 +94,8 @@ pub enum Message {
     WindowClosed(window::Id),
     CloseRequested,
     WindowFocused(bool),
+    SaveSession,
+    Terminate,
     Done,
 }
 
@@ -95,7 +103,7 @@ impl App {
     pub fn boot(
         config_path: Option<PathBuf>,
         managed: bool,
-        first_directory: Option<PathBuf>,
+        startup: Startup,
     ) -> (Self, Task<Message>) {
         let (config, config_error) = load(config_path.as_deref());
         let settings = settings::build(&config, false, dropshade_config::themes_dir().as_deref());
@@ -118,9 +126,10 @@ impl App {
             focused: false,
             managed,
             ipc: None,
+            session_path: dropshade_session::session_path(),
+            saved: None,
         };
-        let directory = first_directory.or_else(|| app.settings.working_directory.clone());
-        let first_tab = app.open_tab(directory);
+        let first_tab = app.startup_tabs(startup);
         let open = app.open_window();
         let service = app.start_service();
         let theme = system::theme().map(Message::SystemTheme);
@@ -160,7 +169,14 @@ impl App {
             .config_path
             .clone()
             .map_or_else(Subscription::none, watch::config_changes);
+        let autosave = if self.config.session.restore {
+            time::every(AUTOSAVE_INTERVAL).map(|_| Message::SaveSession)
+        } else {
+            Subscription::none()
+        };
         Subscription::batch([
+            autosave,
+            Subscription::run(termination_signals),
             blink,
             bell,
             overlay_keys,
@@ -252,4 +268,35 @@ fn mouse_released(event: Event, _status: event::Status, _window: window::Id) -> 
         Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
     )
     .then_some(Message::MouseReleased)
+}
+
+/// SIGTERM (logout), SIGHUP and SIGINT: save the session before quitting.
+fn termination_signals() -> impl iced::futures::Stream<Item = Message> {
+    use iced::futures::SinkExt;
+    use tokio::signal::unix::{SignalKind, signal};
+
+    iced::stream::channel(
+        1,
+        async |mut output: iced::futures::channel::mpsc::Sender<Message>| {
+            let signals = (
+                signal(SignalKind::terminate()),
+                signal(SignalKind::hangup()),
+                signal(SignalKind::interrupt()),
+            );
+            let (Ok(mut terminate), Ok(mut hangup), Ok(mut interrupt)) = signals else {
+                tracing::warn!(
+                    "cannot listen for termination signals; the session is saved periodically"
+                );
+                return;
+            };
+            tokio::select! {
+                _ = terminate.recv() => {}
+                _ = hangup.recv() => {}
+                _ = interrupt.recv() => {}
+            }
+            if output.send(Message::Terminate).await.is_err() {
+                tracing::debug!("app already shutting down");
+            }
+        },
+    )
 }

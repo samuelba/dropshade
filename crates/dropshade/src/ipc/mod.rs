@@ -16,6 +16,8 @@ pub enum Command {
     Show,
     Hide,
     NewTab(Option<PathBuf>),
+    SaveLayout(String),
+    LoadLayout(String),
 }
 
 /// The drop-down window settings the extension reads from the app.

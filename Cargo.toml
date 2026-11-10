@@ -13,6 +13,7 @@ authors = ["Samuel Bachmann <samuel.bachmann@gmail.com>"]
 [workspace.dependencies]
 dropshade-term = { path = "crates/dropshade-term" }
 dropshade-config = { path = "crates/dropshade-config" }
+dropshade-session = { path = "crates/dropshade-session" }
 alacritty_terminal = "0.26"
 iced = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "tokio", "canvas", "advanced", "wayland", "x11", "web-colors"] }
 iced_graphics = "0.14"

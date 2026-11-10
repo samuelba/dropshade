@@ -12,6 +12,9 @@ pub struct Session {
     pub terminal: Terminal,
     pub cursor_on: bool,
     pub bell: bool,
+    /// A layout's startup command, typed once the shell has drawn its first output (its prompt),
+    /// so it is not echoed a second time as type-ahead.
+    pub pending_command: Option<String>,
 }
 
 /// Starts a shell with the current settings, optionally in `working_directory`.
@@ -34,6 +37,7 @@ pub fn spawn(
             terminal,
             cursor_on: true,
             bell: false,
+            pending_command: None,
         },
         events,
     ))

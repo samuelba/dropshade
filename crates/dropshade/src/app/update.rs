@@ -60,6 +60,14 @@ impl App {
                 Task::none()
             }
             Message::Enter | Message::Done => Task::none(),
+            Message::SaveSession => {
+                self.save_session();
+                Task::none()
+            }
+            Message::Terminate => {
+                self.save_session();
+                iced::exit()
+            }
             Message::WindowClosed(id) => {
                 if self.window == Some(id) {
                     self.window = None;
@@ -114,7 +122,15 @@ impl App {
                 tab.content.bell = true;
                 Task::none()
             }
-            Some(Notice::Redraw) | None => Task::none(),
+            Some(Notice::Redraw) => {
+                if let Some(command) = tab.content.pending_command.take() {
+                    tab.content
+                        .terminal
+                        .write(format!("{command}\r").into_bytes());
+                }
+                Task::none()
+            }
+            None => Task::none(),
         }
     }
 
@@ -267,6 +283,7 @@ impl App {
             self.renaming = None;
         }
         if self.tabs.is_empty() && self.error.is_none() {
+            self.save_session();
             return iced::exit();
         }
         Task::none()

@@ -42,6 +42,16 @@ impl Service {
         self.send(Command::NewTab(cwd))
     }
 
+    /// Saves the open tabs as `~/.config/dropshade/layouts/<name>.toml`.
+    fn save_layout(&self, name: &str) -> fdo::Result<()> {
+        self.send(Command::SaveLayout(name.to_owned()))
+    }
+
+    /// Opens the tabs of a saved layout next to the current ones.
+    fn load_layout(&self, name: &str) -> fdo::Result<()> {
+        self.send(Command::LoadLayout(name.to_owned()))
+    }
+
     #[zbus(property)]
     fn hotkey(&self) -> String {
         self.window.hotkey.clone()

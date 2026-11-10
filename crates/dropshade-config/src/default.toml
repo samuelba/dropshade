@@ -59,6 +59,13 @@ animation_duration = 180
 # Hide the terminal when you click into another window.
 hide_on_unfocus = false
 
+[session]
+# Reopen the tabs (their names and directories) that were open when Dropshade last quit.
+restore = true
+# Always start with this layout from ~/.config/dropshade/layouts/<name>.toml instead.
+# Save the current tabs as a layout with: dropshade layout save <name>
+layout = ""
+
 [keybindings]
 # Override or add shortcuts. Values are action names, "none" to pass the key to the terminal,
 # or { send = "text" } to type text. Examples:

@@ -69,6 +69,36 @@ window: hiding closes the window while the tabs keep running, and showing opens 
 
 Runtime requirements: a Wayland or X11 session, Vulkan or OpenGL drivers, and `libxkbcommon`.
 
+## Sessions and layouts
+
+Dropshade remembers your tabs: their order, names and directories are saved as you work (and on
+logout) and reopened on the next start. Turn this off with `[session] restore = false`.
+
+Layouts are named sets of tabs in `~/.config/dropshade/layouts/<name>.toml`:
+
+```sh
+dropshade layout save work   # the open tabs become a layout
+dropshade layout load work   # open its tabs next to the current ones
+dropshade layout list
+```
+
+Layout files are easy to write by hand, and a tab can run a command when it opens:
+
+```toml
+active = 0
+
+[[tab]]
+name = "api"
+cwd = "~/projects/api"
+command = "cargo watch -x run"
+
+[[tab]]
+name = "logs"
+cwd = "~/projects/api"
+```
+
+`[session] layout = "work"` starts every session with that layout instead of the last one.
+
 ## Development
 
 ```sh

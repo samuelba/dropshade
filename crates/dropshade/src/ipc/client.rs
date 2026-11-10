@@ -14,6 +14,8 @@ pub trait App {
     fn show(&self) -> zbus::Result<()>;
     fn hide(&self) -> zbus::Result<()>;
     fn new_tab(&self, cwd: &str) -> zbus::Result<()>;
+    fn save_layout(&self, name: &str) -> zbus::Result<()>;
+    fn load_layout(&self, name: &str) -> zbus::Result<()>;
 }
 
 #[proxy(

@@ -15,7 +15,7 @@ use clap::{Parser, Subcommand};
 use iced::{Color, Theme};
 use tracing_subscriber::EnvFilter;
 
-use app::App;
+use app::{App, Startup};
 use cli::{Outcome, Request};
 use ipc::client::Visibility;
 
@@ -44,6 +44,9 @@ enum Command {
         #[arg(long, value_name = "DIR")]
         cwd: Option<PathBuf>,
     },
+    /// Save or open sets of tabs.
+    #[command(subcommand)]
+    Layout(LayoutCommand),
     /// Inspect the configuration file.
     #[command(subcommand)]
     Config(ConfigCommand),
@@ -63,6 +66,16 @@ enum ConfigCommand {
 }
 
 #[derive(Debug, Subcommand)]
+enum LayoutCommand {
+    /// Save the open tabs (names and directories) as a layout.
+    Save { name: String },
+    /// Open the tabs of a saved layout.
+    Load { name: String },
+    /// List the saved layouts.
+    List,
+}
+
+#[derive(Debug, Subcommand)]
 enum ExtensionCommand {
     /// Install (or update) the extension for the current user.
     Install,
@@ -77,6 +90,15 @@ fn main() -> ExitCode {
     let request = match cli.command {
         Some(Command::Config(command)) => return config_command(&command, config_path.as_deref()),
         Some(Command::GnomeExtension(ExtensionCommand::Install)) => return extension::install(),
+        Some(Command::Layout(LayoutCommand::List)) => return list_layouts(),
+        Some(Command::Layout(LayoutCommand::Save { name })) => match valid_layout(name) {
+            Ok(name) => Request::SaveLayout(name),
+            Err(code) => return code,
+        },
+        Some(Command::Layout(LayoutCommand::Load { name })) => match valid_layout(name) {
+            Ok(name) => Request::LoadLayout(name),
+            Err(code) => return code,
+        },
         Some(Command::Toggle) => Request::Visibility(Visibility::Toggle),
         Some(Command::Show) | None => Request::Visibility(Visibility::Show),
         Some(Command::Hide) => Request::Visibility(Visibility::Hide),
@@ -95,7 +117,7 @@ fn launch(request: &Request, config_path: Option<PathBuf>) -> ExitCode {
     let managed = is_shell_managed(std::env::var(SHELL_LAUNCHED_ENV).ok().as_deref());
     match cli::hand_off(request, managed) {
         Ok(Outcome::Handled) => ExitCode::SUCCESS,
-        Ok(Outcome::RunHere { first_directory }) => run(config_path, managed, first_directory),
+        Ok(Outcome::RunHere { startup }) => run(config_path, managed, startup),
         Err(error) => {
             eprintln!("dropshade: {error}");
             ExitCode::FAILURE
@@ -103,9 +125,9 @@ fn launch(request: &Request, config_path: Option<PathBuf>) -> ExitCode {
     }
 }
 
-fn run(config_path: Option<PathBuf>, managed: bool, first_directory: Option<PathBuf>) -> ExitCode {
+fn run(config_path: Option<PathBuf>, managed: bool, startup: Startup) -> ExitCode {
     dropshade_term::setup_env();
-    let boot = move || App::boot(config_path.clone(), managed, first_directory.clone());
+    let boot = move || App::boot(config_path.clone(), managed, startup.clone());
     let result = iced::daemon(boot, App::update, App::view)
         .title(App::title)
         .subscription(App::subscription)
@@ -168,6 +190,30 @@ fn check_config(path: &Path) -> ExitCode {
     ExitCode::FAILURE
 }
 
+fn valid_layout(name: String) -> Result<String, ExitCode> {
+    let Some(dir) = dropshade_session::layouts_dir() else {
+        eprintln!("dropshade: no config directory (HOME is not set)");
+        return Err(ExitCode::FAILURE);
+    };
+    match dropshade_session::layout_path(&dir, &name) {
+        Ok(_) => Ok(name),
+        Err(error) => {
+            eprintln!("dropshade: {error}");
+            Err(ExitCode::FAILURE)
+        }
+    }
+}
+
+fn list_layouts() -> ExitCode {
+    let Some(dir) = dropshade_session::layouts_dir() else {
+        return no_config_path();
+    };
+    for name in dropshade_session::list_layouts(&dir) {
+        println!("{name}");
+    }
+    ExitCode::SUCCESS
+}
+
 fn no_config_path() -> ExitCode {
     eprintln!("dropshade: no configuration path (HOME is not set); pass --config");
     ExitCode::FAILURE
@@ -209,6 +255,11 @@ mod tests {
                 .command
                 .is_none()
         );
+        let save = Cli::try_parse_from(["dropshade", "layout", "save", "work"]).expect("valid");
+        assert!(matches!(
+            save.command,
+            Some(Command::Layout(LayoutCommand::Save { .. }))
+        ));
         let install =
             Cli::try_parse_from(["dropshade", "gnome-extension", "install"]).expect("valid");
         assert!(matches!(

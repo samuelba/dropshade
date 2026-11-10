@@ -11,6 +11,7 @@ authors.workspace = true
 [dependencies]
 dropshade-term.workspace = true
 dropshade-config.workspace = true
+dropshade-session.workspace = true
 notify.workspace = true
 clap.workspace = true
 directories.workspace = true
@@ -19,7 +20,7 @@ open.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 zbus = { version = "6", default-features = false, features = ["tokio", "proxy", "service"] }
-tokio = { version = "1", default-features = false, features = ["rt", "time"] }
+tokio = { version = "1", default-features = false, features = ["rt", "time", "signal", "macros"] }
 
 [lints]
 workspace = true

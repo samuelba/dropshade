@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 
 pub use error::ConfigError;
 pub use schema::{
-    Appearance, Binding, Config, CursorShape, Font, Input, Monitor, Scrollback, TabBarPosition,
-    Terminal, ThemeChoice, Unlimited, Window,
+    Appearance, Binding, Config, CursorShape, Font, Input, Monitor, Scrollback, Session,
+    TabBarPosition, Terminal, ThemeChoice, Unlimited, Window,
 };
 
 /// The default configuration, documented; `dropshade config print-default` prints it.
@@ -239,6 +239,14 @@ mod tests {
             let error = parse_str(text).expect_err(key);
             assert!(error.to_string().contains(key), "{key}: {error}");
         }
+    }
+
+    #[test]
+    fn session_section_controls_startup() {
+        let config = parse_str("[session]\nrestore = false\nlayout = \"work\"\n").expect("valid");
+        assert!(!config.session.restore);
+        assert_eq!(config.session.layout, "work");
+        assert!(Config::default().session.restore);
     }
 
     #[test]
