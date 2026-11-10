@@ -1,0 +1,37 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+repository = "https://github.com/samuelba/dropshade"
+authors = ["Samuel Bachmann <samuel.bachmann@gmail.com>"]
+
+[workspace.dependencies]
+dropshade-term = { path = "crates/dropshade-term" }
+alacritty_terminal = "0.26"
+iced = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "tokio", "canvas", "advanced", "wayland", "x11", "web-colors"] }
+iced_graphics = "0.14"
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+similar_names = "allow"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

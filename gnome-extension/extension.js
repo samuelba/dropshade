@@ -1,0 +1,61 @@
+import Meta from 'gi://Meta';
+import Shell from 'gi://Shell';
+
+import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+
+import {ShellService} from './dbus.js';
+import {Dropdown} from './dropdown.js';
+import {AppLauncher} from './launcher.js';
+
+const SHORTCUT_KEY = 'toggle-shortcut';
+
+export default class DropshadeExtension extends Extension {
+    enable() {
+        this._settings = this.getSettings();
+        this._dropdown = new Dropdown(this._settings);
+        this._launcher = new AppLauncher(this._settings, {
+            onWindow: window => this._dropdown.attach(window),
+            onExit: () => this._dropdown.detach(),
+        });
+        Main.wm.addKeybinding(
+            SHORTCUT_KEY,
+            this._settings,
+            Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
+            Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
+            () => this._toggle());
+        this._service = new ShellService({
+            toggle: () => this._toggle(),
+            show: () => this._show(),
+            hide: () => this._dropdown.hide(),
+            isManaged: () => this._dropdown.attached,
+        });
+    }
+
+    disable() {
+        Main.wm.removeKeybinding(SHORTCUT_KEY);
+        this._service.destroy();
+        this._launcher.destroy();
+        this._dropdown.destroy();
+        this._service = null;
+        this._launcher = null;
+        this._dropdown = null;
+        this._settings = null;
+    }
+
+    _toggle() {
+        if (Main.overview.visible)
+            Main.overview.hide();
+        if (this._dropdown.attached)
+            this._dropdown.toggle();
+        else
+            this._launcher.launch();
+    }
+
+    _show() {
+        if (this._dropdown.attached)
+            this._dropdown.show();
+        else
+            this._launcher.launch();
+    }
+}

@@ -1,0 +1,19 @@
+[package]
+name = "dropshade-term"
+description = "Terminal widget for Dropshade: alacritty_terminal rendered with iced"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+alacritty_terminal.workspace = true
+iced.workspace = true
+iced_graphics.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true
