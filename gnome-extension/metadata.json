@@ -2,9 +2,14 @@
   "uuid": "dropshade@samuelba.dev",
   "name": "Dropshade",
   "description": "Companion for the Dropshade drop-down terminal: global hotkey, placement, staying on top and the slide animation.",
-  "shell-version": ["50"],
+  "shell-version": [
+    "50"
+  ],
   "settings-schema": "org.gnome.shell.extensions.dropshade",
-  "session-modes": ["user", "unlock-dialog"],
+  "session-modes": [
+    "user",
+    "unlock-dialog"
+  ],
   "url": "https://github.com/samuelba/dropshade",
-  "version-name": "0.1.0"
+  "version-name": "0.2.0"
 }
