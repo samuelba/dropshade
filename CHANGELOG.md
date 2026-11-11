@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.4.0](https://github.com/samuelba/dropshade/compare/v0.3.0...v0.4.0) (2026-11-11)
+
+
+### Features
+
+* align a narrower drop-down to the left, center or right ([a2e6d0f](https://github.com/samuelba/dropshade/commit/a2e6d0fd1cc74b3da76ab03881e40da2eca483ed))
+* bind the hotkey through the GlobalShortcuts portal ([dfb6bc5](https://github.com/samuelba/dropshade/commit/dfb6bc5c3ae1cbb6e6b3d842c88cede282496c38))
+* check GitHub for a newer release on start ([7f9a51e](https://github.com/samuelba/dropshade/commit/7f9a51e3c0459b68fcec59fb914131f1a359ff3d))
+* check GitHub for a newer release on start ([4460477](https://github.com/samuelba/dropshade/commit/44604778181b7e83a9bfb71767dae4600c777189))
+* drop down as a layer-shell surface on COSMIC and other Wayland compositors ([2d52cf7](https://github.com/samuelba/dropshade/commit/2d52cf74bcf02cd4985cac9722638ef2632ba538))
+* **gnome-extension:** support GNOME 46 to 49 ([ce15739](https://github.com/samuelba/dropshade/commit/ce157394805c440a4cd442911d0522d14d182ac8))
+* override single terminal colors on top of the theme ([130c63d](https://github.com/samuelba/dropshade/commit/130c63d48d28a5468445d0ddb1f44d7ed8774428))
+* pick the screen from an ordered list of monitors ([121ad10](https://github.com/samuelba/dropshade/commit/121ad1058145d8e93513c30b7df3bd7f52ddc878))
+* set the hotkey in COSMIC's custom shortcuts ([509cb4a](https://github.com/samuelba/dropshade/commit/509cb4a2db0f9a8f2c12f70c75731345967ef535))
+
+
+### Bug Fixes
+
+* copy and paste through the compositor's data-control protocol ([48d43a6](https://github.com/samuelba/dropshade/commit/48d43a6c8085000ca13e4bfc40dfff15a33e51dc))
+* **gnome-extension:** hide on the hotkey after focus moves elsewhere ([d8c8afc](https://github.com/samuelba/dropshade/commit/d8c8afc03d3cb4510cbaa98ce4dfd1cc59fe3c78))
+* **gnome-extension:** hide on the hotkey after focus moves elsewhere ([b1799c9](https://github.com/samuelba/dropshade/commit/b1799c99de0292f4f4625115d395f088c1c1cca3))
+* render the About icon from the app's SVG instead of a canvas copy ([5dffea8](https://github.com/samuelba/dropshade/commit/5dffea82359be43777dd8980d46de29c3ba2d974))
+
 ## [0.3.0](https://github.com/samuelba/dropshade/compare/v0.2.0...v0.3.0) (2026-11-10)
 
 
