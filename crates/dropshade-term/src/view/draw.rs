@@ -122,7 +122,7 @@ impl<Message> TerminalView<'_, Message> {
             CursorShape::Block => {
                 canvas.fill_rectangle(origin, Size::new(width, cell.height), color);
                 if let Some((c, bold, italic)) = char_at(runs, cursor) {
-                    let bg = to_iced(self.style.palette.background, 1.0);
+                    let bg = to_iced(self.style.palette.cursor_text(), 1.0);
                     canvas.fill_text(self.text(&c.to_string(), origin, bg, bold, italic));
                 }
             }

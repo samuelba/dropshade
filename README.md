@@ -10,12 +10,14 @@ A drop-down terminal for Linux, written in Rust. Press a hotkey and it slides do
 windows; press it again and it is gone.
 
 Dropshade is a native Wayland app built on [iced](https://iced.rs) and
-[`alacritty_terminal`](https://crates.io/crates/alacritty_terminal). On GNOME, a small companion
-Shell extension handles the parts Wayland leaves to the compositor: the global hotkey, placement,
-staying on top and the slide animation.
+[`alacritty_terminal`](https://crates.io/crates/alacritty_terminal). Wayland leaves placement and
+staying on top to the compositor: on COSMIC, KDE Plasma, Sway, Hyprland and other compositors with
+[layer shell](https://wayland.app/protocols/wlr-layer-shell-unstable-v1), Dropshade does both
+itself. On GNOME, a small companion Shell extension handles them, plus the global hotkey and the
+slide animation.
 
-> **Status:** early development. Tabs, the terminal core and the GNOME drop-down work; the config
-> file, session restore and packages are on the way.
+> **Status:** early development. Tabs, the terminal core and the drop-down on GNOME and COSMIC
+> work; the config file, session restore and packages are on the way.
 
 ## Shortcuts
 
@@ -36,7 +38,7 @@ Right-click the terminal for Copy, Paste, New Tab, Find, **Zoom** (in, out, norm
 session only, the configured font size stays), **Reset** (clears modes a crashed program left on,
 like mouse reporting or the alternate screen, and clears the screen; scroll up to see what was
 there), **Reset and Clean** (also clears the scrollback), **Settings** and **About**. Settings is a panel
-for theme, font size, opacity, tab bar, drop-down size and screen, cursor and session restore that
+for theme and colors (with a color picker), font size, opacity, tab bar, drop-down size and screen, cursor and session restore that
 saves straight into `config.toml`, keeping its comments.
 
 In tabs: middle-click closes, right-click opens a menu, and dragging reorders. Every shortcut can be
@@ -56,6 +58,32 @@ Themes: `dusk` (dark) and `dawn` (light) are built in, and any
 [Alacritty theme](https://github.com/alacritty/alacritty-theme) dropped into
 `~/.config/dropshade/themes/` works by its file name. `theme = { dark = "dusk", light = "dawn" }`
 follows the system's light/dark setting.
+
+Colors: any single color can be changed on top of the theme, in Settings → Colors or in a
+`[colors]` section laid out like an Alacritty theme. Only the colors you set are replaced, so they
+stay when you switch themes; delete a key to get the theme's color back.
+
+```toml
+[colors.primary]
+background = "#101216"
+[colors.selection]
+background = "#3a4150"   # unset: selections swap text and background
+[colors.normal]
+red = "#ff5f6d"
+```
+
+Screens: `window.monitor` takes one screen or a list in order of preference, and the first one
+that is connected is used, so a single config works at every desk:
+
+```toml
+[window]
+monitor = ["LEN P27h-10", "DELL U2719DC", "eDP-1", "pointer"]
+#          office          home            laptop   anything else
+```
+
+Each entry is a model (as Settings lists it), a connector such as `DP-1`, `"pointer"` (the screen
+under the mouse pointer) or `"primary"`. Models are the safer choice because docks often number
+the connectors differently; use connectors for two screens of the same model.
 
 ## Install
 
@@ -77,6 +105,21 @@ notification once per version and a download link in About Dropshade. Turn this 
 
 ```sh
 cargo build --release
+```
+
+Building needs the `libxkbcommon` development files (`libxkbcommon-devel` on Fedora,
+`libxkbcommon-dev` on Debian and Ubuntu). Running needs a Wayland or X11 session, Vulkan or OpenGL
+drivers, and `libxkbcommon`.
+
+How the terminal drops down depends on the desktop. Dropshade picks the right way on its own.
+
+### GNOME
+
+Mutter, GNOME's compositor, does not let apps place themselves over other windows, so a small
+companion Shell extension shows and hides Dropshade. It supports GNOME 46 to 50. GNOME 46 (Ubuntu
+24.04) cannot hide a window from Alt+Tab and the dash, so there the terminal is listed while shown.
+
+```sh
 ./target/release/dropshade gnome-extension install   # once; then log out and back in
 # Upgrading from a build before the dev.samuelba.Dropshade rename:
 # gnome-extensions uninstall dropshade@samuelba.github.io
@@ -85,6 +128,35 @@ cargo build --release
 Press <kbd>F12</kbd> (configurable as `window.hotkey`) and the terminal slides down; press it again
 to hide it. The extension starts Dropshade on the first press. While it runs, an icon in the top
 bar does the same on a click; right-click it to open the settings or the About dialog.
+
+### COSMIC, KDE Plasma, Sway, Hyprland and other layer-shell desktops
+
+These compositors support [layer shell](https://wayland.app/protocols/wlr-layer-shell-unstable-v1),
+so no extension is needed: Dropshade slides down over your windows by itself, on the screen in
+`window.monitor`, sized and animated by the `[window]` settings.
+
+On COSMIC, Dropshade puts `window.hotkey` into COSMIC's custom shortcuts whenever you change it
+(press Enter in the Hotkey field of Settings, or edit the config file), so the first press starts
+Dropshade. It only touches the shortcut named "Dropshade", reads the file the way COSMIC does,
+leaves it alone if anything looks unexpected or the keys are taken, and keeps the previous file in
+`~/.local/state/dropshade/cosmic-shortcuts-custom.backup`.
+
+On KDE Plasma, Hyprland and other desktops whose portal offers global shortcuts, Dropshade asks
+the desktop for `window.hotkey` when it starts (Plasma asks you to confirm once). The desktop has
+the final say over the keys and lists the shortcut as "Show or hide Dropshade" in its shortcut
+settings. This only works while Dropshade runs, so start it with your session.
+
+Elsewhere (Sway, niri, ...), add a custom shortcut in your desktop's keyboard settings that runs
+`dropshade toggle` (use the full path if the binary is not on your `PATH`). The first press starts
+Dropshade.
+
+### Other desktops and X11
+
+Without layer shell or the extension (X11, or GNOME before logging back in), Dropshade runs as an
+ordinary window: hiding closes the window while the tabs keep running, and showing opens it again.
+Bind `dropshade toggle` to a key to use it as a drop-down.
+
+### Commands
 
 | Command | What it does |
 | ------- | ------------ |
@@ -95,12 +167,6 @@ bar does the same on a click; right-click it to open the settings or the About d
 | `dropshade config print-default \| path \| check` | Inspect the configuration |
 
 There is only ever one instance: running `dropshade` again hands the request to the running one.
-
-Without the extension (other desktops, or before logging back in), Dropshade runs as an ordinary
-window: hiding closes the window while the tabs keep running, and showing opens it again. Bind
-`dropshade toggle` to a keyboard shortcut in your desktop's settings to use it as a drop-down.
-
-Runtime requirements: a Wayland or X11 session, Vulkan or OpenGL drivers, and `libxkbcommon`.
 
 ## Sessions and layouts
 

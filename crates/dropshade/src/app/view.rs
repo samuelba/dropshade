@@ -3,9 +3,9 @@
 use dropshade_term::colors::to_iced;
 use dropshade_term::{TerminalView, TerminalWidget};
 use iced::widget::{Space, button, column, container, mouse_area, opaque, pin, row, stack, text};
-use iced::{Element, Fill, Font, Point, Size, font};
+use iced::{Element, Fill, Font, Point, Size, font, mouse};
 
-use super::{App, Menu, Message, PendingClose};
+use super::{App, Host, Menu, Message, PendingClose};
 use crate::tabs::{BarPosition, BarState, TabMessage, bar};
 
 const MENU_WIDTH: f32 = 168.0;
@@ -16,7 +16,22 @@ const DIALOG_WIDTH: f32 = 380.0;
 const TEXT_SIZE: f32 = 13.0;
 
 impl App {
-    pub fn view(&self, _window: iced::window::Id) -> Element<'_, Message> {
+    /// Shows `content` over the terminal, keeping the pointer and clicks from reaching it.
+    pub(super) fn modal<'a>(
+        &self,
+        content: impl Into<Element<'a, Message>>,
+    ) -> Element<'a, Message> {
+        opaque(mouse_area(content).interaction(arrow(self.host)))
+    }
+
+    pub fn view(&self, window: iced::window::Id) -> Element<'_, Message> {
+        if self
+            .dropdown
+            .as_ref()
+            .is_some_and(|dropdown| dropdown.id == window && dropdown.measuring())
+        {
+            return Space::new().into();
+        }
         let mut layers = vec![self.body()];
         if let Some(menu) = self.menu {
             layers.push(self.menu_layer(menu));
@@ -180,11 +195,20 @@ impl App {
         .padding(20)
         .width(DIALOG_WIDTH)
         .style(move |_| colors.surface_style());
-        opaque(
+        self.modal(
             container(card)
                 .center(Fill)
                 .style(move |_| colors.backdrop_style()),
         )
+    }
+}
+
+/// The plain pointer over a modal. `iced_layershell` 0.19 shows `Idle` as the busy cursor, and the
+/// arrow for shapes it has no mapping for, such as `ContextMenu`.
+fn arrow(host: Host) -> mouse::Interaction {
+    match host {
+        Host::Layer => mouse::Interaction::ContextMenu,
+        Host::Shell | Host::Window => mouse::Interaction::Idle,
     }
 }
 
@@ -208,6 +232,17 @@ mod tests {
     use super::*;
 
     const WINDOW: Size = Size::new(1000.0, 600.0);
+
+    #[test]
+    fn modals_never_ask_layer_shell_for_the_busy_cursor() {
+        assert_ne!(arrow(Host::Layer), mouse::Interaction::Idle);
+        assert_ne!(
+            arrow(Host::Layer),
+            mouse::Interaction::None,
+            "would show the terminal's"
+        );
+        assert_eq!(arrow(Host::Window), mouse::Interaction::Idle);
+    }
 
     #[test]
     fn top_bar_menus_open_at_the_pointer() {

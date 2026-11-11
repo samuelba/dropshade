@@ -115,7 +115,7 @@ fn point_extension_at_this_binary(schemas: &Path) {
 
 /// What the extension should start. Inside an `AppImage` the binary lives in a temporary mount,
 /// so the `AppImage` file itself (`$APPIMAGE`) is the stable choice.
-fn launch_target(
+pub(crate) fn launch_target(
     appimage: Option<std::ffi::OsString>,
     current: Option<std::path::PathBuf>,
 ) -> Option<std::path::PathBuf> {

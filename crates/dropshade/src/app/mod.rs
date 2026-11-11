@@ -1,6 +1,7 @@
 //! The Dropshade application: tabs of terminals plus the chrome around them.
 
 mod about;
+mod dropdown;
 mod menu;
 mod panel;
 mod persist;
@@ -20,18 +21,24 @@ use dropshade_term::{Interaction, TermEvent};
 use iced::keyboard::{self, key::Named};
 use iced::theme::Mode;
 use iced::{Event, Point, Size, Subscription, Task, event, mouse, system, time, window};
+use iced_layershell::actions::LayerShellCustomActionWithId;
 use ipc::WindowSettings;
 
+use crate::clipboard::Clipboard;
+use crate::hotkey;
 use crate::ipc::{self, Command};
+use crate::screens::{self, Screen};
 use crate::settings::{self, Settings};
 use crate::tabs::{TabId, TabMessage, Tabs};
 pub use about::AboutMessage;
+pub use dropdown::NAMESPACE as LAYER_NAMESPACE;
 pub use menu::MenuAction;
 use menu::TerminalMenu;
 pub use panel::SettingsMessage;
 pub use persist::Startup;
 pub use search::SearchMessage;
 use session::Session;
+pub use visibility::APP_ID;
 use zoom::Zoom;
 
 pub const APP_NAME: &str = "Dropshade";
@@ -39,12 +46,20 @@ pub const INITIAL_SIZE: Size = Size::new(1100.0, 640.0);
 const BLINK_INTERVAL: Duration = Duration::from_millis(530);
 const BELL_DURATION: Duration = Duration::from_millis(120);
 const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(3);
+const SLIDE_INTERVAL: Duration = Duration::from_millis(8);
+
+/// Who shows, hides and places the window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Host {
+    /// The GNOME Shell extension, which started this process.
+    Shell,
+    /// Dropshade itself, as a layer-shell surface the compositor keeps on top.
+    Layer,
+    /// Nobody: an ordinary window that hiding closes.
+    Window,
+}
 
 #[derive(Debug)]
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "independent window and overlay flags, not one state"
-)]
 pub struct App {
     tabs: Tabs<Session>,
     config: Config,
@@ -71,13 +86,29 @@ pub struct App {
     error: Option<String>,
     /// The window, while it is open; without the extension, hiding closes it.
     window: Option<window::Id>,
+    /// The layer-shell surface, while it is shown or sliding.
+    dropdown: Option<dropdown::Dropdown>,
     focused: bool,
-    /// Started by the GNOME Shell extension, which owns showing and hiding.
-    managed: bool,
+    host: Host,
+    clipboard: Clipboard,
+    /// The connected screens, to pick from `window.monitor`; `None` until known.
+    screens: Option<Vec<Screen>>,
+    hotkey: HotkeyBinding,
     ipc: Option<zbus::Connection>,
     session_path: Option<PathBuf>,
     /// The last snapshot written, to skip saves when nothing changed.
     saved: Option<dropshade_session::Snapshot>,
+}
+
+/// Binding the hotkey outside GNOME.
+#[derive(Debug, Default)]
+struct HotkeyBinding {
+    /// Where it is bound, and how that went.
+    status: Option<(hotkey::Binder, hotkey::Status)>,
+    /// Counts requests to bind it through the portal; a new one asks again.
+    portal_requests: u32,
+    /// The desktop portal turned out to have no global shortcuts.
+    portal_missing: bool,
 }
 
 #[derive(Debug)]
@@ -118,19 +149,40 @@ pub enum Message {
     ConfigChanged,
     SystemTheme(Mode),
     Ipc(Command),
+    /// The desktop portal bound the hotkey or reported a press.
+    Portal(hotkey::PortalEvent),
+    /// GNOME's compositor reported the connected screens.
+    ScreensChanged(Vec<Screen>),
     IpcReady(Result<zbus::Connection, String>),
+    WindowOpened(window::Id, Size),
     WindowClosed(window::Id),
     CloseRequested,
     WindowFocused(bool),
     SaveSession,
     Terminate,
+    /// A step of the drop-down's slide.
+    Slide,
+    /// A request for the layer-shell runner; the plain window runner never sees one.
+    Layer(LayerShellCustomActionWithId),
     Done,
+}
+
+impl TryInto<LayerShellCustomActionWithId> for Message {
+    type Error = Self;
+
+    fn try_into(self) -> Result<LayerShellCustomActionWithId, Self> {
+        match self {
+            Self::Layer(action) => Ok(action),
+            message => Err(message),
+        }
+    }
 }
 
 impl App {
     pub fn boot(
         config_path: Option<PathBuf>,
-        managed: bool,
+        host: Host,
+        clipboard: Clipboard,
         startup: Startup,
     ) -> (Self, Task<Message>) {
         let (config, config_error) = load(config_path.as_deref());
@@ -157,8 +209,12 @@ impl App {
             window_size: INITIAL_SIZE,
             error: None,
             window: None,
+            dropdown: None,
             focused: false,
-            managed,
+            host,
+            clipboard,
+            screens: None,
+            hotkey: HotkeyBinding::default(),
             ipc: None,
             session_path: dropshade_session::session_path(),
             saved: None,
@@ -215,8 +271,35 @@ impl App {
         } else {
             Subscription::none()
         };
+        let slide = if self
+            .dropdown
+            .as_ref()
+            .is_some_and(dropdown::Dropdown::animating)
+        {
+            time::every(SLIDE_INTERVAL).map(|_| Message::Slide)
+        } else {
+            Subscription::none()
+        };
+        // On GNOME the extension places the window, from the screen this process publishes.
+        let screens = if self.host == Host::Shell {
+            Subscription::run(screens::changes).map(Message::ScreensChanged)
+        } else {
+            Subscription::none()
+        };
+        let portal = if self.binds_through_portal() {
+            let request = (
+                self.config.window.hotkey.trim().to_owned(),
+                self.hotkey.portal_requests,
+            );
+            Subscription::run_with(request, hotkey::portal_events).map(Message::Portal)
+        } else {
+            Subscription::none()
+        };
         Subscription::batch([
             autosave,
+            screens,
+            portal,
+            slide,
             Subscription::run(termination_signals),
             blink,
             bell,
@@ -227,7 +310,8 @@ impl App {
             window::resize_events().map(|(_, size)| Message::WindowResized(size)),
             window::close_requests().map(|_| Message::CloseRequested),
             window::close_events().map(Message::WindowClosed),
-            window::events().filter_map(|(_, event)| match event {
+            window::events().filter_map(|(id, event)| match event {
+                window::Event::Opened { size, .. } => Some(Message::WindowOpened(id, size)),
                 window::Event::Focused => Some(Message::WindowFocused(true)),
                 window::Event::Unfocused => Some(Message::WindowFocused(false)),
                 _ => None,
@@ -252,15 +336,59 @@ impl App {
         };
         match dropshade_config::load(path) {
             Ok(config) => {
-                self.config = config;
+                let previous = std::mem::replace(&mut self.config, config);
                 self.config_error = None;
                 self.apply_settings();
+                if let Some(panel) = self.settings_panel.as_mut() {
+                    panel.config_reloaded();
+                }
+                if previous.window.hotkey.trim() != self.config.window.hotkey.trim() {
+                    let hotkey = self.config.window.hotkey.clone();
+                    self.bind_hotkey(&hotkey);
+                }
                 return self.publish_window_settings();
             }
             Err(error) => {
                 tracing::warn!(%error, "keeping the previous configuration");
                 self.config_error = Some(error.to_string());
             }
+        }
+        Task::none()
+    }
+
+    /// Whether Dropshade sets the hotkey in COSMIC's shortcuts.
+    fn binds_in_cosmic(&self) -> bool {
+        self.host == Host::Layer && hotkey::on_cosmic()
+    }
+
+    /// Whether Dropshade asks the desktop portal for the hotkey: on layer-shell desktops other
+    /// than COSMIC. Where the portal has no global shortcuts this just finds out and stops.
+    fn binds_through_portal(&self) -> bool {
+        self.host == Host::Layer && !hotkey::on_cosmic()
+    }
+
+    /// Whether the settings panel offers the hotkey on a layer-shell desktop.
+    fn hotkey_settable(&self) -> bool {
+        self.binds_in_cosmic() || (self.binds_through_portal() && !self.hotkey.portal_missing)
+    }
+
+    /// Sets `hotkey` as the desktop's shortcut for Dropshade, where Dropshade does that. The
+    /// portal subscription follows the configured hotkey; this asks it again for the same one.
+    fn bind_hotkey(&mut self, hotkey: &str) {
+        if self.binds_in_cosmic() {
+            self.hotkey.status = Some((hotkey::Binder::Cosmic, hotkey::bind_cosmic(hotkey)));
+        } else if self.binds_through_portal() {
+            self.hotkey.portal_requests = self.hotkey.portal_requests.wrapping_add(1);
+        }
+    }
+
+    fn portal_event(&mut self, event: hotkey::PortalEvent) -> Task<Message> {
+        match event {
+            hotkey::PortalEvent::Toggle => return self.command(Command::Toggle),
+            hotkey::PortalEvent::Status(status) => {
+                self.hotkey.status = Some((hotkey::Binder::Portal, status));
+            }
+            hotkey::PortalEvent::Unavailable => self.hotkey.portal_missing = true,
         }
         Task::none()
     }

@@ -58,6 +58,68 @@ pub fn remove_value(path: &Path, section: &str, key: &str) -> Result<(), ConfigE
     })
 }
 
+/// Removes `key` like [`remove_value`], then every table along `section` that is left empty,
+/// so resetting the last color of `[colors.normal]` also drops that header. Comments above a
+/// dropped header go with it.
+///
+/// # Errors
+///
+/// Fails like [`set_value`].
+pub fn remove_value_pruned(path: &Path, section: &str, key: &str) -> Result<(), ConfigError> {
+    edit(path, |document| {
+        let parts: Vec<&str> = section.split('.').collect();
+        let Some(table) = find_table_mut(document, &parts) else {
+            return Ok(());
+        };
+        table.remove(key);
+        for depth in (1..=parts.len()).rev() {
+            let (parents, name) = (&parts[..depth - 1], parts[depth - 1]);
+            let Some(parent) = find_table_mut(document, parents) else {
+                break;
+            };
+            let empty = parent
+                .get(name)
+                .and_then(toml_edit::Item::as_table_like)
+                .is_some_and(toml_edit::TableLike::is_empty);
+            if !empty {
+                break;
+            }
+            parent.remove(name);
+        }
+        Ok(())
+    })
+}
+
+/// Removes the table `section` (which may be dotted) with everything in it. Removing a table
+/// that is not there does nothing.
+///
+/// # Errors
+///
+/// Fails like [`set_value`].
+pub fn remove_table(path: &Path, section: &str) -> Result<(), ConfigError> {
+    edit(path, |document| {
+        let parts: Vec<&str> = section.split('.').collect();
+        let Some((name, parents)) = parts.split_last() else {
+            return Ok(());
+        };
+        if let Some(parent) = find_table_mut(document, parents) {
+            parent.remove(name);
+        }
+        Ok(())
+    })
+}
+
+fn find_table_mut<'a>(
+    document: &'a mut toml_edit::DocumentMut,
+    parts: &[&str],
+) -> Option<&'a mut dyn toml_edit::TableLike> {
+    let mut table: &mut dyn toml_edit::TableLike = document.as_table_mut();
+    for name in parts {
+        table = table.get_mut(name)?.as_table_like_mut()?;
+    }
+    Some(table)
+}
+
 fn edit(
     path: &Path,
     change: impl FnOnce(&mut toml_edit::DocumentMut) -> Result<(), String>,
@@ -245,5 +307,80 @@ mod tests {
         let config = crate::load(&path).expect("valid");
         assert!(config.terminal.env.is_empty());
         assert_eq!(config.font, crate::Font::default());
+    }
+
+    #[test]
+    fn colors_are_written_into_nested_tables() {
+        let path = temp_file(
+            "colors",
+            Some(
+                "# mine
+[font]
+size = 15.0
+",
+            ),
+        );
+        set_value(
+            &path,
+            "colors.normal",
+            "red",
+            SettingValue::Text("#ff0000".into()),
+        )
+        .expect("set");
+        set_value(
+            &path,
+            "colors.primary",
+            "background",
+            SettingValue::Text("#101010".into()),
+        )
+        .expect("set");
+        let text = std::fs::read_to_string(&path).expect("read");
+        assert!(text.contains("# mine"), "{text}");
+        let config = crate::load(&path).expect("valid");
+        assert_eq!(
+            config.colors.normal.red,
+            Some(crate::theme::Rgb8::hex(0xff_00_00))
+        );
+        let error = set_value(
+            &path,
+            "colors.normal",
+            "red",
+            SettingValue::Text("crimson".into()),
+        )
+        .expect_err("not a color");
+        assert!(error.to_string().contains("crimson"), "{error}");
+    }
+
+    #[test]
+    fn pruned_removal_drops_tables_left_empty() {
+        let path = temp_file(
+            "prune",
+            Some(
+                "[colors.normal]\nred = \"#ff0000\"\n[colors.primary]\nbackground = \"#000000\"\n",
+            ),
+        );
+        remove_value_pruned(&path, "colors.normal", "red").expect("remove");
+        let text = std::fs::read_to_string(&path).expect("read");
+        assert!(!text.contains("colors.normal"), "{text}");
+        assert!(text.contains("[colors.primary]"), "{text}");
+        remove_value_pruned(&path, "colors.primary", "background").expect("remove");
+        remove_value_pruned(&path, "colors.cursor", "text").expect("absent tables are fine");
+        let text = std::fs::read_to_string(&path).expect("read");
+        assert!(!text.contains("colors"), "{text}");
+    }
+
+    #[test]
+    fn whole_tables_are_removed() {
+        let path = temp_file(
+            "table",
+            Some(
+                "[font]\nsize = 20.0\n[colors.normal]\nred = \"#ff0000\"\n[colors.bright]\nred = \"#ff8888\"\n",
+            ),
+        );
+        remove_table(&path, "colors").expect("remove");
+        remove_table(&path, "colors").expect("removing twice is fine");
+        let config = crate::load(&path).expect("valid");
+        assert_eq!(config.colors, crate::ColorOverrides::default());
+        assert!((config.font.size - 20.0).abs() < f32::EPSILON);
     }
 }

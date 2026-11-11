@@ -1,7 +1,13 @@
 //! The settings panel. Every change is written into the config file right away (keeping its
 //! comments); the file watcher then applies it like any other edit.
 
+mod color_edit;
+mod color_picker;
+mod color_slots;
+mod colors_page;
 mod fields;
+mod hsv;
+mod screen_list;
 mod view;
 
 use std::collections::{HashMap, HashSet};
@@ -9,12 +15,16 @@ use std::fmt;
 
 use dropshade_config::ThemeChoice;
 use dropshade_config::edit::{SettingValue, remove_value, set_value};
+use dropshade_config::theme::Rgb8;
 use dropshade_term::input::Chord;
 use iced::Task;
 
-use super::{App, Message};
-use crate::screens::{self, Screen, ScreenChoice};
+use super::{App, Host, Message};
+use crate::screens::{self, Screen};
+use color_slots::ColorSlot;
 use fields::{Field, Slider, Switch};
+use hsv::Hsv;
+pub use screen_list::ScreenEdit;
 
 const DEFAULT_LIGHT_THEME: &str = "dawn";
 const DEFAULT_DARK_THEME: &str = "dusk";
@@ -23,6 +33,7 @@ const DEFAULT_DARK_THEME: &str = "dusk";
 pub enum Section {
     #[default]
     Appearance,
+    Colors,
     Font,
     Window,
     Terminal,
@@ -32,8 +43,9 @@ pub enum Section {
 }
 
 impl Section {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Appearance,
+        Self::Colors,
         Self::Font,
         Self::Window,
         Self::Terminal,
@@ -45,6 +57,7 @@ impl Section {
     pub fn title(self) -> &'static str {
         match self {
             Self::Appearance => "Appearance",
+            Self::Colors => "Colors",
             Self::Font => "Font",
             Self::Window => "Window",
             Self::Terminal => "Terminal",
@@ -64,6 +77,7 @@ pub enum Choice {
     TabBar,
     TabWidth,
     Cursor,
+    Align,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -108,9 +122,9 @@ pub enum SettingsMessage {
     Submit(Field),
     Choose(Choice, String),
     Toggle(Switch, bool),
-    Screen(ScreenChoice),
+    EditScreens(ScreenEdit),
     /// The connected screens arrived from the compositor (`None` if it could not be asked).
-    Screens(Option<Vec<Screen>>),
+    ScreensListed(Option<Vec<Screen>>),
     Layout(LayoutChoice),
     AddEnv,
     RemoveEnv(String),
@@ -118,6 +132,17 @@ pub enum SettingsMessage {
     BindingAction(String),
     AddBinding,
     RemoveBinding(String),
+    /// Opens the picker for a color, or closes it when it is already open.
+    OpenPicker(ColorSlot),
+    /// The picker moved: changes the draft only.
+    PickerDrag(Hsv),
+    /// The picker was let go: writes the draft.
+    PickerRelease,
+    PickerHex(String),
+    PickerHexSubmit,
+    QuickPick(Rgb8),
+    ResetColor(ColorSlot),
+    ResetAllColors,
     OpenFile,
     Close,
 }
@@ -134,11 +159,63 @@ pub(super) struct SettingsPanel {
     /// Unknown until the compositor answers.
     screens: Option<Vec<Screen>>,
     layouts: Vec<String>,
+    /// The one color picker that is open.
+    picker: Option<PickerState>,
+    /// "Reset all colors" was clicked once and asks for a second click.
+    confirm_reset_colors: bool,
     /// Why the last change could not be saved.
     error: Option<String>,
 }
 
+/// The color being picked: a draft while it is dragged or typed, else the color in use.
+#[derive(Debug, Clone)]
+pub(super) struct PickerState {
+    slot: ColorSlot,
+    draft: Option<Hsv>,
+    /// Hex text being typed, until it is saved.
+    hex: Option<String>,
+    /// The draft differs from what was last written.
+    unsaved: bool,
+}
+
+impl PickerState {
+    fn new(slot: ColorSlot) -> Self {
+        Self {
+            slot,
+            draft: None,
+            hex: None,
+            unsaved: false,
+        }
+    }
+
+    fn shown(&self, palette: &dropshade_term::Palette) -> Hsv {
+        self.draft
+            .unwrap_or_else(|| Hsv::from_rgb(self.slot.effective(palette)))
+    }
+
+    fn hex_text(&self, palette: &dropshade_term::Palette) -> String {
+        self.hex
+            .clone()
+            .unwrap_or_else(|| self.shown(palette).to_rgb().to_hex())
+    }
+
+    /// Forgets the draft, so the picker shows the color in use again.
+    fn discard(&mut self) {
+        self.draft = None;
+        self.hex = None;
+        self.unsaved = false;
+    }
+}
+
 impl SettingsPanel {
+    /// The config file was reloaded: a picker that has nothing left to save shows the color in
+    /// use again, which may have been changed elsewhere.
+    pub(super) fn config_reloaded(&mut self) {
+        if let Some(picker) = self.picker.as_mut().filter(|picker| !picker.unsaved) {
+            picker.discard();
+        }
+    }
+
     fn slider(&self, slider: Slider, config: &dropshade_config::Config) -> f32 {
         self.sliders
             .get(&slider)
@@ -167,6 +244,14 @@ impl App {
             binding_action: fields::action_names().remove(0),
             ..SettingsPanel::default()
         });
+        if self.binds_in_cosmic() {
+            let status = crate::hotkey::cosmic_status();
+            self.hotkey.status = Some((crate::hotkey::Binder::Cosmic, status));
+        }
+        if self.host == Host::Layer {
+            let screens = crate::wayland::screens();
+            return Task::done(Message::Settings(SettingsMessage::ScreensListed(screens)));
+        }
         let connection = self.ipc.clone();
         Task::perform(
             async move {
@@ -180,7 +265,7 @@ impl App {
                 let screens = result
                     .inspect_err(|error| tracing::warn!(%error, "cannot list the screens"))
                     .ok();
-                Message::Settings(SettingsMessage::Screens(screens))
+                Message::Settings(SettingsMessage::ScreensListed(screens))
             },
         )
     }
@@ -189,6 +274,9 @@ impl App {
         let Some(mut panel) = self.settings_panel.take() else {
             return Task::none();
         };
+        if !matches!(message, SettingsMessage::ResetAllColors) {
+            panel.confirm_reset_colors = false;
+        }
         match self.apply_setting(&mut panel, message) {
             Ok(false) => return Task::none(),
             Ok(true) => panel.error = None,
@@ -225,14 +313,16 @@ impl App {
             }
             SettingsMessage::Submit(Field::Chord | Field::SendText)
             | SettingsMessage::AddBinding => self.add_binding(panel)?,
+            SettingsMessage::Submit(Field::Hotkey) => {
+                let hotkey = panel.text(Field::Hotkey, &self.config).trim().to_owned();
+                self.save_field(panel, Field::Hotkey)?;
+                self.bind_hotkey(&hotkey);
+            }
             SettingsMessage::Submit(field) => self.save_field(panel, field)?,
             SettingsMessage::Choose(choice, name) => self.choose(choice, name)?,
             SettingsMessage::Toggle(switch, on) => self.toggle(panel, switch, on)?,
-            SettingsMessage::Screen(choice) => {
-                let value = SettingValue::Text(choice.monitor.as_str().to_owned());
-                self.write("window", "monitor", value)?;
-            }
-            SettingsMessage::Screens(screens) => panel.screens = screens,
+            SettingsMessage::EditScreens(edit) => self.edit_screens(edit)?,
+            SettingsMessage::ScreensListed(screens) => panel.screens = screens,
             SettingsMessage::Layout(choice) => {
                 let name = match choice {
                     LayoutChoice::None => String::new(),
@@ -244,9 +334,18 @@ impl App {
             SettingsMessage::BindingKind(kind) => panel.binding_kind = kind,
             SettingsMessage::BindingAction(action) => panel.binding_action = action,
             SettingsMessage::RemoveBinding(chord) => self.remove("keybindings", &chord)?,
+            message @ (SettingsMessage::OpenPicker(_)
+            | SettingsMessage::PickerDrag(_)
+            | SettingsMessage::PickerRelease
+            | SettingsMessage::PickerHex(_)
+            | SettingsMessage::PickerHexSubmit
+            | SettingsMessage::QuickPick(_)
+            | SettingsMessage::ResetColor(_)
+            | SettingsMessage::ResetAllColors) => self.edit_color(panel, message)?,
             SettingsMessage::OpenFile => self.open_config_file()?,
             SettingsMessage::Close => {
                 self.save_unsaved(panel)?;
+                self.save_picker(panel)?;
                 return Ok(false);
             }
         }
@@ -291,6 +390,7 @@ impl App {
             Choice::TabBar => self.write("appearance", "tab_bar", SettingValue::Text(name)),
             Choice::TabWidth => self.write("appearance", "tab_width", SettingValue::Text(name)),
             Choice::Cursor => self.write("appearance", "cursor_shape", SettingValue::Text(name)),
+            Choice::Align => self.write("window", "align", SettingValue::Text(name)),
         }
     }
 
@@ -417,4 +517,39 @@ fn section_of(field: Field) -> Section {
 
 fn theme_pair(dark: String, light: String) -> SettingValue {
     SettingValue::Pairs(vec![("dark".into(), dark), ("light".into(), light)])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn panel_with(picker: PickerState) -> SettingsPanel {
+        SettingsPanel {
+            picker: Some(picker),
+            ..SettingsPanel::default()
+        }
+    }
+
+    #[test]
+    fn a_reload_shows_the_color_in_use_unless_a_draft_is_pending() {
+        let saved = PickerState {
+            draft: Some(Hsv::new(10.0, 0.5, 0.5)),
+            ..PickerState::new(ColorSlot::Background)
+        };
+        let mut panel = panel_with(saved.clone());
+        panel.config_reloaded();
+        let picker = panel.picker.expect("still open");
+        assert_eq!(picker.draft, None);
+        assert_eq!(
+            picker.shown(&dropshade_term::Palette::DUSK),
+            Hsv::from_rgb(color_slots::rgb8(dropshade_term::Palette::DUSK.background))
+        );
+
+        let mut panel = panel_with(PickerState {
+            unsaved: true,
+            ..saved
+        });
+        panel.config_reloaded();
+        assert!(panel.picker.expect("still open").draft.is_some());
+    }
 }

@@ -78,6 +78,11 @@ impl Service {
     }
 
     #[zbus(property)]
+    fn align(&self) -> String {
+        self.window.align.clone()
+    }
+
+    #[zbus(property)]
     fn monitor(&self) -> String {
         self.window.monitor.clone()
     }
@@ -123,6 +128,9 @@ pub async fn publish(connection: &Connection, window: WindowSettings) -> zbus::R
     if previous.height.to_bits() != window.height.to_bits() {
         service.height_changed(emitter).await?;
     }
+    if previous.align != window.align {
+        service.align_changed(emitter).await?;
+    }
     if previous.monitor != window.monitor {
         service.monitor_changed(emitter).await?;
     }
@@ -144,7 +152,7 @@ mod tests {
     #[test]
     fn open_settings_is_forwarded_to_the_app() {
         let (commands, mut received) = mpsc::unbounded();
-        let window = WindowSettings::from(&dropshade_config::Window::default());
+        let window = WindowSettings::new(&dropshade_config::Window::default(), None);
         let service = Service { commands, window };
         service.open_settings().expect("send");
         assert_eq!(received.try_recv().expect("queued"), Command::OpenSettings);
@@ -153,7 +161,7 @@ mod tests {
     #[test]
     fn open_about_is_forwarded_to_the_app() {
         let (commands, mut received) = mpsc::unbounded();
-        let window = WindowSettings::from(&dropshade_config::Window::default());
+        let window = WindowSettings::new(&dropshade_config::Window::default(), None);
         let service = Service { commands, window };
         service.open_about().expect("send");
         assert_eq!(received.try_recv().expect("queued"), Command::OpenAbout);

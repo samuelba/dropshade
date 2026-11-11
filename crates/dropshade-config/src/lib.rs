@@ -9,8 +9,9 @@ use std::path::{Path, PathBuf};
 
 pub use error::ConfigError;
 pub use schema::{
-    Appearance, Binding, Config, CursorShape, Font, Input, Monitor, Scrollback, Session,
-    TabBarPosition, TabWidth, Terminal, ThemeChoice, Unlimited, Updates, Window,
+    AnsiColors, Appearance, Binding, ColorOverrides, Config, CursorColors, CursorShape, Font,
+    Input, Monitor, Monitors, PrimaryColors, Scrollback, SelectionColors, Session, TabBarPosition,
+    TabWidth, Terminal, ThemeChoice, Unlimited, Updates, Window, WindowAlign,
 };
 
 /// The default configuration, documented; `dropshade config print-default` prints it.
@@ -64,8 +65,14 @@ fn validate(config: &Config) -> Result<(), String> {
     if config.window.hotkey.trim().is_empty() {
         return Err("window.hotkey must not be empty".into());
     }
-    if config.window.monitor.as_str().is_empty() {
-        return Err("window.monitor must not be empty".into());
+    if config
+        .window
+        .monitor
+        .entries()
+        .iter()
+        .any(|monitor| monitor.as_str().is_empty())
+    {
+        return Err("window.monitor must not contain an empty name".into());
     }
     Ok(())
 }
@@ -150,6 +157,9 @@ mod tests {
             [terminal]
             scrollback = "unlimited"
 
+            [window]
+            align = "right"
+
             [keybindings]
             "ctrl+shift+t" = "new-tab"
             "ctrl+alt+l" = { send = "clear\r" }
@@ -163,6 +173,7 @@ mod tests {
         assert_eq!(config.appearance.tab_bar, TabBarPosition::Left);
         assert_eq!(config.appearance.tab_width, TabWidth::Fit);
         assert_eq!(config.terminal.scrollback.lines(), usize::MAX);
+        assert_eq!(config.window.align, WindowAlign::Right);
         assert_eq!(
             config.keybindings["ctrl+shift+t"],
             Binding::Action("new-tab".into())
@@ -215,7 +226,10 @@ mod tests {
         .expect("valid");
         assert_eq!(config.window.hotkey, "<Super>grave");
         assert!((config.window.width - 0.8).abs() < f64::EPSILON);
-        assert_eq!(config.window.monitor, Monitor::Connector("DP-1".into()));
+        assert_eq!(
+            config.window.monitor,
+            Monitors::from(Monitor::Named("DP-1".into()))
+        );
         assert_eq!(config.window.animation_duration, 0);
         assert!(config.window.hide_on_unfocus);
         assert_eq!(
@@ -223,8 +237,32 @@ mod tests {
                 .expect("valid")
                 .window
                 .monitor,
-            Monitor::Primary
+            Monitors::from(Monitor::Primary)
         );
+    }
+
+    #[test]
+    fn monitors_can_be_listed_in_order_of_preference() {
+        let config = parse_str("[window]\nmonitor = [\"LEN P27h-10\", \"eDP-1\", \"mouse\"]\n")
+            .expect("valid");
+        assert_eq!(
+            config.window.monitor.entries(),
+            [
+                Monitor::Named("LEN P27h-10".into()),
+                Monitor::Named("eDP-1".into()),
+                Monitor::Pointer,
+            ]
+        );
+    }
+
+    #[test]
+    fn a_monitor_is_named_by_connector_or_model_in_any_case() {
+        let dell = Monitor::from("dell u2413");
+        assert!(dell.names("DP-3", "DELL U2413"));
+        assert!(!dell.names("DP-1", "DELL U2719DC"));
+        assert!(Monitor::from("dp-3").names("DP-3", ""));
+        assert!(!Monitor::from("").names("DP-3", ""));
+        assert!(!Monitor::Pointer.names("pointer", "pointer"));
     }
 
     #[test]
@@ -238,6 +276,8 @@ mod tests {
             ),
             ("[window]\nhotkey = \"\"", "window.hotkey"),
             ("[window]\nmonitor = \" \"", "window.monitor"),
+            ("[window]\nmonitor = [\"DP-1\", \"\"]", "window.monitor"),
+            ("[window]\nmonitor = []", "monitors is empty"),
         ] {
             let error = parse_str(text).expect_err(key);
             assert!(error.to_string().contains(key), "{key}: {error}");
@@ -263,5 +303,28 @@ mod tests {
     fn a_missing_file_gives_defaults() {
         let missing = Path::new("/nonexistent/dropshade/config.toml");
         assert_eq!(load(missing).expect("defaults"), Config::default());
+    }
+
+    #[test]
+    fn colors_override_the_theme_by_alacritty_key() {
+        let config = parse_str(
+            "[colors.primary]\nbackground = \"#101010\"\n[colors.cursor]\ntext = \"0x202020\"\n\
+             [colors.selection]\nbackground = \"#303030\"\n[colors.bright]\nmagenta = \"#ff00ff\"\n",
+        )
+        .expect("valid");
+        let rgb = theme::Rgb8::hex;
+        assert_eq!(config.colors.primary.background, Some(rgb(0x10_10_10)));
+        assert_eq!(config.colors.primary.foreground, None);
+        assert_eq!(config.colors.cursor.text, Some(rgb(0x20_20_20)));
+        assert_eq!(config.colors.selection.background, Some(rgb(0x30_30_30)));
+        assert_eq!(config.colors.bright.as_array()[5], Some(rgb(0xff_00_ff)));
+    }
+
+    #[test]
+    fn unknown_color_names_and_bad_colors_are_rejected() {
+        let error = parse_str("[colors.normal]\npurple = \"#ff00ff\"\n").expect_err("unknown");
+        assert!(error.to_string().contains("purple"), "{error}");
+        let error = parse_str("[colors.primary]\nbackground = \"black\"\n").expect_err("bad");
+        assert!(error.to_string().contains("#rrggbb"), "{error}");
     }
 }

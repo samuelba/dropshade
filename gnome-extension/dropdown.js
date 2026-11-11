@@ -3,6 +3,19 @@ import Clutter from 'gi://Clutter';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 /**
+ * Lists or unlists the window in Alt+Tab, the dash and the window list. Mutter before GNOME 47
+ * cannot do this for Wayland clients, so there the window stays listed.
+ */
+function setListed(window, listed) {
+    if (typeof window.hide_from_window_list !== 'function')
+        return;
+    if (listed)
+        window.show_in_window_list();
+    else
+        window.hide_from_window_list();
+}
+
+/**
  * Places the Dropshade window at the top of a monitor, keeps it above other windows and out of
  * the window list, and slides it in and out.
  */
@@ -10,6 +23,7 @@ export class Dropdown {
     constructor(prefs) {
         this._prefs = prefs;
         this._window = null;
+        this._shown = false;
         this._signals = [];
         this._focusId = global.display.connect('notify::focus-window', () => this._onFocusChanged());
     }
@@ -21,16 +35,24 @@ export class Dropdown {
     attach(window) {
         this.detach();
         this._window = window;
-        window.hide_from_window_list();
-        window.make_above();
-        window.stick();
+        setListed(window, false);
         this._connect(window, 'unmanaged', () => this._forget());
 
         Main.wm.skipNextEffect(window.get_compositor_private());
         // Mutter places new windows when they are first shown; placing earlier gets overridden.
-        this._connectOnce(window, 'shown', () => this.show());
+        // Restacking also waits: before then the window is not in the stack yet, and Mutter
+        // (seen on GNOME 46) logs a critical for it.
+        this._connectOnce(window, 'shown', () => {
+            window.make_above();
+            window.stick();
+            this.show();
+        });
     }
 
+    /**
+     * Follows whether the drop-down is shown or on its way in, not the focus: after a click into
+     * another window the shortcut hides it rather than sliding it in again.
+     */
     toggle() {
         if (this._isShown())
             this.hide();
@@ -51,22 +73,26 @@ export class Dropdown {
         }
         window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
         Main.activateWindow(window, global.get_current_time());
+        if (this._isShown())
+            return;
+        this._shown = true;
         this._slide(actor, -rect.height, 0, () => {});
     }
 
     hide() {
         const window = this._window;
-        if (!window || window.minimized)
+        if (!window || window.minimized || !this._shown)
             return;
+        this._shown = false;
         const actor = window.get_compositor_private();
         const height = window.get_frame_rect().height;
         this._slide(actor, 0, -height, () => {
             Main.wm.skipNextEffect(actor);
             // Mutter refuses to minimize windows that are hidden from the window list, so list
             // the window just for the minimize; nothing repaints in between.
-            window.show_in_window_list();
+            setListed(window, true);
             window.minimize();
-            window.hide_from_window_list();
+            setListed(window, false);
             actor.translation_y = 0;
         });
     }
@@ -80,7 +106,7 @@ export class Dropdown {
         actor?.remove_all_transitions();
         if (actor)
             actor.translation_y = 0;
-        window.show_in_window_list();
+        setListed(window, true);
         window.unmake_above();
         window.unstick();
         this._forget();
@@ -102,7 +128,7 @@ export class Dropdown {
 
     _isShown() {
         const window = this._window;
-        return window !== null && !window.minimized && window.has_focus();
+        return window !== null && !window.minimized && this._shown;
     }
 
     _monitorIndex() {
@@ -125,7 +151,7 @@ export class Dropdown {
         const width = Math.round(area.width * this._prefs.width);
         const height = Math.round(area.height * this._prefs.height);
         return {
-            x: area.x + Math.round((area.width - width) / 2),
+            x: area.x + horizontalOffset(this._prefs.align, area.width - width),
             y: area.y,
             width,
             height,
@@ -161,5 +187,18 @@ export class Dropdown {
             object.disconnect(id);
         this._signals = [];
         this._window = null;
+        this._shown = false;
+    }
+}
+
+/** How far right of the work area's left edge a window leaves `spare` pixels for `align`. */
+function horizontalOffset(align, spare) {
+    switch (align) {
+    case 'left':
+        return 0;
+    case 'right':
+        return spare;
+    default:
+        return Math.round(spare / 2);
     }
 }

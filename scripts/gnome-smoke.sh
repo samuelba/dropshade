@@ -16,7 +16,7 @@ mkdir -p "$dev/config" "$dev/state" "$dev/cache" "$dev/out" \
 install -d -m 0700 "$dev/runtime"
 ln -sfn "$root/gnome-extension" "$dev/data/gnome-shell/extensions/$uuid"
 cat > "$dev/data/gnome-shell/extensions/$devtools/metadata.json" <<JSON
-{"uuid": "$devtools", "name": "Dropshade devtools", "description": "Test-only: unsafe mode.", "shell-version": ["50"]}
+{"uuid": "$devtools", "name": "Dropshade devtools", "description": "Test-only: unsafe mode.", "shell-version": ["46", "47", "48", "49", "50"]}
 JSON
 cat > "$dev/data/gnome-shell/extensions/$devtools/extension.js" <<'JS'
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';

@@ -5,11 +5,15 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use crate::theme::Rgb8;
+
 #[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub font: Font,
     pub appearance: Appearance,
+    /// Colors that replace the theme's, laid out like an Alacritty theme.
+    pub colors: ColorOverrides,
     pub terminal: Terminal,
     pub input: Input,
     pub window: Window,
@@ -89,6 +93,74 @@ impl ThemeChoice {
             Self::FollowSystem { light, .. } if prefers_light => light,
             Self::FollowSystem { dark, .. } => dark,
         }
+    }
+}
+
+/// Colors set on top of the theme. Every color is optional; unset ones come from the theme.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ColorOverrides {
+    pub primary: PrimaryColors,
+    pub cursor: CursorColors,
+    pub selection: SelectionColors,
+    pub normal: AnsiColors,
+    pub bright: AnsiColors,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PrimaryColors {
+    pub foreground: Option<Rgb8>,
+    pub background: Option<Rgb8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CursorColors {
+    pub cursor: Option<Rgb8>,
+    /// Text under a block cursor.
+    pub text: Option<Rgb8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct SelectionColors {
+    pub text: Option<Rgb8>,
+    pub background: Option<Rgb8>,
+}
+
+/// The eight ANSI colors of one row (normal or bright).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AnsiColors {
+    pub black: Option<Rgb8>,
+    pub red: Option<Rgb8>,
+    pub green: Option<Rgb8>,
+    pub yellow: Option<Rgb8>,
+    pub blue: Option<Rgb8>,
+    pub magenta: Option<Rgb8>,
+    pub cyan: Option<Rgb8>,
+    pub white: Option<Rgb8>,
+}
+
+impl AnsiColors {
+    /// Key names in palette order, as written in the file.
+    pub const NAMES: [&'static str; 8] = [
+        "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
+    ];
+
+    /// The colors in palette order (black first).
+    pub const fn as_array(&self) -> [Option<Rgb8>; 8] {
+        [
+            self.black,
+            self.red,
+            self.green,
+            self.yellow,
+            self.blue,
+            self.magenta,
+            self.cyan,
+            self.white,
+        ]
     }
 }
 
@@ -229,7 +301,9 @@ pub struct Window {
     pub width: f64,
     /// Height as a fraction of the monitor's work area.
     pub height: f64,
-    pub monitor: Monitor,
+    /// Where a window narrower than the work area sits.
+    pub align: WindowAlign,
+    pub monitor: Monitors,
     /// Slide animation length in milliseconds; 0 disables it.
     pub animation_duration: u32,
     /// Hide the terminal when another window gets the focus.
@@ -242,43 +316,124 @@ impl Default for Window {
             hotkey: "F12".into(),
             width: 1.0,
             height: 0.5,
-            monitor: Monitor::default(),
+            align: WindowAlign::Center,
+            monitor: Monitors::default(),
             animation_duration: 180,
             hide_on_unfocus: false,
         }
     }
 }
 
-/// The monitor the terminal drops down on.
+/// The horizontal position of the drop-down on its screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WindowAlign {
+    Left,
+    #[default]
+    Center,
+    Right,
+}
+
+impl WindowAlign {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Left => "left",
+            Self::Center => "center",
+            Self::Right => "right",
+        }
+    }
+}
+
+/// One entry of `window.monitor`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Monitor {
     /// The monitor under the mouse pointer.
     #[default]
     Pointer,
     Primary,
-    /// A monitor by connector name, such as "DP-1" or "eDP-1".
-    Connector(String),
+    /// A monitor by connector, such as "DP-1" or "eDP-1", or by model, such as "DELL U2413".
+    Named(String),
 }
 
 impl<'de> Deserialize<'de> for Monitor {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let name = String::deserialize(deserializer)?;
-        Ok(match name.trim() {
+        Ok(Self::from(String::deserialize(deserializer)?.as_str()))
+    }
+}
+
+impl From<&str> for Monitor {
+    fn from(name: &str) -> Self {
+        match name.trim() {
             "pointer" | "mouse" => Self::Pointer,
             "primary" => Self::Primary,
-            connector => Self::Connector(connector.to_owned()),
-        })
+            name => Self::Named(name.to_owned()),
+        }
     }
 }
 
 impl Monitor {
-    /// The value sent to the GNOME Shell extension.
+    /// How the entry is written in the config file.
     pub fn as_str(&self) -> &str {
         match self {
             Self::Pointer => "pointer",
             Self::Primary => "primary",
-            Self::Connector(name) => name,
+            Self::Named(name) => name,
         }
+    }
+
+    /// Whether this names the screen on `connector` showing `model`. Case does not matter.
+    pub fn names(&self, connector: &str, model: &str) -> bool {
+        match self {
+            Self::Named(name) => {
+                name.eq_ignore_ascii_case(connector)
+                    || (!model.is_empty() && name.eq_ignore_ascii_case(model))
+            }
+            Self::Pointer | Self::Primary => false,
+        }
+    }
+}
+
+/// The monitors the terminal drops down on, most preferred first: the first one that is
+/// connected is used. Written as one string or a list, and never empty.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Monitors(Vec<Monitor>);
+
+impl Monitors {
+    /// `None` for an empty list.
+    pub fn new(entries: Vec<Monitor>) -> Option<Self> {
+        (!entries.is_empty()).then_some(Self(entries))
+    }
+
+    pub fn entries(&self) -> &[Monitor] {
+        &self.0
+    }
+}
+
+impl Default for Monitors {
+    fn default() -> Self {
+        Self(vec![Monitor::Pointer])
+    }
+}
+
+impl From<Monitor> for Monitors {
+    fn from(monitor: Monitor) -> Self {
+        Self(vec![monitor])
+    }
+}
+
+impl<'de> Deserialize<'de> for Monitors {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum OneOrMany {
+            One(Monitor),
+            Many(Vec<Monitor>),
+        }
+        let entries = match OneOrMany::deserialize(deserializer)? {
+            OneOrMany::One(monitor) => vec![monitor],
+            OneOrMany::Many(entries) => entries,
+        };
+        Self::new(entries).ok_or_else(|| serde::de::Error::custom("the list of monitors is empty"))
     }
 }
 

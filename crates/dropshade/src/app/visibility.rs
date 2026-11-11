@@ -1,12 +1,16 @@
 //! Showing and hiding the window. With the GNOME Shell extension, it owns visibility and these
-//! requests are forwarded to it; without it, hiding closes the window while the tabs keep
-//! running, and showing opens a new one.
+//! requests are forwarded to it. On compositors with layer shell, Dropshade slides its own
+//! drop-down in and out. Otherwise hiding closes the window while the tabs keep running, and
+//! showing opens a new one.
+
+use std::time::Instant;
 
 use iced::futures::channel::mpsc;
 use iced::window::settings::PlatformSpecific;
 use iced::{Task, window};
 
-use super::{App, INITIAL_SIZE, Message, WindowSettings};
+use super::dropdown::Dropdown;
+use super::{App, Host, INITIAL_SIZE, Message, WindowSettings};
 use crate::ipc::client::{self, Visibility};
 use crate::ipc::{Command, service};
 
@@ -28,14 +32,21 @@ pub fn window_settings(managed: bool) -> window::Settings {
 
 impl App {
     pub(super) fn open_window(&mut self) -> Task<Message> {
-        let (id, open) = window::open(window_settings(self.managed));
+        if self.host == Host::Layer {
+            // Screens come and go between shows, so the list is resolved again each time.
+            self.screens = crate::wayland::screens();
+            let (dropdown, open) = Dropdown::open(&self.config.window, self.screens.as_deref());
+            self.dropdown = Some(dropdown);
+            return open;
+        }
+        let (id, open) = window::open(window_settings(self.host == Host::Shell));
         self.window = Some(id);
         open.discard()
     }
 
     pub(super) fn start_service(&self) -> Task<Message> {
         let (sender, commands) = mpsc::unbounded();
-        let window = WindowSettings::from(&self.config.window);
+        let window = WindowSettings::new(&self.config.window, self.screens.as_deref());
         let start = Task::perform(service::start(window, sender), |result| {
             Message::IpcReady(result.map_err(|error| error.to_string()))
         });
@@ -76,9 +87,76 @@ impl App {
     }
 
     pub(super) fn visibility(&mut self, action: Visibility) -> Task<Message> {
-        if self.managed {
-            return self.forward_to_shell(action);
+        match self.host {
+            Host::Shell => self.forward_to_shell(action),
+            Host::Layer => self.slide(action),
+            Host::Window => self.window_visibility(action),
         }
+    }
+
+    /// Toggling follows whether the drop-down is shown or on its way in, not the focus: after a
+    /// click into another window the hotkey hides it rather than focusing it again.
+    fn slide(&mut self, action: Visibility) -> Task<Message> {
+        let now = Instant::now();
+        let showing = self.dropdown.as_ref().is_some_and(Dropdown::showing);
+        match (action, self.dropdown.as_mut()) {
+            (Visibility::Toggle, Some(dropdown)) if showing => dropdown.hide(now),
+            (Visibility::Hide, Some(dropdown)) => dropdown.hide(now),
+            (Visibility::Toggle | Visibility::Show, Some(dropdown)) => dropdown.show(now),
+            (Visibility::Toggle | Visibility::Show, None) => return self.open_window(),
+            (Visibility::Hide, None) => {}
+        }
+        Task::none()
+    }
+
+    /// Advances the drop-down's slide, and closes it once it has slid out.
+    pub(super) fn slide_step(&mut self) -> Task<Message> {
+        let Some(dropdown) = self.dropdown.as_mut() else {
+            return Task::none();
+        };
+        let (step, hidden) = dropdown.tick(Instant::now());
+        if !hidden {
+            return step;
+        }
+        self.focused = false;
+        self.dropdown
+            .take()
+            .map_or_else(Task::none, |dropdown| window::close(dropdown.id))
+    }
+
+    /// The drop-down's surface reported its first size: the work area it was measuring.
+    pub(super) fn window_opened(&mut self, id: window::Id, size: iced::Size) -> Task<Message> {
+        match self.dropdown.as_mut() {
+            Some(dropdown) if dropdown.id == id => dropdown.placed(size, Instant::now()),
+            _ => Task::none(),
+        }
+    }
+
+    pub(super) fn window_closed(&mut self, id: window::Id) {
+        if self.window == Some(id) {
+            self.window = None;
+            self.focused = false;
+        }
+        if self
+            .dropdown
+            .as_ref()
+            .is_some_and(|dropdown| dropdown.id == id)
+        {
+            self.dropdown = None;
+            self.focused = false;
+        }
+    }
+
+    pub(super) fn window_focused(&mut self, focused: bool) -> Task<Message> {
+        self.focused = focused;
+        // The extension does this on GNOME; a layer surface has to do it itself.
+        if !focused && self.host == Host::Layer && self.config.window.hide_on_unfocus {
+            return self.visibility(Visibility::Hide);
+        }
+        Task::none()
+    }
+
+    fn window_visibility(&mut self, action: Visibility) -> Task<Message> {
         // Without the extension GNOME may not focus a window opened outside a user action, so
         // toggling follows whether the window is open, not whether it has the focus.
         match action {
@@ -93,7 +171,7 @@ impl App {
         let Some(connection) = self.ipc.clone() else {
             return Task::none();
         };
-        let window = WindowSettings::from(&self.config.window);
+        let window = WindowSettings::new(&self.config.window, self.screens.as_deref());
         Task::perform(
             async move { service::publish(&connection, window).await },
             |result| {

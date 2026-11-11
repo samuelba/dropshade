@@ -9,6 +9,19 @@ const DEFAULT_COMMAND = ['dropshade'];
 const SIGTERM = 15;
 
 /**
+ * Starts argv as a Wayland client whose windows Mutter can attribute to it. GNOME 47 replaced
+ * WaylandClient.new() and spawnv() with new_subprocess(); GNOME 46 only has the former.
+ */
+function spawnClient(launcher, argv) {
+    if (Meta.WaylandClient.new_subprocess) {
+        const client = Meta.WaylandClient.new_subprocess(global.context, launcher, argv);
+        return {client, subprocess: client.get_subprocess()};
+    }
+    const client = Meta.WaylandClient.new(global.context, launcher);
+    return {client, subprocess: client.spawnv(global.display, argv)};
+}
+
+/**
  * Starts Dropshade as a privileged Wayland client so its window can be identified reliably.
  */
 export class AppLauncher {
@@ -19,6 +32,7 @@ export class AppLauncher {
         this._onWindow = onWindow;
         this._onExit = onExit;
         this._client = null;
+        this._subprocess = null;
         this._windowCreatedId = global.display.connect('window-created', (_display, window) => {
             if (this._client?.owns_window(window))
                 this._onWindow(window);
@@ -42,14 +56,17 @@ export class AppLauncher {
         const launcher = new Gio.SubprocessLauncher({flags: Gio.SubprocessFlags.NONE});
         launcher.setenv('DROPSHADE_SHELL_LAUNCHED', '1', true);
 
+        let spawned;
         try {
-            this._client = Meta.WaylandClient.new_subprocess(global.context, launcher, argv);
+            spawned = spawnClient(launcher, argv);
         } catch (error) {
             console.error(`Dropshade: could not start ${argv.join(' ')}: ${error.message}`);
             Main.notifyError('Dropshade could not start', `${argv[0]}: ${error.message}`);
             return;
         }
-        this._watchExit(this._client);
+        this._client = spawned.client;
+        this._subprocess = spawned.subprocess;
+        this._watchExit(spawned.client, spawned.subprocess);
     }
 
     _notifyMissing(program) {
@@ -77,8 +94,7 @@ export class AppLauncher {
         MessageTray.getSystemSource().addNotification(notification);
     }
 
-    _watchExit(client) {
-        const subprocess = client.get_subprocess();
+    _watchExit(client, subprocess) {
         subprocess.wait_async(null, (proc, result) => {
             try {
                 proc.wait_finish(result);
@@ -88,6 +104,7 @@ export class AppLauncher {
             if (this._client !== client)
                 return;
             this._client = null;
+            this._subprocess = null;
             this._onExit();
         });
     }
@@ -95,8 +112,9 @@ export class AppLauncher {
     destroy() {
         global.display.disconnect(this._windowCreatedId);
         this._missingNotification?.destroy();
-        const client = this._client;
+        const subprocess = this._subprocess;
         this._client = null;
-        client?.get_subprocess().send_signal(SIGTERM);
+        this._subprocess = null;
+        subprocess?.send_signal(SIGTERM);
     }
 }

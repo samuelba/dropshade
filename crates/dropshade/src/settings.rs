@@ -38,13 +38,11 @@ pub struct Settings {
 pub fn build(config: &Config, prefers_light: bool, themes_dir: Option<&Path>) -> Settings {
     let mut warnings = Vec::new();
     let theme_name = config.appearance.theme.name(prefers_light);
-    let palette = theme::resolve(theme_name, themes_dir).map_or_else(
-        |error| {
-            warnings.push(format!("{error}; using \"dusk\""));
-            Palette::DUSK
-        },
-        |colors| palette(&colors),
-    );
+    let theme = theme::resolve(theme_name, themes_dir).unwrap_or_else(|error| {
+        warnings.push(format!("{error}; using \"dusk\""));
+        theme::DUSK
+    });
+    let palette = palette(&theme.with_overrides(&config.colors));
     let font = font(&config.font.family, &mut warnings);
     let style = ViewStyle {
         palette,
@@ -106,6 +104,9 @@ fn palette(colors: &ThemeColors) -> Palette {
         foreground: rgb(colors.foreground),
         background: rgb(colors.background),
         cursor: rgb(colors.cursor),
+        cursor_text: colors.cursor_text.map(rgb),
+        selection_foreground: colors.selection_text.map(rgb),
+        selection_background: colors.selection_background.map(rgb),
         normal: colors.normal.map(rgb),
         bright: colors.bright.map(rgb),
     }
@@ -292,6 +293,42 @@ mod tests {
                 .iter()
                 .any(|w| w.contains("Not A Font 42"))
         );
+    }
+
+    #[test]
+    fn color_overrides_replace_theme_colors_everywhere() {
+        let settings = settings(
+            "[appearance]\ntheme = \"dawn\"\n[colors.primary]\nbackground = \"#000000\"\n\
+             [colors.selection]\nbackground = \"#333333\"\n[colors.normal]\nred = \"#ff0000\"\n",
+        );
+        let palette = settings.style.palette;
+        assert_eq!(palette.background, Rgb { r: 0, g: 0, b: 0 });
+        assert_eq!(palette.foreground, rgb(theme::DAWN.foreground));
+        assert_eq!(palette.normal[1], Rgb { r: 255, g: 0, b: 0 });
+        assert_eq!(
+            palette.selection_background,
+            Some(Rgb {
+                r: 51,
+                g: 51,
+                b: 51
+            })
+        );
+        assert_eq!(palette.selection_foreground, None);
+        assert_eq!(settings.colors, UiColors::from_palette(&palette));
+    }
+
+    #[test]
+    fn color_overrides_apply_to_both_themes_of_a_pair_and_over_unknown_themes() {
+        let text = "[appearance]\ntheme = { dark = \"dusk\", light = \"dawn\" }\n\
+                    [colors.cursor]\ncursor = \"#00ff00\"\n";
+        let config = parse(text, Path::new("t")).expect("valid");
+        let green = Rgb { r: 0, g: 255, b: 0 };
+        assert_eq!(build(&config, true, None).style.palette.cursor, green);
+        assert_eq!(build(&config, false, None).style.palette.cursor, green);
+        let unknown =
+            settings("[appearance]\ntheme = \"nope\"\n[colors.cursor]\ncursor = \"#00ff00\"\n");
+        assert_eq!(unknown.style.palette.cursor, green);
+        assert_eq!(unknown.warnings.len(), 1);
     }
 
     #[test]

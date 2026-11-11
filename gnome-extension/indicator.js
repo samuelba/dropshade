@@ -23,12 +23,31 @@ class DropshadeIndicatorButton extends PanelMenu.Button {
         this.menu.addAction('Settings…', onSettings);
         this.menu.addAction('About Dropshade', onAbout);
 
-        // The stock gesture opens the menu on any button; only the secondary one should.
-        this.remove_action(this._clickGesture);
-        this._clickGesture = new Clutter.ClickGesture();
-        this._clickGesture.set_recognize_on_press(true);
-        this._clickGesture.connect('recognize', gesture => this._onClick(gesture.get_button()));
-        this.add_action(this._clickGesture);
+        // The stock handler opens the menu on any button; only the secondary one should.
+        if (this._clickGesture) {
+            this.remove_action(this._clickGesture);
+            this._clickGesture = new Clutter.ClickGesture();
+            this._clickGesture.set_recognize_on_press(true);
+            this._clickGesture.connect('recognize', gesture => this._onClick(gesture.get_button()));
+            this.add_action(this._clickGesture);
+        } else {
+            // Before the click gesture, the button toggled its menu in vfunc_event; a handler on
+            // the event signal runs first and stops it.
+            this.connect('event', (_actor, event) => this._onEvent(event));
+        }
+    }
+
+    _onEvent(event) {
+        switch (event.type()) {
+        case Clutter.EventType.BUTTON_PRESS:
+            this._onClick(event.get_button());
+            return Clutter.EVENT_STOP;
+        case Clutter.EventType.TOUCH_BEGIN:
+            this._onClick(Clutter.BUTTON_PRIMARY);
+            return Clutter.EVENT_STOP;
+        default:
+            return Clutter.EVENT_PROPAGATE;
+        }
     }
 
     _onClick(button) {

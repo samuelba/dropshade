@@ -1,40 +1,41 @@
 //! The settings panel's layout: a section list on the left, the section's settings on the right.
 
-use dropshade_config::{Config, CursorShape, TabBarPosition, TabWidth, ThemeChoice, theme};
+use dropshade_config::{Config, CursorShape, TabBarPosition, TabWidth};
 use dropshade_term::colors::to_iced;
 use iced::widget::{
-    Column, Space, button, column, container, opaque, pick_list, row, scrollable, slider, text,
-    text_input, toggler,
+    Column, Space, button, column, container, pick_list, row, scrollable, slider, text, text_input,
+    toggler,
 };
 use iced::{Color, Element, Fill, Font, Length, Padding, font};
 
 use super::fields::{self, Field, Slider, Switch};
 use super::{BindingKind, Choice, LayoutChoice, Section, SettingsMessage, SettingsPanel};
-use crate::app::{App, Message};
-use crate::screens::{self, Screen};
+use crate::app::{App, Host, Message};
+use crate::hotkey;
 use crate::theme::UiColors;
 
 const MAX_WIDTH: f32 = 720.0;
 const MAX_HEIGHT: f32 = 560.0;
 const MARGIN: f32 = 24.0;
 const SIDEBAR_WIDTH: f32 = 150.0;
-const LABEL_WIDTH: f32 = 170.0;
+pub(super) const LABEL_WIDTH: f32 = 170.0;
 const VALUE_WIDTH: f32 = 56.0;
-const TEXT_SIZE: f32 = 13.0;
+pub(super) const TEXT_SIZE: f32 = 13.0;
 const HINT_SIZE: f32 = 11.5;
 const BAR_POSITIONS: [&str; 4] = ["top", "bottom", "left", "right"];
 const TAB_WIDTHS: [&str; 2] = ["fixed", "fit"];
+const ALIGNMENTS: [&str; 3] = ["left", "center", "right"];
 const CURSOR_SHAPES: [&str; 3] = ["block", "beam", "underline"];
 
 /// Everything a section needs to draw itself.
 #[derive(Clone, Copy)]
-struct Ctx<'a> {
-    panel: &'a SettingsPanel,
-    config: &'a Config,
-    colors: UiColors,
+pub(super) struct Ctx<'a> {
+    pub(super) panel: &'a SettingsPanel,
+    pub(super) config: &'a Config,
+    pub(super) colors: UiColors,
 }
 
-fn settings(message: SettingsMessage) -> Message {
+pub(super) fn settings(message: SettingsMessage) -> Message {
     Message::Settings(message)
 }
 
@@ -57,7 +58,7 @@ impl App {
             .width((self.window_size.width - MARGIN).clamp(0.0, MAX_WIDTH))
             .height((self.window_size.height - MARGIN).clamp(0.0, MAX_HEIGHT))
             .style(move |_| colors.surface_style());
-        opaque(
+        self.modal(
             container(card)
                 .center(Fill)
                 .style(move |_| colors.backdrop_style()),
@@ -70,9 +71,19 @@ impl App {
             .font(bold())
             .color(ctx.colors.text);
         let body = match ctx.panel.section {
-            Section::Appearance => appearance(ctx, self.prefers_light),
+            Section::Appearance => appearance(ctx),
+            Section::Colors => {
+                super::colors_page::colors(ctx, self.prefers_light, &self.settings.style)
+            }
             Section::Font => font_section(ctx),
-            Section::Window => window(ctx, self.managed),
+            Section::Window => {
+                let hotkey = if self.hotkey_settable() {
+                    HotkeyField::Shown(self.hotkey.status.as_ref())
+                } else {
+                    HotkeyField::Hidden
+                };
+                window(ctx, self.host, hotkey, self.danger())
+            }
             Section::Terminal => terminal(ctx),
             Section::Input => input(ctx),
             Section::Session => session(ctx),
@@ -157,22 +168,8 @@ fn divider(colors: UiColors) -> Element<'static, Message> {
         .into()
 }
 
-fn appearance(ctx: Ctx<'_>, prefers_light: bool) -> Element<'static, Message> {
+fn appearance(ctx: Ctx<'_>) -> Element<'static, Message> {
     let appearance = &ctx.config.appearance;
-    let themes: Element<'static, Message> = match &appearance.theme {
-        ThemeChoice::Single(_) => choice(
-            "Theme",
-            theme_names(),
-            appearance.theme.name(prefers_light),
-            Choice::Theme,
-        ),
-        ThemeChoice::FollowSystem { dark, light } => column![
-            choice("Dark theme", theme_names(), dark, Choice::DarkTheme),
-            choice("Light theme", theme_names(), light, Choice::LightTheme),
-        ]
-        .spacing(12)
-        .into(),
-    };
     let cursor = setting(
         "Cursor",
         row![
@@ -191,8 +188,7 @@ fn appearance(ctx: Ctx<'_>, prefers_light: bool) -> Element<'static, Message> {
         .align_y(iced::Center),
     );
     column![
-        switch(ctx, "Follow system light/dark", Switch::FollowSystem),
-        themes,
+        hint("Themes and colors are on the Colors page.", ctx.colors),
         slider_row(ctx, Slider::Opacity),
         slider_row(ctx, Slider::Padding),
         choice(
@@ -232,30 +228,128 @@ fn font_section(ctx: Ctx<'_>) -> Element<'static, Message> {
     .into()
 }
 
-fn window(ctx: Ctx<'_>, managed: bool) -> Element<'static, Message> {
-    let note: Element<'static, Message> = if managed {
-        Space::new().into()
-    } else {
-        hint(
-            "These apply when the GNOME Shell extension shows Dropshade.",
-            ctx.colors,
-        )
-    };
-    column![
-        note,
+/// On layer-shell desktops, whether the hotkey can be set, with its binding once known.
+enum HotkeyField<'a> {
+    Hidden,
+    Shown(Option<&'a (hotkey::Binder, hotkey::Status)>),
+}
+
+fn window(
+    ctx: Ctx<'_>,
+    host: Host,
+    hotkey: HotkeyField<'_>,
+    danger: Color,
+) -> Element<'static, Message> {
+    let field = || {
         hinted(
             text_row(ctx, "Hotkey", Field::Hotkey, "F12"),
             "GNOME accelerator syntax, such as F12 or <Super>grave.",
             ctx.colors,
-        ),
-        screen(ctx.panel.screens.as_deref(), &ctx.config.window.monitor),
+        )
+    };
+    let applies = "Changes apply the next time the terminal drops down.";
+    let (note, hotkey): (Element<'static, Message>, Element<'static, Message>) =
+        match (host, hotkey) {
+            (Host::Shell, _) => (Space::new().into(), field()),
+            (Host::Layer, HotkeyField::Shown(bound)) => {
+                let status = bound.map_or_else(
+                    || Space::new().into(),
+                    |(binder, status)| binding_status(*binder, status, ctx.colors, danger),
+                );
+                (
+                    hint(applies, ctx.colors),
+                    column![
+                        field(),
+                        row![Space::new().width(LABEL_WIDTH + 10.0), status]
+                    ]
+                    .spacing(4)
+                    .into(),
+                )
+            }
+            (Host::Layer, HotkeyField::Hidden) => (
+                hint(
+                    "Bind \"dropshade toggle\" to a key in your desktop's keyboard settings. \
+                     Changes apply the next time the terminal drops down.",
+                    ctx.colors,
+                ),
+                Space::new().into(),
+            ),
+            (Host::Window, _) => (
+                hint(
+                    "These apply when the GNOME Shell extension shows Dropshade.",
+                    ctx.colors,
+                ),
+                field(),
+            ),
+        };
+    column![
+        note,
+        hotkey,
+        super::screen_list::screen_list(ctx),
         slider_row(ctx, Slider::Width),
         slider_row(ctx, Slider::Height),
+        hinted(
+            choice(
+                "Position",
+                strings(&ALIGNMENTS),
+                ctx.config.window.align.as_str(),
+                Choice::Align
+            ),
+            "Where a window narrower than the screen sits.",
+            ctx.colors,
+        ),
         slider_row(ctx, Slider::Animation),
         switch(ctx, "Hide when unfocused", Switch::HideOnUnfocus),
     ]
     .spacing(12)
     .into()
+}
+
+/// Which keys the desktop runs Dropshade on, and why not if they could not be set.
+fn binding_status(
+    binder: hotkey::Binder,
+    status: &hotkey::Status,
+    colors: UiColors,
+    danger: Color,
+) -> Element<'static, Message> {
+    use hotkey::{Binder, Status};
+    let (message, color) = match (binder, status) {
+        (Binder::Cosmic, Status::Bound(keys)) => (
+            format!("COSMIC runs Dropshade on {keys}. Press Enter in the field to change it."),
+            colors.muted,
+        ),
+        (Binder::Cosmic, Status::Unbound) => (
+            "Not in COSMIC's shortcuts yet: press Enter in the field to add it.".to_owned(),
+            colors.accent,
+        ),
+        (Binder::Cosmic, Status::Failed(error)) => (
+            format!("COSMIC's shortcuts were left alone: {error}"),
+            danger,
+        ),
+        (Binder::Portal, Status::Bound(keys)) if keys.is_empty() => (
+            "Registered with the desktop as \"Show or hide Dropshade\"; assign it a key in the \
+             desktop's shortcut settings."
+                .to_owned(),
+            colors.muted,
+        ),
+        (Binder::Portal, Status::Bound(keys)) => (
+            format!(
+                "The desktop toggles Dropshade on {keys} while it runs. The desktop has the final \
+                 say: if it keeps another key, change it in its shortcut settings."
+            ),
+            colors.muted,
+        ),
+        (Binder::Portal, Status::Unbound) => (
+            "The desktop did not add the shortcut. Press Enter in the field to ask again."
+                .to_owned(),
+            colors.accent,
+        ),
+        (Binder::Portal, Status::Failed(error)) => (
+            format!("The desktop's shortcut portal failed: {error}"),
+            danger,
+        ),
+    };
+    text(message).size(HINT_SIZE).color(color).into()
 }
 
 fn terminal(ctx: Ctx<'_>) -> Element<'static, Message> {
@@ -465,11 +559,11 @@ fn hinted(
     .into()
 }
 
-fn hint(note: &'static str, colors: UiColors) -> Element<'static, Message> {
+pub(super) fn hint(note: &'static str, colors: UiColors) -> Element<'static, Message> {
     text(note).size(HINT_SIZE).color(colors.muted).into()
 }
 
-fn subheading(title: &'static str, colors: UiColors) -> Element<'static, Message> {
+pub(super) fn subheading(title: &'static str, colors: UiColors) -> Element<'static, Message> {
     container(text(title).size(TEXT_SIZE).font(bold()).color(colors.text))
         .padding(Padding::ZERO.top(6.0))
         .into()
@@ -496,7 +590,7 @@ fn slider_row(ctx: Ctx<'_>, which: Slider) -> Element<'static, Message> {
     )
 }
 
-fn switch(ctx: Ctx<'_>, name: &'static str, which: Switch) -> Element<'static, Message> {
+pub(super) fn switch(ctx: Ctx<'_>, name: &'static str, which: Switch) -> Element<'static, Message> {
     setting(
         name,
         toggler(which.current(ctx.config))
@@ -504,7 +598,7 @@ fn switch(ctx: Ctx<'_>, name: &'static str, which: Switch) -> Element<'static, M
     )
 }
 
-fn choice(
+pub(super) fn choice(
     name: &'static str,
     options: Vec<String>,
     selected: &str,
@@ -594,25 +688,7 @@ fn add_button(message: SettingsMessage, colors: UiColors) -> Element<'static, Me
         .into()
 }
 
-fn screen(
-    screens: Option<&[Screen]>,
-    current: &dropshade_config::Monitor,
-) -> Element<'static, Message> {
-    let choices = screens::choices(screens, current);
-    let selected = choices
-        .iter()
-        .find(|choice| &choice.monitor == current)
-        .cloned();
-    setting(
-        "Screen",
-        pick_list(choices, selected, |choice| {
-            settings(SettingsMessage::Screen(choice))
-        })
-        .text_size(TEXT_SIZE),
-    )
-}
-
-fn bold() -> Font {
+pub(super) fn bold() -> Font {
     Font {
         weight: font::Weight::Bold,
         ..Font::DEFAULT
@@ -645,26 +721,4 @@ fn cursor_name(shape: CursorShape) -> &'static str {
         CursorShape::Beam => "beam",
         CursorShape::Underline => "underline",
     }
-}
-
-/// Built-in themes followed by the theme files in the themes directory.
-fn theme_names() -> Vec<String> {
-    let mut names = strings(&theme::BUILT_IN);
-    if let Some(dir) = dropshade_config::themes_dir()
-        && let Ok(entries) = std::fs::read_dir(dir)
-    {
-        let mut files: Vec<String> = entries
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| path.extension().is_some_and(|ext| ext == "toml"))
-            .filter_map(|path| {
-                path.file_stem()
-                    .map(|stem| stem.to_string_lossy().into_owned())
-            })
-            .filter(|name| !names.contains(name))
-            .collect();
-        files.sort();
-        names.extend(files);
-    }
-    names
 }

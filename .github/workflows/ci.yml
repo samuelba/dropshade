@@ -28,6 +28,8 @@ jobs:
       - uses: actions/checkout@v7
       - run: rustup show
       - uses: Swatinem/rust-cache@v2
+      # The layer-shell toolkit links libxkbcommon at build time.
+      - run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev
       - run: cargo clippy --workspace --all-targets --locked
 
   test:
@@ -43,7 +45,10 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest
+      - run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev
       - run: cargo nextest run --workspace --locked
+      - name: Hotkey portal client against a fake portal
+        run: dbus-run-session -- cargo nextest run --workspace --locked --run-ignored only -E 'test(fake_portal)'
       - run: cargo build --workspace --release --locked
 
   coverage:

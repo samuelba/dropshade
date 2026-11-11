@@ -29,6 +29,23 @@ cursor_blink = false
 # Overlay scrollbar at the right edge, shown once there is scrollback.
 scrollbar = true
 
+# [colors]
+# Change single colors on top of the theme, in the same layout as an Alacritty theme. Only the
+# colors set here are replaced; the rest come from the theme. Colors are "#rrggbb".
+# [colors.primary]
+# foreground = "#d6dbe4"
+# background = "#16181d"
+# [colors.cursor]
+# cursor = "#f2a65a"          # the accent: cursor, buttons, sliders, tabs
+# text = "#16181d"            # text under a block cursor; unset uses the background
+# [colors.selection]
+# text = "#16181d"            # unset: selections swap the text and background colors
+# background = "#d6dbe4"
+# [colors.normal]             # black, red, green, yellow, blue, magenta, cyan, white
+# red = "#ef6b73"
+# [colors.bright]             # the same names
+# red = "#ff8a91"
+
 [terminal]
 # Program to run; empty means your login shell.
 shell = ""
@@ -51,13 +68,23 @@ ime = true
 copy_on_select = false
 
 [window]
-# These settings are used by the GNOME Shell extension that shows and hides the terminal.
+# How the terminal drops down. Dropshade applies these on desktops with layer shell (COSMIC,
+# KDE Plasma, Sway, Hyprland, ...), the GNOME Shell extension on GNOME, on the next show.
 # Global shortcut in GNOME accelerator syntax, e.g. "F12", "<Super>grave", "<Control><Alt>t".
+# Applied on GNOME, on COSMIC (in COSMIC's custom shortcuts) and on desktops whose portal offers
+# global shortcuts, such as KDE Plasma and Hyprland (while Dropshade runs). Elsewhere, bind
+# "dropshade toggle" to a key in the desktop's keyboard settings.
 hotkey = "F12"
 # Size as a fraction of the monitor's work area (the screen minus the top bar).
 width = 1.0
 height = 0.5
-# "pointer" (the monitor under the mouse), "primary", or a connector name such as "DP-1".
+# Where a window narrower than the screen sits: "left", "center" or "right".
+align = "center"
+# The screen to drop down on: "pointer" (the one under the mouse), "primary", a model such as
+# "DELL U2413" or a connector such as "DP-1". A list is tried in order and the first connected
+# screen wins, e.g. ["LEN P27h-10", "DELL U2719DC", "eDP-1", "pointer"] for office, home and
+# laptop. Outside GNOME, "pointer" and "primary" both mean the screen the compositor picks,
+# usually the focused one.
 monitor = "pointer"
 # Slide animation in milliseconds; 0 turns it off.
 animation_duration = 180

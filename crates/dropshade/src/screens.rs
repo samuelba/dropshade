@@ -1,10 +1,13 @@
-//! The screens the drop-down can be pinned to, as GNOME's compositor reports them, and the
-//! choices the settings panel offers for `window.monitor`.
+//! The screens the drop-down can be pinned to, as GNOME's compositor reports them, which of the
+//! configured ones applies, and the choices the settings panel offers for `window.monitor`.
 
 use std::collections::HashMap;
 use std::fmt;
 
-use dropshade_config::Monitor;
+use iced::futures::channel::mpsc;
+use iced::futures::{SinkExt, Stream, StreamExt};
+
+use dropshade_config::{Monitor, Monitors};
 use zbus::{Connection, OwnedVariant, proxy};
 
 type Properties = HashMap<String, OwnedVariant>;
@@ -23,6 +26,9 @@ trait DisplayConfig {
     fn get_current_state(
         &self,
     ) -> zbus::Result<(u32, Vec<PhysicalMonitor>, Vec<LogicalMonitor>, Properties)>;
+
+    #[zbus(signal)]
+    fn monitors_changed(&self) -> zbus::Result<()>;
 }
 
 /// A connected screen.
@@ -38,6 +44,29 @@ pub async fn connected(connection: &Connection) -> zbus::Result<Vec<Screen>> {
     let proxy = DisplayConfigProxy::new(connection).await?;
     let (_serial, monitors, logical, _properties) = proxy.get_current_state().await?;
     Ok(from_state(&monitors, &logical))
+}
+
+/// The connected screens now and after every change, while GNOME's compositor answers.
+pub fn changes() -> impl Stream<Item = Vec<Screen>> {
+    iced::stream::channel(1, async |mut output: mpsc::Sender<Vec<Screen>>| {
+        if let Err(error) = watch(&mut output).await {
+            tracing::warn!(%error, "cannot follow the screens; monitor names may not resolve");
+        }
+    })
+}
+
+async fn watch(output: &mut mpsc::Sender<Vec<Screen>>) -> zbus::Result<()> {
+    let connection = Connection::session().await?;
+    let proxy = DisplayConfigProxy::new(&connection).await?;
+    let mut changed = proxy.receive_monitors_changed().await?;
+    loop {
+        let (_serial, monitors, logical, _properties) = proxy.get_current_state().await?;
+        if output.send(from_state(&monitors, &logical)).await.is_err()
+            || changed.next().await.is_none()
+        {
+            return Ok(());
+        }
+    }
 }
 
 fn from_state(monitors: &[PhysicalMonitor], logical: &[LogicalMonitor]) -> Vec<Screen> {
@@ -62,7 +91,31 @@ fn from_state(monitors: &[PhysicalMonitor], logical: &[LogicalMonitor]) -> Vec<S
     screens
 }
 
-/// One entry of the settings panel's screen picker.
+/// The screen the drop-down goes to: the first of `preferred` that is connected, as its
+/// connector. Pointer and primary always apply; with no match it is the pointer's screen. While
+/// the screens are unknown the first entry is passed on as written.
+pub fn resolve(preferred: &Monitors, screens: Option<&[Screen]>) -> Monitor {
+    let entries = preferred.entries();
+    let Some(screens) = screens else {
+        return entries.first().cloned().unwrap_or_default();
+    };
+    entries
+        .iter()
+        .find_map(|entry| match entry {
+            Monitor::Pointer | Monitor::Primary => Some(entry.clone()),
+            Monitor::Named(_) => find(entry, screens).map(|s| Monitor::Named(s.connector.clone())),
+        })
+        .unwrap_or_default()
+}
+
+/// The first connected screen `entry` names.
+pub fn find<'a>(entry: &Monitor, screens: &'a [Screen]) -> Option<&'a Screen> {
+    screens
+        .iter()
+        .find(|screen| entry.names(&screen.connector, &screen.product))
+}
+
+/// A screen the settings panel can add to `window.monitor`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScreenChoice {
     pub monitor: Monitor,
@@ -75,40 +128,57 @@ impl fmt::Display for ScreenChoice {
     }
 }
 
-/// Pointer and primary, then each connected screen. The configured screen is always listed so the
-/// picker can show it as selected; it is marked as not connected only once `screens` is known.
-pub fn choices(screens: Option<&[Screen]>, current: &Monitor) -> Vec<ScreenChoice> {
-    let known = screens.is_some();
-    let screens = screens.unwrap_or_default();
-    let fixed = [
-        (Monitor::Pointer, "Under the mouse pointer".to_owned()),
-        (Monitor::Primary, "Primary screen".to_owned()),
-    ];
-    let connected = screens.iter().map(|screen| {
-        let label = if screen.product.is_empty() {
-            screen.connector.clone()
-        } else {
-            format!("{} · {}", screen.connector, screen.product)
-        };
-        (Monitor::Connector(screen.connector.clone()), label)
+/// How an entry of `window.monitor` is shown.
+pub fn label(entry: &Monitor) -> String {
+    match entry {
+        Monitor::Pointer => "Under the mouse pointer".to_owned(),
+        Monitor::Primary => "Primary screen".to_owned(),
+        Monitor::Named(name) => name.clone(),
+    }
+}
+
+/// Pointer, primary and each connected screen, minus those already in `current`. A screen is
+/// offered by model, which stays the same when a dock renumbers the connectors, unless it has
+/// none or another connected screen is the same model.
+pub fn choices(screens: &[Screen], current: &Monitors) -> Vec<ScreenChoice> {
+    let fixed = [Monitor::Pointer, Monitor::Primary].map(|monitor| ScreenChoice {
+        label: label(&monitor),
+        monitor,
     });
-    let missing = match current {
-        Monitor::Connector(name) if !screens.iter().any(|s| &s.connector == name) => {
-            let label = if known {
-                format!("{name} (not connected)")
-            } else {
-                name.clone()
-            };
-            Some((current.clone(), label))
+    let connected = screens.iter().map(|screen| {
+        let same_model = screens
+            .iter()
+            .filter(|other| other.product.eq_ignore_ascii_case(&screen.product))
+            .count();
+        if screen.product.is_empty() || same_model > 1 {
+            ScreenChoice {
+                monitor: Monitor::Named(screen.connector.clone()),
+                label: screen.connector.clone(),
+            }
+        } else {
+            ScreenChoice {
+                monitor: Monitor::Named(screen.product.clone()),
+                label: format!("{} (now on {})", screen.product, screen.connector),
+            }
         }
-        _ => None,
-    };
+    });
     fixed
         .into_iter()
         .chain(connected)
-        .chain(missing)
-        .map(|(monitor, label)| ScreenChoice { monitor, label })
+        .filter(|choice| {
+            !current
+                .entries()
+                .iter()
+                .any(|entry| same(entry, &choice.monitor))
+        })
         .collect()
+}
+
+fn same(a: &Monitor, b: &Monitor) -> bool {
+    match (a, b) {
+        (Monitor::Named(a), Monitor::Named(b)) => a.eq_ignore_ascii_case(b),
+        _ => a == b,
+    }
 }
 
 #[cfg(test)]
@@ -145,6 +215,14 @@ mod tests {
         choices.iter().map(ToString::to_string).collect()
     }
 
+    fn monitors(names: &[&str]) -> Monitors {
+        Monitors::new(names.iter().map(|name| Monitor::from(*name)).collect()).expect("entries")
+    }
+
+    fn named(name: &str) -> Monitor {
+        Monitor::Named(name.into())
+    }
+
     #[test]
     fn state_lists_the_primary_screen_first() {
         let monitors = [
@@ -175,42 +253,92 @@ mod tests {
     }
 
     #[test]
-    fn choices_offer_pointer_primary_and_each_screen() {
+    fn the_first_connected_screen_in_the_list_wins() {
+        let preferred = monitors(&["LEN P27h-10", "DELL U2719DC", "eDP-1", "pointer"]);
+        let office = [
+            screen("DP-4", "LEN P27h-10", false),
+            screen("eDP-1", "", true),
+        ];
+        let home = [
+            screen("DP-1", "DELL U2719DC", false),
+            screen("eDP-1", "", true),
+        ];
+        let laptop = [screen("eDP-1", "", true)];
+        assert_eq!(resolve(&preferred, Some(&office)), named("DP-4"));
+        assert_eq!(resolve(&preferred, Some(&home)), named("DP-1"));
+        assert_eq!(resolve(&preferred, Some(&laptop)), named("eDP-1"));
+        assert_eq!(resolve(&preferred, Some(&[])), Monitor::Pointer);
+    }
+
+    #[test]
+    fn a_model_follows_its_screen_to_another_connector() {
+        let preferred = monitors(&["dell u2719dc"]);
+        let docked = [screen("DP-6", "DELL U2719DC", false)];
+        assert_eq!(resolve(&preferred, Some(&docked)), named("DP-6"));
+    }
+
+    #[test]
+    fn pointer_and_primary_apply_wherever_they_are_listed() {
+        let screens = [screen("DP-1", "DELL U2719DC", true)];
+        assert_eq!(
+            resolve(&monitors(&["HDMI-9", "primary", "DP-1"]), Some(&screens)),
+            Monitor::Primary
+        );
+        assert_eq!(
+            resolve(&monitors(&["HDMI-9"]), Some(&screens)),
+            Monitor::Pointer,
+            "nothing connected matches"
+        );
+    }
+
+    #[test]
+    fn while_the_screens_are_unknown_the_first_entry_is_passed_on() {
+        assert_eq!(
+            resolve(&monitors(&["DP-2", "pointer"]), None),
+            named("DP-2")
+        );
+    }
+
+    #[test]
+    fn choices_offer_screens_by_model_unless_it_is_missing_or_shared() {
+        let screens = [
+            screen("DP-1", "DELL U2719DC", true),
+            screen("DP-2", "DELL U2413", false),
+            screen("DP-3", "DELL U2413", false),
+            screen("eDP-1", "", false),
+        ];
+        let choices = choices(&screens, &Monitors::default());
+        assert_eq!(
+            labels(&choices),
+            [
+                "Primary screen",
+                "DELL U2719DC (now on DP-1)",
+                "DP-2",
+                "DP-3",
+                "eDP-1"
+            ]
+        );
+        assert_eq!(choices[1].monitor, named("DELL U2719DC"));
+        assert_eq!(choices[2].monitor, named("DP-2"));
+    }
+
+    #[test]
+    fn listed_screens_are_not_offered_again() {
         let screens = [
             screen("DP-1", "DELL U2719DC", true),
             screen("eDP-1", "", false),
         ];
-        let choices = choices(Some(&screens), &Monitor::Pointer);
+        let current = monitors(&["dell u2719dc", "EDP-1", "primary"]);
         assert_eq!(
-            labels(&choices),
-            [
-                "Under the mouse pointer",
-                "Primary screen",
-                "DP-1 · DELL U2719DC",
-                "eDP-1"
-            ]
+            labels(&choices(&screens, &current)),
+            ["Under the mouse pointer"]
         );
-        assert_eq!(choices[2].monitor, Monitor::Connector("DP-1".into()));
     }
 
     #[test]
-    fn a_configured_screen_that_is_unplugged_stays_selectable() {
-        let current = Monitor::Connector("HDMI-2".into());
-        let choices = choices(Some(&[screen("DP-1", "", true)]), &current);
-        let last = choices.last().expect("choices");
-        assert_eq!(last.monitor, current);
-        assert_eq!(last.to_string(), "HDMI-2 (not connected)");
-    }
-
-    #[test]
-    fn the_configured_screen_is_not_called_unplugged_before_the_list_is_known() {
-        let current = Monitor::Connector("DP-1".into());
-        let choices = choices(None, &current);
-        assert_eq!(
-            labels(&choices),
-            ["Under the mouse pointer", "Primary screen", "DP-1"]
-        );
-        assert_eq!(choices[2].monitor, current);
+    fn entries_are_labelled_as_written() {
+        assert_eq!(label(&Monitor::Pointer), "Under the mouse pointer");
+        assert_eq!(label(&named("LEN P27h-10")), "LEN P27h-10");
     }
 
     #[tokio::test]
@@ -221,12 +349,5 @@ mod tests {
             .await
             .expect("decodes GetCurrentState");
         assert_ne!(screens, []);
-    }
-
-    #[test]
-    fn a_connected_configured_screen_is_not_listed_twice() {
-        let current = Monitor::Connector("DP-1".into());
-        let choices = choices(Some(&[screen("DP-1", "", true)]), &current);
-        assert_eq!(choices.iter().filter(|c| c.monitor == current).count(), 1);
     }
 }
