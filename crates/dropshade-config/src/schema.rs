@@ -5,11 +5,15 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use crate::theme::Rgb8;
+
 #[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub font: Font,
     pub appearance: Appearance,
+    /// Colors that replace the theme's, laid out like an Alacritty theme.
+    pub colors: ColorOverrides,
     pub terminal: Terminal,
     pub input: Input,
     pub window: Window,
@@ -89,6 +93,74 @@ impl ThemeChoice {
             Self::FollowSystem { light, .. } if prefers_light => light,
             Self::FollowSystem { dark, .. } => dark,
         }
+    }
+}
+
+/// Colors set on top of the theme. Every color is optional; unset ones come from the theme.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ColorOverrides {
+    pub primary: PrimaryColors,
+    pub cursor: CursorColors,
+    pub selection: SelectionColors,
+    pub normal: AnsiColors,
+    pub bright: AnsiColors,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PrimaryColors {
+    pub foreground: Option<Rgb8>,
+    pub background: Option<Rgb8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CursorColors {
+    pub cursor: Option<Rgb8>,
+    /// Text under a block cursor.
+    pub text: Option<Rgb8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct SelectionColors {
+    pub text: Option<Rgb8>,
+    pub background: Option<Rgb8>,
+}
+
+/// The eight ANSI colors of one row (normal or bright).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AnsiColors {
+    pub black: Option<Rgb8>,
+    pub red: Option<Rgb8>,
+    pub green: Option<Rgb8>,
+    pub yellow: Option<Rgb8>,
+    pub blue: Option<Rgb8>,
+    pub magenta: Option<Rgb8>,
+    pub cyan: Option<Rgb8>,
+    pub white: Option<Rgb8>,
+}
+
+impl AnsiColors {
+    /// Key names in palette order, as written in the file.
+    pub const NAMES: [&'static str; 8] = [
+        "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
+    ];
+
+    /// The colors in palette order (black first).
+    pub const fn as_array(&self) -> [Option<Rgb8>; 8] {
+        [
+            self.black,
+            self.red,
+            self.green,
+            self.yellow,
+            self.blue,
+            self.magenta,
+            self.cyan,
+            self.white,
+        ]
     }
 }
 

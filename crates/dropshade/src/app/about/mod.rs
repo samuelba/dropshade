@@ -2,7 +2,7 @@
 
 mod icon;
 
-use iced::widget::{Space, button, canvas, column, container, opaque, row, text};
+use iced::widget::{Space, button, canvas, column, container, row, text};
 use iced::{Center, Element, Fill, Font, Task, font};
 
 use super::update::open_link;
@@ -126,7 +126,7 @@ impl App {
         .padding(24)
         .width(DIALOG_WIDTH)
         .style(move |_| colors.surface_style());
-        opaque(
+        self.modal(
             container(card)
                 .center(Fill)
                 .style(move |_| colors.backdrop_style()),

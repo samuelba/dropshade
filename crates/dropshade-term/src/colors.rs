@@ -10,6 +10,11 @@ pub struct Palette {
     pub foreground: Rgb,
     pub background: Rgb,
     pub cursor: Rgb,
+    /// Text under a block cursor; `None` uses the background.
+    pub cursor_text: Option<Rgb>,
+    /// Selected text and its background; `None` swaps the cell's own colors.
+    pub selection_foreground: Option<Rgb>,
+    pub selection_background: Option<Rgb>,
     pub normal: [Rgb; 8],
     pub bright: [Rgb; 8],
 }
@@ -89,6 +94,19 @@ impl Palette {
         };
         CellColors { fg, bg }
     }
+
+    /// How a selected cell with these colors looks.
+    pub fn selected(&self, colors: CellColors) -> CellColors {
+        CellColors {
+            fg: self.selection_foreground.unwrap_or(colors.bg),
+            bg: self.selection_background.unwrap_or(colors.fg),
+        }
+    }
+
+    /// The color of text under a block cursor.
+    pub fn cursor_text(&self) -> Rgb {
+        self.cursor_text.unwrap_or(self.background)
+    }
 }
 
 #[allow(clippy::cast_possible_truncation)]
@@ -136,6 +154,9 @@ impl Palette {
         foreground: hex(0xd6_db_e4),
         background: hex(0x16_18_1d),
         cursor: hex(0xf2_a6_5a),
+        cursor_text: None,
+        selection_foreground: None,
+        selection_background: None,
         normal: [
             hex(0x23_26_2e),
             hex(0xef_6b_73),
@@ -179,6 +200,9 @@ mod tests {
             foreground: rgb(200, 200, 200),
             background: rgb(10, 10, 10),
             cursor: rgb(255, 128, 0),
+            cursor_text: None,
+            selection_foreground: None,
+            selection_background: None,
             normal: std::array::from_fn(|i| rgb(i as u8, 0, 0)),
             bright: std::array::from_fn(|i| rgb(0, i as u8, 0)),
         }
@@ -271,5 +295,44 @@ mod tests {
 
         let dim = p.cell_colors(fg, bg, Flags::DIM, &none);
         assert_eq!(dim.fg, rgb(133, 133, 133));
+    }
+
+    #[test]
+    fn selections_swap_colors_unless_the_theme_sets_them() {
+        let cell = CellColors {
+            fg: rgb(1, 1, 1),
+            bg: rgb(2, 2, 2),
+        };
+        let swapped = CellColors {
+            fg: cell.bg,
+            bg: cell.fg,
+        };
+        assert_eq!(palette().selected(cell), swapped);
+        let themed = Palette {
+            selection_background: Some(rgb(9, 9, 9)),
+            ..palette()
+        };
+        assert_eq!(
+            themed.selected(cell),
+            CellColors {
+                fg: cell.bg,
+                bg: rgb(9, 9, 9)
+            }
+        );
+        let both = Palette {
+            selection_foreground: Some(rgb(7, 7, 7)),
+            ..themed
+        };
+        assert_eq!(both.selected(cell).fg, rgb(7, 7, 7));
+    }
+
+    #[test]
+    fn cursor_text_defaults_to_the_background() {
+        assert_eq!(palette().cursor_text(), palette().background);
+        let themed = Palette {
+            cursor_text: Some(rgb(3, 3, 3)),
+            ..palette()
+        };
+        assert_eq!(themed.cursor_text(), rgb(3, 3, 3));
     }
 }

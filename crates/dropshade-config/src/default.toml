@@ -29,6 +29,23 @@ cursor_blink = false
 # Overlay scrollbar at the right edge, shown once there is scrollback.
 scrollbar = true
 
+# [colors]
+# Change single colors on top of the theme, in the same layout as an Alacritty theme. Only the
+# colors set here are replaced; the rest come from the theme. Colors are "#rrggbb".
+# [colors.primary]
+# foreground = "#d6dbe4"
+# background = "#16181d"
+# [colors.cursor]
+# cursor = "#f2a65a"          # the accent: cursor, buttons, sliders, tabs
+# text = "#16181d"            # text under a block cursor; unset uses the background
+# [colors.selection]
+# text = "#16181d"            # unset: selections swap the text and background colors
+# background = "#d6dbe4"
+# [colors.normal]             # black, red, green, yellow, blue, magenta, cyan, white
+# red = "#ef6b73"
+# [colors.bright]             # the same names
+# red = "#ff8a91"
+
 [terminal]
 # Program to run; empty means your login shell.
 shell = ""

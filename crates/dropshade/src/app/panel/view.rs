@@ -1,10 +1,10 @@
 //! The settings panel's layout: a section list on the left, the section's settings on the right.
 
-use dropshade_config::{Config, CursorShape, TabBarPosition, TabWidth, ThemeChoice, theme};
+use dropshade_config::{Config, CursorShape, TabBarPosition, TabWidth};
 use dropshade_term::colors::to_iced;
 use iced::widget::{
-    Column, Space, button, column, container, opaque, pick_list, row, scrollable, slider, text,
-    text_input, toggler,
+    Column, Space, button, column, container, pick_list, row, scrollable, slider, text, text_input,
+    toggler,
 };
 use iced::{Color, Element, Fill, Font, Length, Padding, font};
 
@@ -57,7 +57,7 @@ impl App {
             .width((self.window_size.width - MARGIN).clamp(0.0, MAX_WIDTH))
             .height((self.window_size.height - MARGIN).clamp(0.0, MAX_HEIGHT))
             .style(move |_| colors.surface_style());
-        opaque(
+        self.modal(
             container(card)
                 .center(Fill)
                 .style(move |_| colors.backdrop_style()),
@@ -70,7 +70,10 @@ impl App {
             .font(bold())
             .color(ctx.colors.text);
         let body = match ctx.panel.section {
-            Section::Appearance => appearance(ctx, self.prefers_light),
+            Section::Appearance => appearance(ctx),
+            Section::Colors => {
+                super::colors_page::colors(ctx, self.prefers_light, &self.settings.style)
+            }
             Section::Font => font_section(ctx),
             Section::Window => {
                 let hotkey = if self.hotkey_settable() {
@@ -164,22 +167,8 @@ fn divider(colors: UiColors) -> Element<'static, Message> {
         .into()
 }
 
-fn appearance(ctx: Ctx<'_>, prefers_light: bool) -> Element<'static, Message> {
+fn appearance(ctx: Ctx<'_>) -> Element<'static, Message> {
     let appearance = &ctx.config.appearance;
-    let themes: Element<'static, Message> = match &appearance.theme {
-        ThemeChoice::Single(_) => choice(
-            "Theme",
-            theme_names(),
-            appearance.theme.name(prefers_light),
-            Choice::Theme,
-        ),
-        ThemeChoice::FollowSystem { dark, light } => column![
-            choice("Dark theme", theme_names(), dark, Choice::DarkTheme),
-            choice("Light theme", theme_names(), light, Choice::LightTheme),
-        ]
-        .spacing(12)
-        .into(),
-    };
     let cursor = setting(
         "Cursor",
         row![
@@ -198,8 +187,7 @@ fn appearance(ctx: Ctx<'_>, prefers_light: bool) -> Element<'static, Message> {
         .align_y(iced::Center),
     );
     column![
-        switch(ctx, "Follow system light/dark", Switch::FollowSystem),
-        themes,
+        hint("Themes and colors are on the Colors page.", ctx.colors),
         slider_row(ctx, Slider::Opacity),
         slider_row(ctx, Slider::Padding),
         choice(
@@ -564,7 +552,7 @@ pub(super) fn hint(note: &'static str, colors: UiColors) -> Element<'static, Mes
     text(note).size(HINT_SIZE).color(colors.muted).into()
 }
 
-fn subheading(title: &'static str, colors: UiColors) -> Element<'static, Message> {
+pub(super) fn subheading(title: &'static str, colors: UiColors) -> Element<'static, Message> {
     container(text(title).size(TEXT_SIZE).font(bold()).color(colors.text))
         .padding(Padding::ZERO.top(6.0))
         .into()
@@ -591,7 +579,7 @@ fn slider_row(ctx: Ctx<'_>, which: Slider) -> Element<'static, Message> {
     )
 }
 
-fn switch(ctx: Ctx<'_>, name: &'static str, which: Switch) -> Element<'static, Message> {
+pub(super) fn switch(ctx: Ctx<'_>, name: &'static str, which: Switch) -> Element<'static, Message> {
     setting(
         name,
         toggler(which.current(ctx.config))
@@ -599,7 +587,7 @@ fn switch(ctx: Ctx<'_>, name: &'static str, which: Switch) -> Element<'static, M
     )
 }
 
-fn choice(
+pub(super) fn choice(
     name: &'static str,
     options: Vec<String>,
     selected: &str,
@@ -689,7 +677,7 @@ fn add_button(message: SettingsMessage, colors: UiColors) -> Element<'static, Me
         .into()
 }
 
-fn bold() -> Font {
+pub(super) fn bold() -> Font {
     Font {
         weight: font::Weight::Bold,
         ..Font::DEFAULT
@@ -722,26 +710,4 @@ fn cursor_name(shape: CursorShape) -> &'static str {
         CursorShape::Beam => "beam",
         CursorShape::Underline => "underline",
     }
-}
-
-/// Built-in themes followed by the theme files in the themes directory.
-fn theme_names() -> Vec<String> {
-    let mut names = strings(&theme::BUILT_IN);
-    if let Some(dir) = dropshade_config::themes_dir()
-        && let Ok(entries) = std::fs::read_dir(dir)
-    {
-        let mut files: Vec<String> = entries
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| path.extension().is_some_and(|ext| ext == "toml"))
-            .filter_map(|path| {
-                path.file_stem()
-                    .map(|stem| stem.to_string_lossy().into_owned())
-            })
-            .filter(|name| !names.contains(name))
-            .collect();
-        files.sort();
-        names.extend(files);
-    }
-    names
 }

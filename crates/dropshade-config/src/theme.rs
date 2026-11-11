@@ -5,6 +5,8 @@ use std::path::Path;
 
 use serde::Deserialize;
 
+use crate::ColorOverrides;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rgb8 {
     pub r: u8,
@@ -29,7 +31,23 @@ impl Rgb8 {
         if digits.len() != 6 {
             return None;
         }
+        if !digits.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return None;
+        }
         u32::from_str_radix(digits, 16).ok().map(Self::hex)
+    }
+
+    /// The color as `#rrggbb`.
+    pub fn to_hex(self) -> String {
+        format!("#{:02x}{:02x}{:02x}", self.r, self.g, self.b)
+    }
+}
+
+impl<'de> Deserialize<'de> for Rgb8 {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        Self::parse(&text)
+            .ok_or_else(|| serde::de::Error::custom(format!("\"{text}\" is not a #rrggbb color")))
     }
 }
 
@@ -38,8 +56,33 @@ pub struct ThemeColors {
     pub foreground: Rgb8,
     pub background: Rgb8,
     pub cursor: Rgb8,
+    /// Text under a block cursor; `None` uses the background.
+    pub cursor_text: Option<Rgb8>,
+    /// Selected text and its background; `None` swaps the cell's own colors.
+    pub selection_text: Option<Rgb8>,
+    pub selection_background: Option<Rgb8>,
     pub normal: [Rgb8; 8],
     pub bright: [Rgb8; 8],
+}
+
+impl ThemeColors {
+    /// These colors with every color set in `overrides` replaced.
+    #[must_use]
+    pub fn with_overrides(self, overrides: &ColorOverrides) -> Self {
+        let pick = |base: [Rgb8; 8], set: [Option<Rgb8>; 8]| {
+            std::array::from_fn(|i| set[i].unwrap_or(base[i]))
+        };
+        Self {
+            foreground: overrides.primary.foreground.unwrap_or(self.foreground),
+            background: overrides.primary.background.unwrap_or(self.background),
+            cursor: overrides.cursor.cursor.unwrap_or(self.cursor),
+            cursor_text: overrides.cursor.text.or(self.cursor_text),
+            selection_text: overrides.selection.text.or(self.selection_text),
+            selection_background: overrides.selection.background.or(self.selection_background),
+            normal: pick(self.normal, overrides.normal.as_array()),
+            bright: pick(self.bright, overrides.bright.as_array()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -59,6 +102,9 @@ pub const DUSK: ThemeColors = ThemeColors {
     foreground: Rgb8::hex(0xd6_db_e4),
     background: Rgb8::hex(0x16_18_1d),
     cursor: Rgb8::hex(0xf2_a6_5a),
+    cursor_text: None,
+    selection_text: None,
+    selection_background: None,
     normal: [
         Rgb8::hex(0x23_26_2e),
         Rgb8::hex(0xef_6b_73),
@@ -86,6 +132,9 @@ pub const DAWN: ThemeColors = ThemeColors {
     foreground: Rgb8::hex(0x2b_2f_36),
     background: Rgb8::hex(0xf7_f5_f0),
     cursor: Rgb8::hex(0xd9_82_2b),
+    cursor_text: None,
+    selection_text: None,
+    selection_background: None,
     normal: [
         Rgb8::hex(0x2b_2f_36),
         Rgb8::hex(0xc8_41_4b),
@@ -144,9 +193,7 @@ pub fn resolve(name: &str, themes_dir: Option<&Path>) -> Result<ThemeColors, The
     })
 }
 
-const COLOR_NAMES: [&str; 8] = [
-    "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
-];
+const COLOR_NAMES: [&str; 8] = crate::AnsiColors::NAMES;
 
 type ColorTable = BTreeMap<String, toml::Value>;
 
@@ -159,6 +206,7 @@ struct AlacrittyFile {
 struct AlacrittyColors {
     primary: Option<ColorTable>,
     cursor: Option<ColorTable>,
+    selection: Option<ColorTable>,
     normal: Option<ColorTable>,
     bright: Option<ColorTable>,
 }
@@ -180,6 +228,9 @@ pub fn parse_alacritty(text: &str) -> Result<ThemeColors, String> {
         Some(table) if table.contains_key("cursor") => required(table, "cursor", "cursor")?,
         _ => foreground,
     };
+    let cursor_text = optional(colors.cursor.as_ref(), "text");
+    let selection_text = optional(colors.selection.as_ref(), "text");
+    let selection_background = optional(colors.selection.as_ref(), "background");
     let normal = palette(colors.normal.as_ref().unwrap_or(&empty), "normal")?;
     let bright = match colors.bright.as_ref() {
         Some(table) => palette(table, "bright")?,
@@ -189,9 +240,17 @@ pub fn parse_alacritty(text: &str) -> Result<ThemeColors, String> {
         foreground,
         background,
         cursor,
+        cursor_text,
+        selection_text,
+        selection_background,
         normal,
         bright,
     })
+}
+
+/// A color that may be missing or a keyword such as `CellForeground`; both mean `None`.
+fn optional(table: Option<&ColorTable>, key: &str) -> Option<Rgb8> {
+    table?.get(key)?.as_str().and_then(Rgb8::parse)
 }
 
 fn palette(table: &ColorTable, section: &str) -> Result<[Rgb8; 8], String> {
@@ -348,5 +407,63 @@ mod tests {
             resolve("missing-theme", Some(dir)),
             Err(ThemeError::NotFound(_))
         ));
+    }
+
+    #[test]
+    fn colors_print_as_hex_and_reject_non_hex_digits() {
+        assert_eq!(Rgb8::hex(0x0a_bc_ff).to_hex(), "#0abcff");
+        assert_eq!(
+            Rgb8::parse(&Rgb8::hex(0x12_34_56).to_hex()),
+            Some(Rgb8::hex(0x12_34_56))
+        );
+        assert_eq!(Rgb8::parse("#+12345"), None);
+    }
+
+    #[test]
+    fn cursor_text_and_selection_colors_are_imported_when_they_are_colors() {
+        let theme = parse_alacritty(CATPPUCCIN_LIKE).expect("valid theme");
+        assert_eq!(theme.cursor_text, Some(Rgb8::hex(0x1e1e2e)));
+        assert_eq!(theme.selection_text, None, "CellForeground is not a color");
+        assert_eq!(theme.selection_background, None);
+        let text = r##"
+            [colors.primary]
+            background = "#000000"
+            foreground = "#ffffff"
+            [colors.selection]
+            text = "#eeeeee"
+            background = "#313244"
+            [colors.normal]
+            black = "#000000"
+            red = "#ff0000"
+            green = "#00ff00"
+            yellow = "#ffff00"
+            blue = "#0000ff"
+            magenta = "#ff00ff"
+            cyan = "#00ffff"
+            white = "#eeeeee"
+        "##;
+        let theme = parse_alacritty(text).expect("valid theme");
+        assert_eq!(theme.cursor_text, None);
+        assert_eq!(theme.selection_text, Some(Rgb8::hex(0xeeeeee)));
+        assert_eq!(theme.selection_background, Some(Rgb8::hex(0x313244)));
+    }
+
+    #[test]
+    fn overrides_replace_only_the_colors_they_set() {
+        let mut overrides = ColorOverrides::default();
+        overrides.primary.background = Some(Rgb8::hex(0x000000));
+        overrides.selection.background = Some(Rgb8::hex(0x333333));
+        overrides.normal.red = Some(Rgb8::hex(0xff0000));
+        overrides.bright.white = Some(Rgb8::hex(0xffffff));
+        let theme = DUSK.with_overrides(&overrides);
+        assert_eq!(theme.background, Rgb8::hex(0x000000));
+        assert_eq!(theme.foreground, DUSK.foreground);
+        assert_eq!(theme.cursor, DUSK.cursor);
+        assert_eq!(theme.cursor_text, None);
+        assert_eq!(theme.selection_background, Some(Rgb8::hex(0x333333)));
+        assert_eq!(theme.normal[1], Rgb8::hex(0xff0000));
+        assert_eq!(theme.normal[2], DUSK.normal[2]);
+        assert_eq!(theme.bright[7], Rgb8::hex(0xffffff));
+        assert_eq!(DUSK.with_overrides(&ColorOverrides::default()), DUSK);
     }
 }

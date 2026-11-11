@@ -339,6 +339,9 @@ impl App {
                 let previous = std::mem::replace(&mut self.config, config);
                 self.config_error = None;
                 self.apply_settings();
+                if let Some(panel) = self.settings_panel.as_mut() {
+                    panel.config_reloaded();
+                }
                 if previous.window.hotkey.trim() != self.config.window.hotkey.trim() {
                     let hotkey = self.config.window.hotkey.clone();
                     self.bind_hotkey(&hotkey);

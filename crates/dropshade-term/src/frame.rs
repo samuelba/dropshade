@@ -79,10 +79,7 @@ pub fn build<T: EventListener>(term: &Term<T>, palette: &Palette) -> Frame {
             .selection
             .is_some_and(|selection| selection.contains(indexed.point))
         {
-            colors = CellColors {
-                fg: colors.bg,
-                bg: colors.fg,
-            };
+            colors = palette.selected(colors);
         }
         runs.push(CellInput {
             row: point.line,
@@ -206,6 +203,9 @@ mod tests {
             foreground: gray(200),
             background: gray(10),
             cursor: gray(255),
+            cursor_text: None,
+            selection_foreground: None,
+            selection_background: None,
             normal: std::array::from_fn(|i| Rgb {
                 r: 100 + i as u8,
                 g: 0,
@@ -227,6 +227,22 @@ mod tests {
         let mut term = Term::new(Config::default(), &size, VoidListener);
         Processor::<alacritty_terminal::vte::ansi::StdSyncHandler>::new().advance(&mut term, bytes);
         build(&term, &palette())
+    }
+
+    fn selected_frame(palette: &Palette) -> Frame {
+        use alacritty_terminal::index::{Column, Line, Point, Side};
+        use alacritty_terminal::selection::{Selection, SelectionType};
+        let size = GridSize {
+            columns: 10,
+            lines: 3,
+        };
+        let mut term = Term::new(Config::default(), &size, VoidListener);
+        Processor::<alacritty_terminal::vte::ansi::StdSyncHandler>::new().advance(&mut term, b"ab");
+        let start = Point::new(Line(0), Column(0));
+        let mut selection = Selection::new(SelectionType::Simple, start, Side::Left);
+        selection.update(Point::new(Line(0), Column(0)), Side::Right);
+        term.selection = Some(selection);
+        build(&term, palette)
     }
 
     fn texts(frame: &Frame) -> Vec<(usize, usize, &str)> {
@@ -301,5 +317,24 @@ mod tests {
     #[test]
     fn hidden_cursor_is_not_drawn() {
         assert_eq!(frame_for(b"\x1b[?25l").cursor, None);
+    }
+
+    #[test]
+    fn selections_use_the_theme_colors_or_swap() {
+        let plain = selected_frame(&palette());
+        assert_eq!(texts(&plain), vec![(0, 0, "a"), (0, 1, "b")]);
+        assert_eq!(plain.runs[0].colors.fg, palette().background);
+        assert_eq!(plain.runs[0].colors.bg, palette().foreground);
+
+        let gray = |v| Rgb { r: v, g: v, b: v };
+        let themed = Palette {
+            selection_foreground: Some(gray(1)),
+            selection_background: Some(gray(2)),
+            ..palette()
+        };
+        let frame = selected_frame(&themed);
+        assert_eq!(frame.runs[0].colors.fg, gray(1));
+        assert_eq!(frame.runs[0].colors.bg, gray(2));
+        assert_eq!(frame.runs[1].colors.fg, themed.foreground);
     }
 }

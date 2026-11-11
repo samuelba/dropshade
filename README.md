@@ -38,7 +38,7 @@ Right-click the terminal for Copy, Paste, New Tab, Find, **Zoom** (in, out, norm
 session only, the configured font size stays), **Reset** (clears modes a crashed program left on,
 like mouse reporting or the alternate screen, and clears the screen; scroll up to see what was
 there), **Reset and Clean** (also clears the scrollback), **Settings** and **About**. Settings is a panel
-for theme, font size, opacity, tab bar, drop-down size and screen, cursor and session restore that
+for theme and colors (with a color picker), font size, opacity, tab bar, drop-down size and screen, cursor and session restore that
 saves straight into `config.toml`, keeping its comments.
 
 In tabs: middle-click closes, right-click opens a menu, and dragging reorders. Every shortcut can be
@@ -58,6 +58,19 @@ Themes: `dusk` (dark) and `dawn` (light) are built in, and any
 [Alacritty theme](https://github.com/alacritty/alacritty-theme) dropped into
 `~/.config/dropshade/themes/` works by its file name. `theme = { dark = "dusk", light = "dawn" }`
 follows the system's light/dark setting.
+
+Colors: any single color can be changed on top of the theme, in Settings → Colors or in a
+`[colors]` section laid out like an Alacritty theme. Only the colors you set are replaced, so they
+stay when you switch themes; delete a key to get the theme's color back.
+
+```toml
+[colors.primary]
+background = "#101216"
+[colors.selection]
+background = "#3a4150"   # unset: selections swap text and background
+[colors.normal]
+red = "#ff5f6d"
+```
 
 Screens: `window.monitor` takes one screen or a list in order of preference, and the first one
 that is connected is used, so a single config works at every desk:

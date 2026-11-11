@@ -9,8 +9,9 @@ use std::path::{Path, PathBuf};
 
 pub use error::ConfigError;
 pub use schema::{
-    Appearance, Binding, Config, CursorShape, Font, Input, Monitor, Monitors, Scrollback, Session,
-    TabBarPosition, TabWidth, Terminal, ThemeChoice, Unlimited, Updates, Window,
+    AnsiColors, Appearance, Binding, ColorOverrides, Config, CursorColors, CursorShape, Font,
+    Input, Monitor, Monitors, PrimaryColors, Scrollback, SelectionColors, Session, TabBarPosition,
+    TabWidth, Terminal, ThemeChoice, Unlimited, Updates, Window,
 };
 
 /// The default configuration, documented; `dropshade config print-default` prints it.
@@ -298,5 +299,28 @@ mod tests {
     fn a_missing_file_gives_defaults() {
         let missing = Path::new("/nonexistent/dropshade/config.toml");
         assert_eq!(load(missing).expect("defaults"), Config::default());
+    }
+
+    #[test]
+    fn colors_override_the_theme_by_alacritty_key() {
+        let config = parse_str(
+            "[colors.primary]\nbackground = \"#101010\"\n[colors.cursor]\ntext = \"0x202020\"\n\
+             [colors.selection]\nbackground = \"#303030\"\n[colors.bright]\nmagenta = \"#ff00ff\"\n",
+        )
+        .expect("valid");
+        let rgb = theme::Rgb8::hex;
+        assert_eq!(config.colors.primary.background, Some(rgb(0x10_10_10)));
+        assert_eq!(config.colors.primary.foreground, None);
+        assert_eq!(config.colors.cursor.text, Some(rgb(0x20_20_20)));
+        assert_eq!(config.colors.selection.background, Some(rgb(0x30_30_30)));
+        assert_eq!(config.colors.bright.as_array()[5], Some(rgb(0xff_00_ff)));
+    }
+
+    #[test]
+    fn unknown_color_names_and_bad_colors_are_rejected() {
+        let error = parse_str("[colors.normal]\npurple = \"#ff00ff\"\n").expect_err("unknown");
+        assert!(error.to_string().contains("purple"), "{error}");
+        let error = parse_str("[colors.primary]\nbackground = \"black\"\n").expect_err("bad");
+        assert!(error.to_string().contains("#rrggbb"), "{error}");
     }
 }
