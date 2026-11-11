@@ -3,12 +3,13 @@
 use std::path::PathBuf;
 
 use dropshade_term::{Interaction, Notice, Shortcut, TermEvent, Terminal, links};
+use iced::Task;
 use iced::widget::{Id, operation};
-use iced::{Task, clipboard};
 
 use super::{
     AboutMessage, App, Menu, Message, PendingClose, Rename, SettingsMessage, TerminalMenu, session,
 };
+use crate::clipboard::{Clipboard, Selection};
 use crate::ipc::client::Visibility;
 use crate::tabs::{TabId, TabMessage, bar};
 
@@ -138,7 +139,7 @@ impl App {
                 tab.title = tab.content.terminal.title().map(str::to_owned);
                 Task::none()
             }
-            Some(Notice::Copy { text, primary }) => copy(text, primary),
+            Some(Notice::Copy { text, primary }) => self.clipboard.write(selection(primary), text),
             Some(Notice::Bell) => {
                 tab.content.bell = true;
                 Task::none()
@@ -166,9 +167,12 @@ impl App {
             let Some(text) = tab.content.terminal.selection_text() else {
                 return Task::none();
             };
-            return Task::batch([copy(text.clone(), true), copy(text, false)]);
+            return Task::batch([
+                self.clipboard.write(Selection::Primary, text.clone()),
+                self.clipboard.write(Selection::Clipboard, text),
+            ]);
         }
-        apply(&mut tab.content.terminal, interaction)
+        apply(&mut tab.content.terminal, self.clipboard, interaction)
     }
 
     fn shortcut(&mut self, shortcut: Shortcut) -> Task<Message> {
@@ -202,7 +206,11 @@ impl App {
             }
             terminal_shortcut => {
                 if let Some(tab) = self.tabs.active() {
-                    return run_terminal_shortcut(&tab.content.terminal, terminal_shortcut);
+                    return run_terminal_shortcut(
+                        &tab.content.terminal,
+                        self.clipboard,
+                        terminal_shortcut,
+                    );
                 }
             }
         }
@@ -328,7 +336,7 @@ impl App {
     }
 }
 
-fn apply(terminal: &mut Terminal, interaction: Interaction) -> Task<Message> {
+fn apply(terminal: &mut Terminal, clipboard: Clipboard, interaction: Interaction) -> Task<Message> {
     match interaction {
         Interaction::Input(bytes) => {
             terminal.scroll_to_bottom();
@@ -342,29 +350,35 @@ fn apply(terminal: &mut Terminal, interaction: Interaction) -> Task<Message> {
         Interaction::FinishSelection => {
             return terminal
                 .selection_text()
-                .map_or_else(Task::none, |text| copy(text, true));
+                .map_or_else(Task::none, |text| clipboard.write(Selection::Primary, text));
         }
-        Interaction::PastePrimary => return clipboard::read_primary().map(Message::Paste),
+        Interaction::PastePrimary => return paste(clipboard, Selection::Primary),
         Interaction::OpenLink(cell) => {
             if let Some(url) = terminal.link_at(cell) {
                 open_link(&url);
             }
         }
-        Interaction::Shortcut(shortcut) => return run_terminal_shortcut(terminal, shortcut),
+        Interaction::Shortcut(shortcut) => {
+            return run_terminal_shortcut(terminal, clipboard, shortcut);
+        }
         Interaction::ContextMenu(_) => {}
     }
     Task::none()
 }
 
-fn run_terminal_shortcut(terminal: &Terminal, shortcut: Shortcut) -> Task<Message> {
+fn run_terminal_shortcut(
+    terminal: &Terminal,
+    clipboard: Clipboard,
+    shortcut: Shortcut,
+) -> Task<Message> {
     match shortcut {
         Shortcut::Copy => {
-            return terminal
-                .selection_text()
-                .map_or_else(Task::none, |text| copy(text, false));
+            return terminal.selection_text().map_or_else(Task::none, |text| {
+                clipboard.write(Selection::Clipboard, text)
+            });
         }
-        Shortcut::Paste => return clipboard::read().map(Message::Paste),
-        Shortcut::PastePrimary => return clipboard::read_primary().map(Message::Paste),
+        Shortcut::Paste => return paste(clipboard, Selection::Clipboard),
+        Shortcut::PastePrimary => return paste(clipboard, Selection::Primary),
         Shortcut::ScrollPageUp => terminal.scroll_page(true),
         Shortcut::ScrollPageDown => terminal.scroll_page(false),
         Shortcut::ScrollToTop => terminal.scroll_to_top(),
@@ -392,10 +406,14 @@ pub(super) fn open_link(url: &str) {
     }
 }
 
-fn copy(text: String, primary: bool) -> Task<Message> {
+fn paste(clipboard: Clipboard, selection: Selection) -> Task<Message> {
+    clipboard.read(selection).map(Message::Paste)
+}
+
+fn selection(primary: bool) -> Selection {
     if primary {
-        clipboard::write_primary(text)
+        Selection::Primary
     } else {
-        clipboard::write(text)
+        Selection::Clipboard
     }
 }

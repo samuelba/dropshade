@@ -2,6 +2,7 @@
 
 mod app;
 mod cli;
+mod clipboard;
 mod extension;
 mod hotkey;
 mod ipc;
@@ -21,6 +22,7 @@ use tracing_subscriber::EnvFilter;
 
 use app::{APP_ID, App, Host, LAYER_NAMESPACE, Startup};
 use cli::{Outcome, Request};
+use clipboard::Clipboard;
 use ipc::client::Visibility;
 
 const SHELL_LAUNCHED_ENV: &str = "DROPSHADE_SHELL_LAUNCHED";
@@ -121,7 +123,10 @@ fn launch(request: &Request, config_path: Option<PathBuf>) -> ExitCode {
     let managed = is_shell_managed(std::env::var(SHELL_LAUNCHED_ENV).ok().as_deref());
     match cli::hand_off(request, managed) {
         Ok(Outcome::Handled) => ExitCode::SUCCESS,
-        Ok(Outcome::RunHere { startup }) => run(config_path, host(managed), startup),
+        Ok(Outcome::RunHere { startup }) => {
+            let (host, clipboard) = platform(managed);
+            run(config_path, host, clipboard, startup)
+        }
         Err(error) => {
             eprintln!("dropshade: {error}");
             ExitCode::FAILURE
@@ -130,25 +135,36 @@ fn launch(request: &Request, config_path: Option<PathBuf>) -> ExitCode {
 }
 
 /// The GNOME Shell extension if it started this process, else layer shell where the compositor
-/// offers it.
-fn host(managed: bool) -> Host {
+/// offers it; and the compositor's data control for the clipboard where it offers that.
+fn platform(managed: bool) -> (Host, Clipboard) {
     if managed {
-        return Host::Shell;
+        return (Host::Shell, Clipboard::Window);
     }
     match wayland::probe() {
-        Ok(compositor) if compositor.layer_shell => Host::Layer,
-        Ok(_) => Host::Window,
+        Ok(compositor) => {
+            let host = if compositor.layer_shell {
+                Host::Layer
+            } else {
+                Host::Window
+            };
+            (host, Clipboard::new(compositor.data_control))
+        }
         Err(error) => {
             tracing::debug!(%error, "no layer shell");
-            Host::Window
+            (Host::Window, Clipboard::Window)
         }
     }
 }
 
-fn run(config_path: Option<PathBuf>, host: Host, startup: Startup) -> ExitCode {
+fn run(
+    config_path: Option<PathBuf>,
+    host: Host,
+    clipboard: Clipboard,
+    startup: Startup,
+) -> ExitCode {
     dropshade_term::setup_env();
-    tracing::debug!(?host, "showing and hiding");
-    let boot = move || App::boot(config_path.clone(), host, startup.clone());
+    tracing::debug!(?host, ?clipboard, "showing and hiding");
+    let boot = move || App::boot(config_path.clone(), host, clipboard, startup.clone());
     let result = match host {
         Host::Layer => run_layer(boot),
         Host::Shell | Host::Window => run_window(boot),

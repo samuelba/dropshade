@@ -24,6 +24,7 @@ use iced::{Event, Point, Size, Subscription, Task, event, mouse, system, time, w
 use iced_layershell::actions::LayerShellCustomActionWithId;
 use ipc::WindowSettings;
 
+use crate::clipboard::Clipboard;
 use crate::hotkey;
 use crate::ipc::{self, Command};
 use crate::screens::{self, Screen};
@@ -89,6 +90,7 @@ pub struct App {
     dropdown: Option<dropdown::Dropdown>,
     focused: bool,
     host: Host,
+    clipboard: Clipboard,
     /// The connected screens, to pick from `window.monitor`; `None` until known.
     screens: Option<Vec<Screen>>,
     hotkey: HotkeyBinding,
@@ -180,6 +182,7 @@ impl App {
     pub fn boot(
         config_path: Option<PathBuf>,
         host: Host,
+        clipboard: Clipboard,
         startup: Startup,
     ) -> (Self, Task<Message>) {
         let (config, config_error) = load(config_path.as_deref());
@@ -209,6 +212,7 @@ impl App {
             dropdown: None,
             focused: false,
             host,
+            clipboard,
             screens: None,
             hotkey: HotkeyBinding::default(),
             ipc: None,

@@ -1,10 +1,11 @@
-//! What the Wayland compositor offers: whether it can host a layer-shell drop-down, and its
-//! screens for the settings panel.
+//! What the Wayland compositor offers: whether it can host a layer-shell drop-down, whether it
+//! shares its clipboard through data control, and its screens for the settings panel.
 
 use wayland_client::globals::{GlobalError, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{wl_output, wl_registry};
 use wayland_client::{ConnectError, Connection, Dispatch, DispatchError, QueueHandle};
 
+use crate::clipboard::DATA_CONTROL_GLOBALS;
 use crate::screens::Screen;
 
 const LAYER_SHELL: &str = "zwlr_layer_shell_v1";
@@ -24,6 +25,7 @@ pub enum ProbeError {
 #[derive(Debug)]
 pub struct Compositor {
     pub layer_shell: bool,
+    pub data_control: bool,
     pub screens: Vec<Screen>,
 }
 
@@ -33,7 +35,7 @@ pub fn probe() -> Result<Compositor, ProbeError> {
     let (globals, mut queue) = registry_queue_init::<Outputs>(&connection)?;
     let handle = queue.handle();
     let mut outputs = Outputs::default();
-    let layer_shell = globals.contents().with_list(|list| {
+    let (layer_shell, data_control) = globals.contents().with_list(|list| {
         for global in list.iter().filter(|global| global.interface == "wl_output") {
             if global.version >= OUTPUT_NAMES {
                 let index = outputs.found.len();
@@ -44,11 +46,16 @@ pub fn probe() -> Result<Compositor, ProbeError> {
                         .bind(global.name, OUTPUT_NAMES, &handle, index);
             }
         }
-        list.iter().any(|global| global.interface == LAYER_SHELL)
+        let offers = |interface: &str| list.iter().any(|global| global.interface == interface);
+        (
+            offers(LAYER_SHELL),
+            DATA_CONTROL_GLOBALS.into_iter().any(offers),
+        )
     });
     queue.roundtrip(&mut outputs)?;
     Ok(Compositor {
         layer_shell,
+        data_control,
         screens: named_screens(outputs.found),
     })
 }
