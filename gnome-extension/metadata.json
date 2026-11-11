@@ -3,6 +3,10 @@
   "name": "Dropshade",
   "description": "Companion for the Dropshade drop-down terminal: global hotkey, placement, staying on top and the slide animation.",
   "shell-version": [
+    "46",
+    "47",
+    "48",
+    "49",
     "50"
   ],
   "settings-schema": "org.gnome.shell.extensions.dropshade",

@@ -3,6 +3,19 @@ import Clutter from 'gi://Clutter';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 /**
+ * Lists or unlists the window in Alt+Tab, the dash and the window list. Mutter before GNOME 47
+ * cannot do this for Wayland clients, so there the window stays listed.
+ */
+function setListed(window, listed) {
+    if (typeof window.hide_from_window_list !== 'function')
+        return;
+    if (listed)
+        window.show_in_window_list();
+    else
+        window.hide_from_window_list();
+}
+
+/**
  * Places the Dropshade window at the top of a monitor, keeps it above other windows and out of
  * the window list, and slides it in and out.
  */
@@ -21,14 +34,18 @@ export class Dropdown {
     attach(window) {
         this.detach();
         this._window = window;
-        window.hide_from_window_list();
-        window.make_above();
-        window.stick();
+        setListed(window, false);
         this._connect(window, 'unmanaged', () => this._forget());
 
         Main.wm.skipNextEffect(window.get_compositor_private());
         // Mutter places new windows when they are first shown; placing earlier gets overridden.
-        this._connectOnce(window, 'shown', () => this.show());
+        // Restacking also waits: before then the window is not in the stack yet, and Mutter
+        // (seen on GNOME 46) logs a critical for it.
+        this._connectOnce(window, 'shown', () => {
+            window.make_above();
+            window.stick();
+            this.show();
+        });
     }
 
     toggle() {
@@ -64,9 +81,9 @@ export class Dropdown {
             Main.wm.skipNextEffect(actor);
             // Mutter refuses to minimize windows that are hidden from the window list, so list
             // the window just for the minimize; nothing repaints in between.
-            window.show_in_window_list();
+            setListed(window, true);
             window.minimize();
-            window.hide_from_window_list();
+            setListed(window, false);
             actor.translation_y = 0;
         });
     }
@@ -80,7 +97,7 @@ export class Dropdown {
         actor?.remove_all_transitions();
         if (actor)
             actor.translation_y = 0;
-        window.show_in_window_list();
+        setListed(window, true);
         window.unmake_above();
         window.unstick();
         this._forget();

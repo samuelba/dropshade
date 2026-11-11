@@ -90,7 +90,8 @@ How the terminal drops down depends on the desktop. Dropshade picks the right wa
 ### GNOME
 
 Mutter, GNOME's compositor, does not let apps place themselves over other windows, so a small
-companion Shell extension shows and hides Dropshade:
+companion Shell extension shows and hides Dropshade. It supports GNOME 46 to 50. GNOME 46 (Ubuntu
+24.04) cannot hide a window from Alt+Tab and the dash, so there the terminal is listed while shown.
 
 ```sh
 ./target/release/dropshade gnome-extension install   # once; then log out and back in
