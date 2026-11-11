@@ -124,8 +124,11 @@ impl App {
             .map_or_else(Task::none, |dropdown| window::close(dropdown.id))
     }
 
-    /// The drop-down's surface reported its first size: the work area it was measuring.
+    /// A window reported its first size. A window that opens at its final size gets no resize
+    /// event, so this is the only size it reports. For the drop-down's surface, this is the
+    /// work area it was measuring.
     pub(super) fn window_opened(&mut self, id: window::Id, size: iced::Size) -> Task<Message> {
+        self.window_size = size;
         match self.dropdown.as_mut() {
             Some(dropdown) if dropdown.id == id => dropdown.placed(size, Instant::now()),
             _ => Task::none(),
