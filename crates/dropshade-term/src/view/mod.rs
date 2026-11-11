@@ -265,12 +265,10 @@ impl<'a, Message> TerminalView<'a, Message> {
     }
 }
 
-impl<Message> canvas::Program<Message> for TerminalView<'_, Message> {
-    type State = ViewState;
-
-    fn update(
+impl<Message> TerminalView<'_, Message> {
+    fn handle_event(
         &self,
-        state: &mut Self::State,
+        state: &mut ViewState,
         event: &Event,
         bounds: Rectangle,
         cursor: mouse::Cursor,
@@ -316,6 +314,39 @@ impl<Message> canvas::Program<Message> for TerminalView<'_, Message> {
             }
             Event::Mouse(mouse_event) => self.mouse_event(state, mouse_event, bounds, cursor),
             _ => None,
+        }
+    }
+}
+
+/// Input only reaches a surface that has the keyboard focus. layershellev 0.19 sends no `Focused`
+/// when the keyboard re-enters the surface it last left, so input stands in for it there.
+fn implies_focus(event: &Event) -> bool {
+    matches!(
+        event,
+        Event::Keyboard(keyboard::Event::KeyPressed { .. })
+            | Event::Mouse(mouse::Event::ButtonPressed(_))
+    )
+}
+
+impl<Message> canvas::Program<Message> for TerminalView<'_, Message> {
+    type State = ViewState;
+
+    fn update(
+        &self,
+        state: &mut Self::State,
+        event: &Event,
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> Option<Action<Message>> {
+        let refocused = !state.focused && implies_focus(event);
+        if refocused {
+            state.focused = true;
+        }
+        let action = self.handle_event(state, event, bounds, cursor);
+        if refocused {
+            action.or_else(|| Some(Action::request_redraw()))
+        } else {
+            action
         }
     }
 
