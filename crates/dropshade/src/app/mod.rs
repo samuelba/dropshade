@@ -25,6 +25,7 @@ use iced_layershell::actions::LayerShellCustomActionWithId;
 use ipc::WindowSettings;
 
 use crate::clipboard::Clipboard;
+use crate::dnd::{self, DropTarget};
 use crate::hotkey;
 use crate::ipc::{self, Command};
 use crate::screens::{self, Screen};
@@ -98,6 +99,8 @@ pub struct App {
     session_path: Option<PathBuf>,
     /// The last snapshot written, to skip saves when nothing changed.
     saved: Option<dropshade_session::Snapshot>,
+    /// Where file drops arrive; winit's window shares its connection once it opens.
+    drop_target: Option<DropTarget>,
 }
 
 /// Binding the hotkey outside GNOME.
@@ -134,6 +137,8 @@ pub enum Message {
     Term(TabId, TermEvent),
     Interaction(Interaction),
     Paste(Option<String>),
+    FilesDropped(Vec<PathBuf>),
+    DropTarget(Option<DropTarget>),
     Blink,
     BellOff,
     Tab(TabMessage),
@@ -184,6 +189,7 @@ impl App {
         host: Host,
         clipboard: Clipboard,
         startup: Startup,
+        drop_target: Option<DropTarget>,
     ) -> (Self, Task<Message>) {
         let (config, config_error) = load(config_path.as_deref());
         let settings = settings::build(&config, false, dropshade_config::themes_dir().as_deref());
@@ -218,6 +224,7 @@ impl App {
             ipc: None,
             session_path: dropshade_session::session_path(),
             saved: None,
+            drop_target,
         };
         let first_tab = app.startup_tabs(startup);
         let open = app.open_window();
@@ -295,7 +302,14 @@ impl App {
         } else {
             Subscription::none()
         };
+        let drops = self
+            .drop_target
+            .clone()
+            .map_or_else(Subscription::none, |target| {
+                Subscription::run_with(target, dnd::drops).map(Message::FilesDropped)
+            });
         Subscription::batch([
+            drops,
             autosave,
             screens,
             portal,
@@ -314,6 +328,7 @@ impl App {
                 window::Event::Opened { size, .. } => Some(Message::WindowOpened(id, size)),
                 window::Event::Focused => Some(Message::WindowFocused(true)),
                 window::Event::Unfocused => Some(Message::WindowFocused(false)),
+                window::Event::FileDropped(path) => Some(Message::FilesDropped(vec![path])),
                 _ => None,
             }),
         ])

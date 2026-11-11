@@ -15,6 +15,22 @@ use crate::ipc::client::Visibility;
 use crate::tabs::{TabId, TabMessage, bar};
 
 impl App {
+    fn set_drop_target(&mut self, target: Option<crate::dnd::DropTarget>) -> Task<Message> {
+        self.drop_target = self.drop_target.take().or(target);
+        Task::none()
+    }
+
+    fn paste_dropped_paths(&self, paths: &[std::path::PathBuf]) -> Task<Message> {
+        if let Some(tab) = self.tabs.active() {
+            let quoted: String = paths
+                .iter()
+                .map(|path| dropshade_term::input::shell_quoted_path(&path.to_string_lossy()))
+                .collect();
+            tab.content.terminal.paste(&quoted);
+        }
+        Task::none()
+    }
+
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Term(id, event) => self.terminal_event(id, event),
@@ -30,6 +46,8 @@ impl App {
                 }
                 Task::none()
             }
+            Message::FilesDropped(paths) => self.paste_dropped_paths(&paths),
+            Message::DropTarget(target) => self.set_drop_target(target),
             Message::Blink => {
                 if let Some(tab) = self.tabs.active_mut() {
                     tab.content.cursor_on = !tab.content.cursor_on;

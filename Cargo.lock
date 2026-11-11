@@ -824,6 +824,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ureq",
+ "wayland-backend",
  "wayland-client",
  "winit-common",
  "winit-core",
