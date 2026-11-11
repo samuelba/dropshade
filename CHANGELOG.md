@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.1](https://github.com/samuelba/dropshade/compare/v0.4.0...v0.4.1) (2026-11-11)
+
+
+### Bug Fixes
+
+* give the shell TERM=xterm-256color instead of alacritty (@samuelba) ([6d92e71](https://github.com/samuelba/dropshade/commit/6d92e71a2fd1a11cdd7e3d57bf71d4ee24c59e9b))
+* record a window's size when it opens (@samuelba) ([f572eb1](https://github.com/samuelba/dropshade/commit/f572eb1627b6e21ed01adcd20382b4b7ab91f503))
+* **term:** treat input as regaining focus after an unfocus (@samuelba) ([31f37b5](https://github.com/samuelba/dropshade/commit/31f37b5466bb643df66d7d1680907bb730eea98a))
+
 ## [0.4.0](https://github.com/samuelba/dropshade/compare/v0.3.0...v0.4.0) (2026-11-11)
 
 
