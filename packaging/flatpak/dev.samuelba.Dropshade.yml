@@ -21,6 +21,7 @@ finish-args:
   - --talk-name=org.freedesktop.Flatpak
   - --own-name=dev.samuelba.Dropshade
   - --talk-name=dev.samuelba.Dropshade.Shell
+  - --talk-name=org.freedesktop.Notifications
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin
   env:

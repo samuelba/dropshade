@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 pub use error::ConfigError;
 pub use schema::{
     AnsiColors, Appearance, Binding, ColorOverrides, Config, CursorColors, CursorShape, Font,
-    Input, Monitor, Monitors, PrimaryColors, Scrollback, SelectionColors, Session, TabBarPosition,
-    TabWidth, Terminal, ThemeChoice, Unlimited, Updates, Window, WindowAlign,
+    Input, Monitor, Monitors, Notifications, PrimaryColors, Scrollback, SelectionColors, Session,
+    TabBarPosition, TabWidth, Terminal, ThemeChoice, Unlimited, Updates, Window, WindowAlign,
 };
 
 /// The default configuration, documented; `dropshade config print-default` prints it.
@@ -297,6 +297,24 @@ mod tests {
         assert!(Config::default().updates.check);
         let config = parse_str("[updates]\ncheck = false\n").expect("valid");
         assert!(!config.updates.check);
+    }
+
+    #[test]
+    fn notifications_section_controls_indicators_and_command_notifications() {
+        let defaults = Config::default().notifications;
+        assert!(defaults.bell_indicator);
+        assert!(!defaults.activity_indicator);
+        assert!(defaults.command_finished);
+        assert_eq!(defaults.command_min_duration, 10);
+        let config = parse_str(
+            "[notifications]\nbell_indicator = false\nactivity_indicator = true\n\
+             command_finished = false\ncommand_min_duration = 30\n",
+        )
+        .expect("valid");
+        assert!(!config.notifications.bell_indicator);
+        assert!(config.notifications.activity_indicator);
+        assert!(!config.notifications.command_finished);
+        assert_eq!(config.notifications.command_min_duration, 30);
     }
 
     #[test]

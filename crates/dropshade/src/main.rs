@@ -7,6 +7,7 @@ mod dnd;
 mod extension;
 mod hotkey;
 mod ipc;
+mod notifications;
 mod release;
 mod screens;
 mod settings;

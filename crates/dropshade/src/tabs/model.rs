@@ -12,6 +12,17 @@ impl fmt::Display for TabId {
     }
 }
 
+/// Why a background tab wants to be looked at. Later variants outrank earlier ones.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum Attention {
+    #[default]
+    None,
+    /// It printed output.
+    Activity,
+    /// It rang the bell.
+    Bell,
+}
+
 #[derive(Debug)]
 pub struct Tab<T> {
     pub id: TabId,
@@ -19,6 +30,8 @@ pub struct Tab<T> {
     pub title: Option<String>,
     /// Name the user gave the tab; wins over the title.
     pub custom_name: Option<String>,
+    /// What happened in it since it was last active.
+    pub attention: Attention,
     pub content: T,
 }
 
@@ -99,6 +112,7 @@ impl<T> Tabs<T> {
             id,
             title: None,
             custom_name: None,
+            attention: Attention::None,
             content,
         });
         self.active = self.entries.len() - 1;
@@ -113,6 +127,7 @@ impl<T> Tabs<T> {
         if index < self.active || self.active >= self.entries.len() {
             self.active = self.active.saturating_sub(1);
         }
+        self.clear_active_attention();
         Some(tab)
     }
 
@@ -126,6 +141,7 @@ impl<T> Tabs<T> {
         let exists = index < self.entries.len();
         if exists {
             self.active = index;
+            self.clear_active_attention();
         }
         exists
     }
@@ -140,6 +156,7 @@ impl<T> Tabs<T> {
         };
         if len > 0 {
             self.active = usize::try_from((active + offset).rem_euclid(len)).unwrap_or(0);
+            self.clear_active_attention();
         }
     }
 
@@ -164,6 +181,23 @@ impl<T> Tabs<T> {
             && target < self.entries.len()
         {
             self.move_to(id, target);
+        }
+    }
+
+    /// Records that something happened in a background tab; the active tab is being looked at
+    /// already. A bell is not downgraded by later output.
+    pub fn notice(&mut self, id: TabId, attention: Attention) {
+        if self.active_id() == Some(id) {
+            return;
+        }
+        if let Some(tab) = self.get_mut(id) {
+            tab.attention = tab.attention.max(attention);
+        }
+    }
+
+    fn clear_active_attention(&mut self) {
+        if let Some(tab) = self.active_mut() {
+            tab.attention = Attention::None;
         }
     }
 
@@ -291,6 +325,48 @@ mod tests {
         tabs.move_active(-1);
         assert_eq!(order(&tabs), vec![2, 0, 1]);
         assert_eq!(active(&tabs), Some(2));
+    }
+
+    fn attention(tabs: &Tabs<usize>, id: TabId) -> Attention {
+        tabs.get(id).map_or(Attention::None, |tab| tab.attention)
+    }
+
+    #[test]
+    fn background_tabs_are_marked_and_the_active_one_is_not() {
+        let (mut tabs, ids) = tabs(2);
+        tabs.notice(ids[0], Attention::Activity);
+        tabs.notice(ids[1], Attention::Bell);
+        assert_eq!(attention(&tabs, ids[0]), Attention::Activity);
+        assert_eq!(attention(&tabs, ids[1]), Attention::None);
+    }
+
+    #[test]
+    fn a_bell_is_not_downgraded_by_later_output() {
+        let (mut tabs, ids) = tabs(2);
+        tabs.notice(ids[0], Attention::Bell);
+        tabs.notice(ids[0], Attention::Activity);
+        assert_eq!(attention(&tabs, ids[0]), Attention::Bell);
+    }
+
+    #[test]
+    fn activating_a_tab_clears_its_mark() {
+        let (mut tabs, ids) = tabs(3);
+        tabs.notice(ids[0], Attention::Bell);
+        tabs.notice(ids[1], Attention::Bell);
+        tabs.activate(ids[0]);
+        assert_eq!(attention(&tabs, ids[0]), Attention::None);
+        assert_eq!(attention(&tabs, ids[1]), Attention::Bell);
+        tabs.cycle(1);
+        assert_eq!(attention(&tabs, ids[1]), Attention::None);
+    }
+
+    #[test]
+    fn closing_the_active_tab_clears_the_mark_of_its_successor() {
+        let (mut tabs, ids) = tabs(3);
+        tabs.activate(ids[1]);
+        tabs.notice(ids[2], Attention::Activity);
+        tabs.close(ids[1]);
+        assert_eq!(attention(&tabs, ids[2]), Attention::None);
     }
 
     #[test]

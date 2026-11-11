@@ -1,6 +1,7 @@
 //! The Dropshade application: tabs of terminals plus the chrome around them.
 
 mod about;
+mod commands;
 mod dropdown;
 mod menu;
 mod panel;
@@ -48,6 +49,7 @@ const BLINK_INTERVAL: Duration = Duration::from_millis(530);
 const BELL_DURATION: Duration = Duration::from_millis(120);
 const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(3);
 const SLIDE_INTERVAL: Duration = Duration::from_millis(8);
+const COMMAND_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Who shows, hides and places the window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -167,6 +169,10 @@ pub enum Message {
     Terminate,
     /// A step of the drop-down's slide.
     Slide,
+    /// Time to look which commands finished.
+    PollCommands,
+    /// Show the window on this tab, e.g. after its notification was clicked.
+    ShowTab(TabId),
     /// A request for the layer-shell runner; the plain window runner never sees one.
     Layer(LayerShellCustomActionWithId),
     Done,
@@ -259,6 +265,11 @@ impl App {
         } else {
             Subscription::none()
         };
+        let commands = if self.config.notifications.command_finished {
+            time::every(COMMAND_POLL_INTERVAL).map(|_| Message::PollCommands)
+        } else {
+            Subscription::none()
+        };
         let overlay_keys = if self.overlay_open() {
             event::listen_with(overlay_key)
         } else {
@@ -317,6 +328,7 @@ impl App {
             Subscription::run(termination_signals),
             blink,
             bell,
+            commands,
             overlay_keys,
             drag_end,
             config,

@@ -103,6 +103,16 @@ layout = ""
 # and a download link in About Dropshade.
 check = true
 
+[notifications]
+# Mark background tabs that rang the bell.
+bell_indicator = true
+# Mark background tabs that printed output.
+activity_indicator = false
+# Send a desktop notification when a command that ran for at least command_min_duration
+# seconds finishes while Dropshade is hidden or unfocused.
+command_finished = true
+command_min_duration = 10
+
 [keybindings]
 # Override or add shortcuts. Values are action names, "none" to pass the key to the terminal,
 # or { send = "text" } to type text. Examples:

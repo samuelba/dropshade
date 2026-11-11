@@ -15,6 +15,7 @@ pub enum Slider {
     Width,
     Height,
     Animation,
+    CommandMinDuration,
 }
 
 /// How a slider maps onto its config key.
@@ -52,6 +53,14 @@ impl Slider {
                 1000.0,
                 10.0,
             ),
+            Self::CommandMinDuration => (
+                "Long commands take",
+                "notifications",
+                "command_min_duration",
+                1.0,
+                600.0,
+                1.0,
+            ),
         };
         SliderSpec {
             label,
@@ -73,6 +82,7 @@ impl Slider {
             Self::Width => config.window.width as f32,
             Self::Height => config.window.height as f32,
             Self::Animation => config.window.animation_duration as f32,
+            Self::CommandMinDuration => config.notifications.command_min_duration as f32,
         }
     }
 
@@ -84,13 +94,16 @@ impl Slider {
             Self::Padding => format!("{value:.0} px"),
             Self::Animation if value < 1.0 => "off".into(),
             Self::Animation => format!("{value:.0} ms"),
+            Self::CommandMinDuration => format!("{value:.0} s"),
         }
     }
 
     #[allow(clippy::cast_possible_truncation)]
     pub fn value(self, value: f32) -> SettingValue {
         match self {
-            Self::Animation => SettingValue::Integer(value.round() as i64),
+            Self::Animation | Self::CommandMinDuration => {
+                SettingValue::Integer(value.round() as i64)
+            }
             _ => SettingValue::Float(f64::from(value)),
         }
     }
@@ -187,6 +200,9 @@ pub enum Switch {
     CopyOnSelect,
     Restore,
     CheckUpdates,
+    BellIndicator,
+    ActivityIndicator,
+    CommandFinished,
 }
 
 impl Switch {
@@ -206,6 +222,9 @@ impl Switch {
             Self::CopyOnSelect => config.input.copy_on_select,
             Self::Restore => config.session.restore,
             Self::CheckUpdates => config.updates.check,
+            Self::BellIndicator => config.notifications.bell_indicator,
+            Self::ActivityIndicator => config.notifications.activity_indicator,
+            Self::CommandFinished => config.notifications.command_finished,
         }
     }
 
@@ -219,6 +238,9 @@ impl Switch {
             Self::CopyOnSelect => ("input", "copy_on_select"),
             Self::Restore => ("session", "restore"),
             Self::CheckUpdates => ("updates", "check"),
+            Self::BellIndicator => ("notifications", "bell_indicator"),
+            Self::ActivityIndicator => ("notifications", "activity_indicator"),
+            Self::CommandFinished => ("notifications", "command_finished"),
             Self::FollowSystem | Self::UnlimitedScrollback => return None,
         })
     }
@@ -367,6 +389,11 @@ mod tests {
         assert_eq!(Slider::Animation.value(179.6), SettingValue::Integer(180));
         assert_eq!(Slider::Animation.shown(0.0), "off");
         assert_eq!(Slider::Width.shown(0.5), "50%");
+        assert_eq!(Slider::CommandMinDuration.shown(30.0), "30 s");
+        assert_eq!(
+            Slider::CommandMinDuration.value(29.7),
+            SettingValue::Integer(30)
+        );
         let config = Config::default();
         for slider in [
             Slider::FontSize,
@@ -376,6 +403,7 @@ mod tests {
             Slider::Width,
             Slider::Height,
             Slider::Animation,
+            Slider::CommandMinDuration,
         ] {
             let spec = slider.spec();
             let value = slider.current(&config);
