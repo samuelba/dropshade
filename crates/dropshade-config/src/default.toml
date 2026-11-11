@@ -54,7 +54,8 @@ copy_on_select = false
 # How the terminal drops down. Dropshade applies these on desktops with layer shell (COSMIC,
 # KDE Plasma, Sway, Hyprland, ...), the GNOME Shell extension on GNOME, on the next show.
 # Global shortcut in GNOME accelerator syntax, e.g. "F12", "<Super>grave", "<Control><Alt>t".
-# GNOME only: elsewhere, bind "dropshade toggle" to a key in the desktop's keyboard settings.
+# GNOME and COSMIC (where Dropshade adds it to COSMIC's custom shortcuts). Elsewhere, bind
+# "dropshade toggle" to a key in the desktop's keyboard settings.
 hotkey = "F12"
 # Size as a fraction of the monitor's work area (the screen minus the top bar).
 width = 1.0

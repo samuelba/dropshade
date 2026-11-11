@@ -169,6 +169,9 @@ impl App {
             binding_action: fields::action_names().remove(0),
             ..SettingsPanel::default()
         });
+        if self.binds_in_cosmic() {
+            self.hotkey = Some(crate::hotkey::cosmic_status());
+        }
         if self.host == Host::Layer {
             let screens = crate::wayland::screens();
             return Task::done(Message::Settings(SettingsMessage::ScreensListed(screens)));
@@ -231,6 +234,11 @@ impl App {
             }
             SettingsMessage::Submit(Field::Chord | Field::SendText)
             | SettingsMessage::AddBinding => self.add_binding(panel)?,
+            SettingsMessage::Submit(Field::Hotkey) => {
+                let hotkey = panel.text(Field::Hotkey, &self.config).trim().to_owned();
+                self.save_field(panel, Field::Hotkey)?;
+                self.bind_hotkey(&hotkey);
+            }
             SettingsMessage::Submit(field) => self.save_field(panel, field)?,
             SettingsMessage::Choose(choice, name) => self.choose(choice, name)?,
             SettingsMessage::Toggle(switch, on) => self.toggle(panel, switch, on)?,

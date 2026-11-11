@@ -11,6 +11,7 @@ use iced::{Color, Element, Fill, Font, Length, Padding, font};
 use super::fields::{self, Field, Slider, Switch};
 use super::{BindingKind, Choice, LayoutChoice, Section, SettingsMessage, SettingsPanel};
 use crate::app::{App, Host, Message};
+use crate::hotkey;
 use crate::theme::UiColors;
 
 const MAX_WIDTH: f32 = 720.0;
@@ -71,7 +72,7 @@ impl App {
         let body = match ctx.panel.section {
             Section::Appearance => appearance(ctx, self.prefers_light),
             Section::Font => font_section(ctx),
-            Section::Window => window(ctx, self.host),
+            Section::Window => window(ctx, self.host, self.hotkey.as_ref(), self.danger()),
             Section::Terminal => terminal(ctx),
             Section::Input => input(ctx),
             Section::Session => session(ctx),
@@ -231,7 +232,12 @@ fn font_section(ctx: Ctx<'_>) -> Element<'static, Message> {
     .into()
 }
 
-fn window(ctx: Ctx<'_>, host: Host) -> Element<'static, Message> {
+fn window(
+    ctx: Ctx<'_>,
+    host: Host,
+    cosmic: Option<&hotkey::Status>,
+    danger: Color,
+) -> Element<'static, Message> {
     let hotkey = || {
         hinted(
             text_row(ctx, "Hotkey", Field::Hotkey, "F12"),
@@ -239,24 +245,38 @@ fn window(ctx: Ctx<'_>, host: Host) -> Element<'static, Message> {
             ctx.colors,
         )
     };
-    let (note, hotkey): (Element<'static, Message>, Element<'static, Message>) = match host {
-        Host::Shell => (Space::new().into(), hotkey()),
-        Host::Layer => (
-            hint(
-                "Bind \"dropshade toggle\" to a key in your desktop's keyboard settings. \
-                 Changes apply the next time the terminal drops down.",
-                ctx.colors,
+    let applies = "Changes apply the next time the terminal drops down.";
+    let (note, hotkey): (Element<'static, Message>, Element<'static, Message>) =
+        match (host, cosmic) {
+            (Host::Shell, _) => (Space::new().into(), hotkey()),
+            (Host::Layer, Some(status)) => (
+                hint(applies, ctx.colors),
+                column![
+                    hotkey(),
+                    row![
+                        Space::new().width(LABEL_WIDTH + 10.0),
+                        cosmic_status(status, ctx.colors, danger)
+                    ]
+                ]
+                .spacing(4)
+                .into(),
             ),
-            Space::new().into(),
-        ),
-        Host::Window => (
-            hint(
-                "These apply when the GNOME Shell extension shows Dropshade.",
-                ctx.colors,
+            (Host::Layer, None) => (
+                hint(
+                    "Bind \"dropshade toggle\" to a key in your desktop's keyboard settings. \
+                     Changes apply the next time the terminal drops down.",
+                    ctx.colors,
+                ),
+                Space::new().into(),
             ),
-            hotkey(),
-        ),
-    };
+            (Host::Window, _) => (
+                hint(
+                    "These apply when the GNOME Shell extension shows Dropshade.",
+                    ctx.colors,
+                ),
+                hotkey(),
+            ),
+        };
     column![
         note,
         hotkey,
@@ -268,6 +288,29 @@ fn window(ctx: Ctx<'_>, host: Host) -> Element<'static, Message> {
     ]
     .spacing(12)
     .into()
+}
+
+/// Whether COSMIC runs Dropshade on a key, and why not if it could not be set.
+fn cosmic_status(
+    status: &hotkey::Status,
+    colors: UiColors,
+    danger: Color,
+) -> Element<'static, Message> {
+    let (message, color) = match status {
+        hotkey::Status::Bound(keys) => (
+            format!("COSMIC runs Dropshade on {keys}. Press Enter in the field to change it."),
+            colors.muted,
+        ),
+        hotkey::Status::Unbound => (
+            "Not in COSMIC's shortcuts yet: press Enter in the field to add it.".to_owned(),
+            colors.accent,
+        ),
+        hotkey::Status::Failed(error) => (
+            format!("COSMIC's shortcuts were left alone: {error}"),
+            danger,
+        ),
+    };
+    text(message).size(HINT_SIZE).color(color).into()
 }
 
 fn terminal(ctx: Ctx<'_>) -> Element<'static, Message> {

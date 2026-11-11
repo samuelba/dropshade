@@ -24,6 +24,7 @@ use iced::{Event, Point, Size, Subscription, Task, event, mouse, system, time, w
 use iced_layershell::actions::LayerShellCustomActionWithId;
 use ipc::WindowSettings;
 
+use crate::hotkey;
 use crate::ipc::{self, Command};
 use crate::screens::{self, Screen};
 use crate::settings::{self, Settings};
@@ -90,6 +91,8 @@ pub struct App {
     host: Host,
     /// The connected screens, to pick from `window.monitor`; `None` until known.
     screens: Option<Vec<Screen>>,
+    /// Dropshade's shortcut in COSMIC, when that is where the hotkey lives.
+    hotkey: Option<hotkey::Status>,
     ipc: Option<zbus::Connection>,
     session_path: Option<PathBuf>,
     /// The last snapshot written, to skip saves when nothing changed.
@@ -195,6 +198,7 @@ impl App {
             focused: false,
             host,
             screens: None,
+            hotkey: None,
             ipc: None,
             session_path: dropshade_session::session_path(),
             saved: None,
@@ -306,9 +310,13 @@ impl App {
         };
         match dropshade_config::load(path) {
             Ok(config) => {
-                self.config = config;
+                let previous = std::mem::replace(&mut self.config, config);
                 self.config_error = None;
                 self.apply_settings();
+                if previous.window.hotkey.trim() != self.config.window.hotkey.trim() {
+                    let hotkey = self.config.window.hotkey.clone();
+                    self.bind_hotkey(&hotkey);
+                }
                 return self.publish_window_settings();
             }
             Err(error) => {
@@ -317,6 +325,18 @@ impl App {
             }
         }
         Task::none()
+    }
+
+    /// Whether Dropshade sets the hotkey in COSMIC's shortcuts.
+    fn binds_in_cosmic(&self) -> bool {
+        self.host == Host::Layer && hotkey::on_cosmic()
+    }
+
+    /// Sets `hotkey` as the desktop's shortcut for Dropshade, where Dropshade does that.
+    fn bind_hotkey(&mut self, hotkey: &str) {
+        if self.binds_in_cosmic() {
+            self.hotkey = Some(hotkey::bind_cosmic(hotkey));
+        }
     }
 
     fn apply_settings(&mut self) {

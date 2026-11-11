@@ -3,6 +3,7 @@
 mod app;
 mod cli;
 mod extension;
+mod hotkey;
 mod ipc;
 mod release;
 mod screens;

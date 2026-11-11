@@ -122,9 +122,14 @@ These compositors support [layer shell](https://wayland.app/protocols/wlr-layer-
 so no extension is needed: Dropshade slides down over your windows by itself, on the screen in
 `window.monitor`, sized and animated by the `[window]` settings.
 
-Add a custom shortcut in your desktop's keyboard settings that runs `dropshade toggle` (use the
-full path if the binary is not on your `PATH`). The first press starts Dropshade. `window.hotkey`
-is GNOME syntax and not used here.
+On COSMIC, Dropshade puts `window.hotkey` into COSMIC's custom shortcuts whenever you change it
+(press Enter in the Hotkey field of Settings, or edit the config file), so the first press starts
+Dropshade. It only touches the shortcut named "Dropshade", reads the file the way COSMIC does,
+leaves it alone if anything looks unexpected or the keys are taken, and keeps the previous file in
+`~/.local/state/dropshade/cosmic-shortcuts-custom.backup`.
+
+Elsewhere, add a custom shortcut in your desktop's keyboard settings that runs `dropshade toggle`
+(use the full path if the binary is not on your `PATH`). The first press starts Dropshade.
 
 ### Other desktops and X11
 
