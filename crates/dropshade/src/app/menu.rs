@@ -84,7 +84,7 @@ impl App {
         )))
     }
 
-    fn set_zoom(&mut self, zoom: Zoom) -> Task<Message> {
+    pub(super) fn set_zoom(&mut self, zoom: Zoom) -> Task<Message> {
         if zoom != self.zoom {
             self.zoom = zoom;
             self.apply_settings();

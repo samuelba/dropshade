@@ -6,6 +6,7 @@ use dropshade_term::{Interaction, Notice, Shortcut, TermEvent, Terminal, links};
 use iced::Task;
 use iced::widget::{Id, operation};
 
+use super::zoom::Zoom;
 use super::{
     AboutMessage, App, Menu, Message, PendingClose, Rename, SettingsMessage, TerminalMenu, session,
 };
@@ -197,6 +198,9 @@ impl App {
                     .map_or_else(Task::none, |id| self.start_rename(id));
             }
             Shortcut::Search => return self.open_search(),
+            Shortcut::ZoomIn => return self.set_zoom(self.zoom.zoom_in()),
+            Shortcut::ZoomOut => return self.set_zoom(self.zoom.zoom_out()),
+            Shortcut::ZoomReset => return self.set_zoom(Zoom::default()),
             Shortcut::NextTab => self.tabs.cycle(1),
             Shortcut::PreviousTab => self.tabs.cycle(-1),
             Shortcut::MoveTabLeft => self.tabs.move_active(-1),
@@ -391,6 +395,9 @@ fn run_terminal_shortcut(
         | Shortcut::MoveTabRight
         | Shortcut::RenameTab
         | Shortcut::Search
+        | Shortcut::ZoomIn
+        | Shortcut::ZoomOut
+        | Shortcut::ZoomReset
         | Shortcut::GoToTab(_) => {}
     }
     Task::none()
