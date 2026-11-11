@@ -1,5 +1,7 @@
 //! The tab bar: one entry per tab with rename-in-place, close buttons and drag reordering.
 
+use std::borrow::Cow;
+
 use dropshade_term::metrics;
 use iced::widget::text::Wrapping;
 use iced::widget::{
@@ -23,6 +25,9 @@ const CLOSE_LABEL: &str = "×";
 const CLOSE_PADDING: f32 = 7.0;
 const LABEL_PADDING_LEFT: f32 = 10.0;
 const LABEL_PADDING_RIGHT: f32 = 6.0;
+const VERTICAL_LABEL_PADDING_LEFT: f32 = 8.0;
+const VERTICAL_LABEL_PADDING_RIGHT: f32 = 6.0;
+const ELLIPSIS: &str = "…";
 const RENAME_PLACEHOLDER: &str = "Tab name";
 const RENAME_PADDING: f32 = 6.0;
 
@@ -121,10 +126,39 @@ fn available_width(bar_width: f32, count: usize) -> f32 {
 
 /// Width a horizontal tab needs to show `label` in full, close button included.
 fn natural_width(label: &str) -> f32 {
-    let text = metrics::text_width(label, Font::DEFAULT, LABEL_SIZE);
-    let close = metrics::text_width(CLOSE_LABEL, Font::DEFAULT, LABEL_SIZE + 3.0);
-    (LABEL_PADDING_LEFT + text + SPACING + close + 2.0 * CLOSE_PADDING + LABEL_PADDING_RIGHT).ceil()
+    (LABEL_PADDING_LEFT + label_width(label) + SPACING + close_button_width() + LABEL_PADDING_RIGHT)
+        .ceil()
         + 1.0
+}
+
+fn label_width(label: &str) -> f32 {
+    metrics::text_width(label, Font::DEFAULT, LABEL_SIZE)
+}
+
+fn close_button_width() -> f32 {
+    metrics::text_width(CLOSE_LABEL, Font::DEFAULT, LABEL_SIZE + 3.0) + 2.0 * CLOSE_PADDING
+}
+
+/// Room left for the label of a tab that is `tab_width` wide.
+fn label_room(position: BarPosition, tab_width: f32) -> f32 {
+    let padding = if position.is_horizontal() {
+        LABEL_PADDING_LEFT + LABEL_PADDING_RIGHT
+    } else {
+        ACCENT_THICKNESS + VERTICAL_LABEL_PADDING_LEFT + VERTICAL_LABEL_PADDING_RIGHT
+    };
+    tab_width - padding - SPACING - close_button_width()
+}
+
+/// `label` as is when it fits in `max_width`, otherwise its longest prefix that fits with an
+/// ellipsis appended.
+fn ellipsize(label: &str, max_width: f32) -> Cow<'_, str> {
+    if label_width(label) <= max_width {
+        return Cow::Borrowed(label);
+    }
+    let shortened = |end: usize| format!("{}{ELLIPSIS}", label[..end].trim_end());
+    let ends: Vec<usize> = label.char_indices().map(|(index, _)| index).collect();
+    let fitting = ends.partition_point(|&end| label_width(&shortened(end)) <= max_width);
+    Cow::Owned(shortened(ends[fitting.saturating_sub(1)]))
 }
 
 fn tab_widths<T>(tabs: &Tabs<T>, state: BarState<'_>) -> Vec<f32> {
@@ -155,7 +189,7 @@ pub fn view<'a, T>(tabs: &'a Tabs<T>, state: BarState<'a>) -> Element<'a, TabMes
     let widths = if state.position.is_horizontal() {
         tab_widths(tabs, state)
     } else {
-        vec![VERTICAL_WIDTH; tabs.len()]
+        vec![VERTICAL_WIDTH - 2.0 * SPACING; tabs.len()]
     };
     let entries = tabs
         .iter()
@@ -206,11 +240,14 @@ fn entry<'a, T>(
             .padding([2.0, RENAME_PADDING])
             .width(Fill)
             .into(),
-        _ => text(tab.label())
-            .size(LABEL_SIZE)
-            .wrapping(Wrapping::None)
-            .width(Fill)
-            .into(),
+        _ => container(
+            text(ellipsize(tab.label(), label_room(state.position, width)))
+                .size(LABEL_SIZE)
+                .wrapping(Wrapping::None),
+        )
+        .width(Fill)
+        .clip(true)
+        .into(),
     };
     let close_color = if active || hovered {
         colors.muted
@@ -248,9 +285,9 @@ fn entry<'a, T>(
             container(body)
                 .padding(Padding {
                     top: 6.0,
-                    right: 6.0,
+                    right: VERTICAL_LABEL_PADDING_RIGHT,
                     bottom: 6.0,
-                    left: 8.0
+                    left: VERTICAL_LABEL_PADDING_LEFT
                 })
                 .width(Fill),
         ]
@@ -313,6 +350,28 @@ mod tests {
         assert!((widths[0] - 80.0).abs() < f32::EPSILON);
         assert!((widths[1] - widths[2]).abs() < f32::EPSILON);
         assert!((widths.iter().sum::<f32>() - available).abs() < 0.01);
+    }
+
+    #[test]
+    fn labels_that_fit_are_kept() {
+        let label = "short";
+        let shown = super::ellipsize(label, super::label_width(label));
+        assert_eq!(shown, label);
+    }
+
+    #[test]
+    fn long_labels_are_shortened_with_an_ellipsis() {
+        let label = "a very long tab name that will not fit — ünïcode";
+        let room = super::label_width("a very long");
+        let shown = super::ellipsize(label, room);
+        assert!(shown.ends_with(super::ELLIPSIS));
+        assert!(label.starts_with(shown.trim_end_matches(super::ELLIPSIS)));
+        assert!(super::label_width(&shown) <= room);
+    }
+
+    #[test]
+    fn labels_shrink_to_a_bare_ellipsis_when_nothing_fits() {
+        assert_eq!(super::ellipsize("abcdef", 0.0), super::ELLIPSIS);
     }
 
     #[test]
