@@ -87,6 +87,18 @@ impl Default for SpawnOptions {
     }
 }
 
+/// The shell's environment: `TERM=xterm-256color` unless the user's `env` says otherwise.
+///
+/// Not `alacritty`: hosts reached over ssh rarely have that terminfo, and stock shell profiles
+/// only enable a colour prompt for `*-256color` terminals.
+fn child_env(user: HashMap<String, String>) -> HashMap<String, String> {
+    [("TERM", "xterm-256color"), ("COLORTERM", "truecolor")]
+        .into_iter()
+        .map(|(key, value)| (key.to_owned(), value.to_owned()))
+        .chain(user)
+        .collect()
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum SpawnError {
     #[error("could not open a pty for the shell: {0}")]
@@ -195,7 +207,7 @@ impl Terminal {
                 .map(|(program, args)| tty::Shell::new(program, args)),
             working_directory: options.working_directory,
             drain_on_exit: true,
-            env: options.env,
+            env: child_env(options.env),
         };
         let window_size = options.size.window_size(options.cell);
         let pty = tty::new(&pty_options, window_size, 0).map_err(SpawnError::Pty)?;
@@ -569,4 +581,22 @@ fn escape_regex(query: &str) -> String {
                 .chain(std::iter::once(c))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_shell_sees_a_widely_known_terminal_type() {
+        let env = child_env(HashMap::new());
+        assert_eq!(env["TERM"], "xterm-256color");
+        assert_eq!(env["COLORTERM"], "truecolor");
+    }
+
+    #[test]
+    fn the_users_env_overrides_the_terminal_type() {
+        let user = HashMap::from([("TERM".to_owned(), "alacritty".to_owned())]);
+        assert_eq!(child_env(user)["TERM"], "alacritty");
+    }
 }
