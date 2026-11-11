@@ -144,7 +144,7 @@ mod tests {
     #[test]
     fn open_settings_is_forwarded_to_the_app() {
         let (commands, mut received) = mpsc::unbounded();
-        let window = WindowSettings::from(&dropshade_config::Window::default());
+        let window = WindowSettings::new(&dropshade_config::Window::default(), None);
         let service = Service { commands, window };
         service.open_settings().expect("send");
         assert_eq!(received.try_recv().expect("queued"), Command::OpenSettings);
@@ -153,7 +153,7 @@ mod tests {
     #[test]
     fn open_about_is_forwarded_to_the_app() {
         let (commands, mut received) = mpsc::unbounded();
-        let window = WindowSettings::from(&dropshade_config::Window::default());
+        let window = WindowSettings::new(&dropshade_config::Window::default(), None);
         let service = Service { commands, window };
         service.open_about().expect("send");
         assert_eq!(received.try_recv().expect("queued"), Command::OpenAbout);

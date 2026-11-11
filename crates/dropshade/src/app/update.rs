@@ -70,6 +70,10 @@ impl App {
                 Task::none()
             }
             Message::ConfigChanged => self.reload_config(),
+            Message::ScreensChanged(screens) => {
+                self.screens = Some(screens);
+                self.publish_window_settings()
+            }
             Message::Ipc(command) => self.command(command),
             Message::IpcReady(Ok(connection)) => {
                 self.ipc = Some(connection);

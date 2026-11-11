@@ -25,6 +25,7 @@ use iced_layershell::actions::LayerShellCustomActionWithId;
 use ipc::WindowSettings;
 
 use crate::ipc::{self, Command};
+use crate::screens::{self, Screen};
 use crate::settings::{self, Settings};
 use crate::tabs::{TabId, TabMessage, Tabs};
 pub use about::AboutMessage;
@@ -87,6 +88,8 @@ pub struct App {
     dropdown: Option<dropdown::Dropdown>,
     focused: bool,
     host: Host,
+    /// The connected screens, to pick from `window.monitor`; `None` until known.
+    screens: Option<Vec<Screen>>,
     ipc: Option<zbus::Connection>,
     session_path: Option<PathBuf>,
     /// The last snapshot written, to skip saves when nothing changed.
@@ -131,6 +134,8 @@ pub enum Message {
     ConfigChanged,
     SystemTheme(Mode),
     Ipc(Command),
+    /// GNOME's compositor reported the connected screens.
+    ScreensChanged(Vec<Screen>),
     IpcReady(Result<zbus::Connection, String>),
     WindowOpened(window::Id, Size),
     WindowClosed(window::Id),
@@ -189,6 +194,7 @@ impl App {
             dropdown: None,
             focused: false,
             host,
+            screens: None,
             ipc: None,
             session_path: dropshade_session::session_path(),
             saved: None,
@@ -254,8 +260,15 @@ impl App {
         } else {
             Subscription::none()
         };
+        // On GNOME the extension places the window, from the screen this process publishes.
+        let screens = if self.host == Host::Shell {
+            Subscription::run(screens::changes).map(Message::ScreensChanged)
+        } else {
+            Subscription::none()
+        };
         Subscription::batch([
             autosave,
+            screens,
             slide,
             Subscription::run(termination_signals),
             blink,

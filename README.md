@@ -59,6 +59,19 @@ Themes: `dusk` (dark) and `dawn` (light) are built in, and any
 `~/.config/dropshade/themes/` works by its file name. `theme = { dark = "dusk", light = "dawn" }`
 follows the system's light/dark setting.
 
+Screens: `window.monitor` takes one screen or a list in order of preference, and the first one
+that is connected is used, so a single config works at every desk:
+
+```toml
+[window]
+monitor = ["LEN P27h-10", "DELL U2719DC", "eDP-1", "pointer"]
+#          office          home            laptop   anything else
+```
+
+Each entry is a model (as Settings lists it), a connector such as `DP-1`, `"pointer"` (the screen
+under the mouse pointer) or `"primary"`. Models are the safer choice because docks often number
+the connectors differently; use connectors for two screens of the same model.
+
 ## Install
 
 Each [release](https://github.com/samuelba/dropshade/releases) has packages for x86_64 and

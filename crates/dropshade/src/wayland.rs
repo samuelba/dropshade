@@ -49,8 +49,16 @@ pub fn probe() -> Result<Compositor, ProbeError> {
     queue.roundtrip(&mut outputs)?;
     Ok(Compositor {
         layer_shell,
-        screens: screens(outputs.found),
+        screens: named_screens(outputs.found),
     })
+}
+
+/// The connected screens, or `None` (logged) when the compositor cannot be asked.
+pub fn screens() -> Option<Vec<Screen>> {
+    probe()
+        .map(|compositor| compositor.screens)
+        .inspect_err(|error| tracing::warn!(%error, "cannot list the screens"))
+        .ok()
 }
 
 #[derive(Debug, Default)]
@@ -62,6 +70,7 @@ struct Outputs {
 struct Output {
     name: String,
     description: String,
+    model: String,
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for Outputs {
@@ -91,18 +100,19 @@ impl Dispatch<wl_output::WlOutput, usize> for Outputs {
         match event {
             wl_output::Event::Name { name } => output.name = name,
             wl_output::Event::Description { description } => output.description = description,
+            wl_output::Event::Geometry { model, .. } => output.model = model,
             _ => {}
         }
     }
 }
 
 /// Named outputs by connector. Wayland has no primary screen.
-fn screens(outputs: Vec<Output>) -> Vec<Screen> {
+fn named_screens(outputs: Vec<Output>) -> Vec<Screen> {
     let mut screens: Vec<Screen> = outputs
         .into_iter()
         .filter(|output| !output.name.is_empty())
         .map(|output| Screen {
-            product: product(&output.description, &output.name),
+            product: product(&output),
             connector: output.name,
             primary: false,
         })
@@ -111,11 +121,16 @@ fn screens(outputs: Vec<Output>) -> Vec<Screen> {
     screens
 }
 
-/// The description without the connector that compositors often append, as in "Dell U2413 (DP-1)".
-fn product(description: &str, connector: &str) -> String {
-    let description = description.trim();
+/// The model from the screen's EDID, as GNOME reports it too. Without one, the description minus
+/// the connector that compositors often append, as in "Dell U2413 (DP-1)".
+fn product(output: &Output) -> String {
+    let model = output.model.trim();
+    if !model.is_empty() && !model.eq_ignore_ascii_case("unknown") {
+        return model.to_owned();
+    }
+    let description = output.description.trim();
     description
-        .strip_suffix(&format!("({connector})"))
+        .strip_suffix(&format!("({})", output.name))
         .unwrap_or(description)
         .trim()
         .to_owned()
@@ -129,22 +144,36 @@ mod tests {
         Output {
             name: name.into(),
             description: description.into(),
+            model: String::new(),
         }
     }
 
     #[test]
-    fn the_appended_connector_is_dropped_from_the_product() {
-        assert_eq!(product("Dell Inc. U2413 (DP-1)", "DP-1"), "Dell Inc. U2413");
-        assert_eq!(product(" LEN P27h-10 ", "DP-4"), "LEN P27h-10");
+    fn the_product_is_the_model() {
+        let output = Output {
+            model: " LEN P27h-10 ".into(),
+            ..output("DP-4", "Lenovo Group Limited LEN P27h-10 (DP-4)")
+        };
+        assert_eq!(product(&output), "LEN P27h-10");
+    }
+
+    #[test]
+    fn without_a_model_the_appended_connector_is_dropped_from_the_description() {
         assert_eq!(
-            product("Built-in (eDP-1) panel", "eDP-1"),
-            "Built-in (eDP-1) panel"
+            product(&output("DP-1", "Dell Inc. U2413 (DP-1)")),
+            "Dell Inc. U2413"
         );
+        assert_eq!(product(&output("DP-4", " LEN P27h-10 ")), "LEN P27h-10");
+        let unknown = Output {
+            model: "Unknown".into(),
+            ..output("eDP-1", "Built-in (eDP-1) panel")
+        };
+        assert_eq!(product(&unknown), "Built-in (eDP-1) panel");
     }
 
     #[test]
     fn screens_are_sorted_by_connector_and_unnamed_outputs_skipped() {
-        let found = screens(vec![
+        let found = named_screens(vec![
             output("DP-4", "LEN P27h-10 (DP-4)"),
             output("", "nameless"),
             output("DP-1", "DELL U2719DC"),

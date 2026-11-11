@@ -11,16 +11,15 @@ use iced::{Color, Element, Fill, Font, Length, Padding, font};
 use super::fields::{self, Field, Slider, Switch};
 use super::{BindingKind, Choice, LayoutChoice, Section, SettingsMessage, SettingsPanel};
 use crate::app::{App, Host, Message};
-use crate::screens::{self, Screen};
 use crate::theme::UiColors;
 
 const MAX_WIDTH: f32 = 720.0;
 const MAX_HEIGHT: f32 = 560.0;
 const MARGIN: f32 = 24.0;
 const SIDEBAR_WIDTH: f32 = 150.0;
-const LABEL_WIDTH: f32 = 170.0;
+pub(super) const LABEL_WIDTH: f32 = 170.0;
 const VALUE_WIDTH: f32 = 56.0;
-const TEXT_SIZE: f32 = 13.0;
+pub(super) const TEXT_SIZE: f32 = 13.0;
 const HINT_SIZE: f32 = 11.5;
 const BAR_POSITIONS: [&str; 4] = ["top", "bottom", "left", "right"];
 const TAB_WIDTHS: [&str; 2] = ["fixed", "fit"];
@@ -28,13 +27,13 @@ const CURSOR_SHAPES: [&str; 3] = ["block", "beam", "underline"];
 
 /// Everything a section needs to draw itself.
 #[derive(Clone, Copy)]
-struct Ctx<'a> {
-    panel: &'a SettingsPanel,
-    config: &'a Config,
-    colors: UiColors,
+pub(super) struct Ctx<'a> {
+    pub(super) panel: &'a SettingsPanel,
+    pub(super) config: &'a Config,
+    pub(super) colors: UiColors,
 }
 
-fn settings(message: SettingsMessage) -> Message {
+pub(super) fn settings(message: SettingsMessage) -> Message {
     Message::Settings(message)
 }
 
@@ -261,7 +260,7 @@ fn window(ctx: Ctx<'_>, host: Host) -> Element<'static, Message> {
     column![
         note,
         hotkey,
-        screen(ctx.panel.screens.as_deref(), &ctx.config.window.monitor),
+        super::screen_list::screen_list(ctx),
         slider_row(ctx, Slider::Width),
         slider_row(ctx, Slider::Height),
         slider_row(ctx, Slider::Animation),
@@ -478,7 +477,7 @@ fn hinted(
     .into()
 }
 
-fn hint(note: &'static str, colors: UiColors) -> Element<'static, Message> {
+pub(super) fn hint(note: &'static str, colors: UiColors) -> Element<'static, Message> {
     text(note).size(HINT_SIZE).color(colors.muted).into()
 }
 
@@ -605,24 +604,6 @@ fn add_button(message: SettingsMessage, colors: UiColors) -> Element<'static, Me
         .style(move |_, status| colors.ghost_button(colors.text, status))
         .on_press(settings(message))
         .into()
-}
-
-fn screen(
-    screens: Option<&[Screen]>,
-    current: &dropshade_config::Monitor,
-) -> Element<'static, Message> {
-    let choices = screens::choices(screens, current);
-    let selected = choices
-        .iter()
-        .find(|choice| &choice.monitor == current)
-        .cloned();
-    setting(
-        "Screen",
-        pick_list(choices, selected, |choice| {
-            settings(SettingsMessage::Screen(choice))
-        })
-        .text_size(TEXT_SIZE),
-    )
 }
 
 fn bold() -> Font {

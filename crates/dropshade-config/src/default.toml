@@ -59,9 +59,11 @@ hotkey = "F12"
 # Size as a fraction of the monitor's work area (the screen minus the top bar).
 width = 1.0
 height = 0.5
-# "pointer" (the monitor under the mouse), "primary", or a connector name such as "DP-1".
-# Outside GNOME, "pointer" and "primary" both mean the screen the compositor picks, usually the
-# focused one.
+# The screen to drop down on: "pointer" (the one under the mouse), "primary", a model such as
+# "DELL U2413" or a connector such as "DP-1". A list is tried in order and the first connected
+# screen wins, e.g. ["LEN P27h-10", "DELL U2719DC", "eDP-1", "pointer"] for office, home and
+# laptop. Outside GNOME, "pointer" and "primary" both mean the screen the compositor picks,
+# usually the focused one.
 monitor = "pointer"
 # Slide animation in milliseconds; 0 turns it off.
 animation_duration = 180

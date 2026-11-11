@@ -33,7 +33,9 @@ pub fn window_settings(managed: bool) -> window::Settings {
 impl App {
     pub(super) fn open_window(&mut self) -> Task<Message> {
         if self.host == Host::Layer {
-            let (dropdown, open) = Dropdown::open(&self.config.window);
+            // Screens come and go between shows, so the list is resolved again each time.
+            self.screens = crate::wayland::screens();
+            let (dropdown, open) = Dropdown::open(&self.config.window, self.screens.as_deref());
             self.dropdown = Some(dropdown);
             return open;
         }
@@ -44,7 +46,7 @@ impl App {
 
     pub(super) fn start_service(&self) -> Task<Message> {
         let (sender, commands) = mpsc::unbounded();
-        let window = WindowSettings::from(&self.config.window);
+        let window = WindowSettings::new(&self.config.window, self.screens.as_deref());
         let start = Task::perform(service::start(window, sender), |result| {
             Message::IpcReady(result.map_err(|error| error.to_string()))
         });
@@ -169,7 +171,7 @@ impl App {
         let Some(connection) = self.ipc.clone() else {
             return Task::none();
         };
-        let window = WindowSettings::from(&self.config.window);
+        let window = WindowSettings::new(&self.config.window, self.screens.as_deref());
         Task::perform(
             async move { service::publish(&connection, window).await },
             |result| {

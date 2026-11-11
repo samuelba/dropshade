@@ -2,6 +2,7 @@
 //! comments); the file watcher then applies it like any other edit.
 
 mod fields;
+mod screen_list;
 mod view;
 
 use std::collections::{HashMap, HashSet};
@@ -13,8 +14,9 @@ use dropshade_term::input::Chord;
 use iced::Task;
 
 use super::{App, Host, Message};
-use crate::screens::{self, Screen, ScreenChoice};
+use crate::screens::{self, Screen};
 use fields::{Field, Slider, Switch};
+pub use screen_list::ScreenEdit;
 
 const DEFAULT_LIGHT_THEME: &str = "dawn";
 const DEFAULT_DARK_THEME: &str = "dusk";
@@ -108,9 +110,9 @@ pub enum SettingsMessage {
     Submit(Field),
     Choose(Choice, String),
     Toggle(Switch, bool),
-    Screen(ScreenChoice),
+    EditScreens(ScreenEdit),
     /// The connected screens arrived from the compositor (`None` if it could not be asked).
-    Screens(Option<Vec<Screen>>),
+    ScreensListed(Option<Vec<Screen>>),
     Layout(LayoutChoice),
     AddEnv,
     RemoveEnv(String),
@@ -168,11 +170,8 @@ impl App {
             ..SettingsPanel::default()
         });
         if self.host == Host::Layer {
-            let screens = crate::wayland::probe()
-                .map(|compositor| compositor.screens)
-                .inspect_err(|error| tracing::warn!(%error, "cannot list the screens"))
-                .ok();
-            return Task::done(Message::Settings(SettingsMessage::Screens(screens)));
+            let screens = crate::wayland::screens();
+            return Task::done(Message::Settings(SettingsMessage::ScreensListed(screens)));
         }
         let connection = self.ipc.clone();
         Task::perform(
@@ -187,7 +186,7 @@ impl App {
                 let screens = result
                     .inspect_err(|error| tracing::warn!(%error, "cannot list the screens"))
                     .ok();
-                Message::Settings(SettingsMessage::Screens(screens))
+                Message::Settings(SettingsMessage::ScreensListed(screens))
             },
         )
     }
@@ -235,11 +234,8 @@ impl App {
             SettingsMessage::Submit(field) => self.save_field(panel, field)?,
             SettingsMessage::Choose(choice, name) => self.choose(choice, name)?,
             SettingsMessage::Toggle(switch, on) => self.toggle(panel, switch, on)?,
-            SettingsMessage::Screen(choice) => {
-                let value = SettingValue::Text(choice.monitor.as_str().to_owned());
-                self.write("window", "monitor", value)?;
-            }
-            SettingsMessage::Screens(screens) => panel.screens = screens,
+            SettingsMessage::EditScreens(edit) => self.edit_screens(edit)?,
+            SettingsMessage::ScreensListed(screens) => panel.screens = screens,
             SettingsMessage::Layout(choice) => {
                 let name = match choice {
                     LayoutChoice::None => String::new(),

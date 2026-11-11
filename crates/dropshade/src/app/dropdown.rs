@@ -14,6 +14,7 @@ use iced_layershell::reexport::{
 };
 
 use super::Message;
+use crate::screens::{self, Screen};
 
 pub const NAMESPACE: &str = "dropshade";
 
@@ -30,8 +31,12 @@ pub struct Dropdown {
 }
 
 impl Dropdown {
-    /// Creates the surface on the configured screen; it slides in once it knows its size.
-    pub fn open(window: &dropshade_config::Window) -> (Self, Task<Message>) {
+    /// Creates the surface on the first configured screen that is connected; it slides in once
+    /// it knows its size.
+    pub fn open(
+        window: &dropshade_config::Window,
+        screens: Option<&[Screen]>,
+    ) -> (Self, Task<Message>) {
         let id = window::Id::unique();
         let duration = Duration::from_millis(window.animation_duration.into());
         let dropdown = Self {
@@ -51,7 +56,7 @@ impl Dropdown {
             // Exclusive makes the compositor focus the new surface; it relaxes to on-demand
             // once placed so that clicking other windows still works.
             keyboard_interactivity: KeyboardInteractivity::Exclusive,
-            output_option: output_option(&window.monitor),
+            output_option: output_option(&screens::resolve(&window.monitor, screens)),
             events_transparent: false,
             namespace: Some(NAMESPACE.to_owned()),
         };
@@ -139,7 +144,7 @@ fn layer(id: Option<window::Id>, action: LayerShellCustomAction) -> Task<Message
 fn output_option(monitor: &Monitor) -> OutputOption {
     match monitor {
         Monitor::Pointer | Monitor::Primary => OutputOption::Active,
-        Monitor::Connector(name) => OutputOption::OutputName(name.clone()),
+        Monitor::Named(connector) => OutputOption::OutputName(connector.clone()),
     }
 }
 
@@ -260,7 +265,7 @@ mod tests {
             OutputOption::Active
         ));
         assert!(matches!(
-            output_option(&Monitor::Connector("DP-4".into())),
+            output_option(&Monitor::Named("DP-4".into())),
             OutputOption::OutputName(name) if name == "DP-4"
         ));
     }
@@ -317,14 +322,14 @@ mod tests {
 
     #[test]
     fn a_new_drop_down_measures_before_it_shows() {
-        let (dropdown, _) = Dropdown::open(&window());
+        let (dropdown, _) = Dropdown::open(&window(), None);
         assert!(dropdown.measuring());
         assert!(!dropdown.showing());
     }
 
     #[test]
     fn once_placed_it_slides_in_and_stops() {
-        let (mut dropdown, _) = Dropdown::open(&window());
+        let (mut dropdown, _) = Dropdown::open(&window(), None);
         let now = Instant::now();
         let _ = dropdown.placed(Size::new(2000.0, 1000.0), now);
         assert!(!dropdown.measuring());
@@ -340,7 +345,7 @@ mod tests {
 
     #[test]
     fn hiding_finishes_once_it_has_slid_out() {
-        let (mut dropdown, _) = Dropdown::open(&window());
+        let (mut dropdown, _) = Dropdown::open(&window(), None);
         let now = Instant::now();
         let _ = dropdown.placed(Size::new(2000.0, 1000.0), now);
         let shown = now + FULL;
@@ -352,7 +357,7 @@ mod tests {
 
     #[test]
     fn hiding_before_it_is_placed_closes_at_once() {
-        let (mut dropdown, _) = Dropdown::open(&window());
+        let (mut dropdown, _) = Dropdown::open(&window(), None);
         dropdown.hide(Instant::now());
         assert!(dropdown.tick(Instant::now()).1);
     }
