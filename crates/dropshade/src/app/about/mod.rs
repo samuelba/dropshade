@@ -1,8 +1,6 @@
 //! The About dialog: icon, name, version and where to find the project.
 
-mod icon;
-
-use iced::widget::{Space, button, canvas, column, container, row, text};
+use iced::widget::{Space, button, column, container, row, svg, text};
 use iced::{Center, Element, Fill, Font, Task, font};
 
 use super::update::open_link;
@@ -11,6 +9,9 @@ use crate::release::{self, Release};
 
 const DIALOG_WIDTH: f32 = 380.0;
 const ICON_SIZE: f32 = 96.0;
+const ICON: &[u8] = include_bytes!(
+    "../../../../../packaging/icons/hicolor/scalable/apps/dev.samuelba.Dropshade.svg"
+);
 const TEXT_SIZE: f32 = 13.0;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
@@ -114,7 +115,9 @@ impl App {
             .on_press(Message::About(AboutMessage::Close));
         let card = container(
             column![
-                canvas(icon::Icon).width(ICON_SIZE).height(ICON_SIZE),
+                svg(svg::Handle::from_memory(ICON))
+                    .width(ICON_SIZE)
+                    .height(ICON_SIZE),
                 heading,
                 text(DESCRIPTION).size(TEXT_SIZE),
                 column![repository, credits].spacing(2).align_x(Center),
