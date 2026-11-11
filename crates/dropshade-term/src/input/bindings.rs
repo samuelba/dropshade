@@ -77,6 +77,37 @@ impl Chord {
         })
     }
 
+    /// The chord as shown in menus, such as `Ctrl+Shift+T`.
+    pub fn label(&self) -> String {
+        let mut label = String::new();
+        for (held, name) in [
+            (self.modifiers.control(), "Ctrl"),
+            (self.modifiers.alt(), "Alt"),
+            (self.modifiers.shift(), "Shift"),
+            (self.modifiers.logo(), "Super"),
+        ] {
+            if held {
+                label.push_str(name);
+                label.push('+');
+            }
+        }
+        match &self.key {
+            ChordKey::Character(c) => label.push_str(&c.to_uppercase()),
+            ChordKey::Named(named) => {
+                let name = format!("{named:?}");
+                label.push_str(name.strip_prefix("Arrow").unwrap_or(&name));
+            }
+        }
+        label
+    }
+
+    fn key(&self) -> Key {
+        match &self.key {
+            ChordKey::Character(c) => Key::Character(c.as_str().into()),
+            ChordKey::Named(named) => Key::Named(*named),
+        }
+    }
+
     pub fn matches(&self, key: &Key, modifiers: Modifiers) -> bool {
         let exact = |m: Modifiers| (m.control(), m.shift(), m.alt(), m.logo());
         if exact(modifiers) != exact(self.modifiers) {
@@ -150,6 +181,35 @@ pub fn resolve(key: &Key, modifiers: Modifiers, bindings: &[Binding]) -> Resolut
         };
     }
     shortcut(key, modifiers).map_or(Resolution::Encode, Resolution::Shortcut)
+}
+
+/// Default chords for the shortcuts that appear in menus.
+const MENU_DEFAULTS: [(Shortcut, &str); 7] = [
+    (Shortcut::Copy, "ctrl+shift+c"),
+    (Shortcut::Paste, "ctrl+shift+v"),
+    (Shortcut::NewTab, "ctrl+shift+t"),
+    (Shortcut::Search, "ctrl+shift+f"),
+    (Shortcut::ZoomIn, "ctrl+="),
+    (Shortcut::ZoomOut, "ctrl+-"),
+    (Shortcut::ZoomReset, "ctrl+0"),
+];
+
+/// The chord that triggers `target`, for display: the first user binding to it, otherwise its
+/// default unless a user binding took that key away. `None` when nothing triggers it.
+pub fn shortcut_label(target: Shortcut, bindings: &[Binding]) -> Option<String> {
+    let custom = bindings.iter().find_map(|binding| match binding.action {
+        BindingAction::Shortcut(shortcut) if shortcut == target => Some(binding.chord.label()),
+        _ => None,
+    });
+    custom.or_else(|| {
+        let (_, default) = MENU_DEFAULTS
+            .iter()
+            .find(|(shortcut, _)| *shortcut == target)?;
+        let chord = Chord::parse(default).ok()?;
+        let still_bound =
+            resolve(&chord.key(), chord.modifiers, bindings) == Resolution::Shortcut(target);
+        still_bound.then(|| chord.label())
+    })
 }
 
 #[cfg(test)]
@@ -242,5 +302,35 @@ mod tests {
                 .unwrap_err()
                 .contains("explode")
         );
+    }
+
+    #[test]
+    fn menu_labels_follow_user_bindings() {
+        assert_eq!(
+            shortcut_label(Shortcut::NewTab, &[]).as_deref(),
+            Some("Ctrl+Shift+T")
+        );
+        assert_eq!(
+            shortcut_label(Shortcut::ZoomIn, &[]).as_deref(),
+            Some("Ctrl+=")
+        );
+        assert_eq!(shortcut_label(Shortcut::CloseTab, &[]), None);
+
+        let remapped = [Binding {
+            chord: chord("alt+n"),
+            action: BindingAction::Shortcut(Shortcut::NewTab),
+        }];
+        assert_eq!(
+            shortcut_label(Shortcut::NewTab, &remapped).as_deref(),
+            Some("Alt+N")
+        );
+
+        let unbound = [Binding {
+            chord: chord("ctrl+shift+t"),
+            action: BindingAction::PassThrough,
+        }];
+        assert_eq!(shortcut_label(Shortcut::NewTab, &unbound), None);
+        assert_eq!(chord("ctrl+pageup").label(), "Ctrl+PageUp");
+        assert_eq!(chord("ctrl+down").label(), "Ctrl+Down");
     }
 }

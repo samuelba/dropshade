@@ -3,12 +3,15 @@
 use iced::widget::{Button, Space, button, column, container, mouse_area, pin, row, stack, text};
 use iced::{Element, Fill, Point, Size, Task};
 
+use dropshade_term::Shortcut;
+use dropshade_term::input::shortcut_label;
+
 use super::zoom::Zoom;
 use super::{App, Message};
 use crate::theme::UiColors;
 
-const MENU_WIDTH: f32 = 190.0;
-const SUBMENU_WIDTH: f32 = 150.0;
+const MENU_WIDTH: f32 = 250.0;
+const SUBMENU_WIDTH: f32 = 210.0;
 const MENU_ITEM_HEIGHT: f32 = 30.0;
 const SEPARATOR_HEIGHT: f32 = 9.0;
 const CARD_PADDING: f32 = 4.0;
@@ -109,16 +112,23 @@ impl App {
             .tabs
             .active()
             .is_some_and(|tab| tab.content.terminal.selection_text().is_some());
+        let bindings = &self.settings.input.bindings;
         let item = |label: &'static str, action: Option<MenuAction>| {
-            mouse_area(item_button(colors, label, action))
+            mouse_area(item_button(colors, label, action, None))
+                .on_enter(Message::Menu(MenuAction::HideZoomMenu))
+        };
+        let shortcut_item = |label: &'static str, action: MenuAction, shortcut: Shortcut| {
+            let enabled = !matches!(action, MenuAction::Copy) || has_selection;
+            let hint = shortcut_label(shortcut, bindings);
+            mouse_area(item_button(colors, label, enabled.then_some(action), hint))
                 .on_enter(Message::Menu(MenuAction::HideZoomMenu))
         };
         let items = column![
-            item("Copy", has_selection.then_some(MenuAction::Copy)),
-            item("Paste", Some(MenuAction::Paste)),
+            shortcut_item("Copy", MenuAction::Copy, Shortcut::Copy),
+            shortcut_item("Paste", MenuAction::Paste, Shortcut::Paste),
             separator(colors),
-            item("New Tab", Some(MenuAction::NewTab)),
-            item("Find…", Some(MenuAction::Find)),
+            shortcut_item("New Tab", MenuAction::NewTab, Shortcut::NewTab),
+            shortcut_item("Find…", MenuAction::Find, Shortcut::Search),
             separator(colors),
             zoom_item(colors, menu.zoom_open),
             separator(colors),
@@ -152,21 +162,25 @@ impl App {
     fn zoom_submenu(&self) -> Element<'_, Message> {
         let colors = self.settings.colors;
         let zoom = self.zoom;
+        let bindings = &self.settings.input.bindings;
         let items = column![
             item_button(
                 colors,
                 "Zoom In",
-                zoom.can_zoom_in().then_some(MenuAction::ZoomIn)
+                zoom.can_zoom_in().then_some(MenuAction::ZoomIn),
+                shortcut_label(Shortcut::ZoomIn, bindings),
             ),
             item_button(
                 colors,
                 "Zoom Out",
-                zoom.can_zoom_out().then_some(MenuAction::ZoomOut)
+                zoom.can_zoom_out().then_some(MenuAction::ZoomOut),
+                shortcut_label(Shortcut::ZoomOut, bindings),
             ),
             item_button(
                 colors,
                 "Normal Size",
-                (!zoom.is_normal()).then_some(MenuAction::ZoomNormal)
+                (!zoom.is_normal()).then_some(MenuAction::ZoomNormal),
+                shortcut_label(Shortcut::ZoomReset, bindings),
             ),
         ];
         container(items)
@@ -181,13 +195,21 @@ fn item_button(
     colors: UiColors,
     label: &'static str,
     action: Option<MenuAction>,
+    shortcut: Option<String>,
 ) -> Button<'static, Message> {
     let color = if action.is_some() {
         colors.text
     } else {
         colors.muted
     };
-    button(text(label).size(TEXT_SIZE))
+    let content = row![
+        text(label).size(TEXT_SIZE),
+        Space::new().width(Fill),
+        text(shortcut.unwrap_or_default())
+            .size(TEXT_SIZE)
+            .color(colors.muted),
+    ];
+    button(content)
         .width(Fill)
         .height(MENU_ITEM_HEIGHT)
         .padding([7, 10])
