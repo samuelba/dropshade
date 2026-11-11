@@ -219,3 +219,32 @@ fn keys_are_ignored_while_input_is_disabled() {
     );
     assert!(result.is_none());
 }
+
+#[test]
+fn input_after_unfocus_restores_focus() {
+    with_view(|view| {
+        let area = bounds(660.0, 404.0);
+        let unfocused = Event::Window(window::Event::Unfocused);
+        let inputs = [
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+            Event::Keyboard(keyboard::Event::KeyPressed {
+                key: keyboard::Key::Character("a".into()),
+                modified_key: keyboard::Key::Character("a".into()),
+                physical_key: keyboard::key::Physical::Unidentified(
+                    keyboard::key::NativeCode::Unidentified,
+                ),
+                location: keyboard::Location::Standard,
+                modifiers: keyboard::Modifiers::empty(),
+                text: Some("a".into()),
+                repeat: false,
+            }),
+        ];
+        for input in inputs {
+            let mut state = ViewState::default();
+            view.update(&mut state, &unfocused, area, mouse::Cursor::Unavailable);
+            assert!(!state.focused);
+            view.update(&mut state, &input, area, mouse::Cursor::Unavailable);
+            assert!(state.focused, "{input:?} should restore focus");
+        }
+    });
+}
