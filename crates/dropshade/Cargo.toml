@@ -17,7 +17,7 @@ notify.workspace = true
 clap.workspace = true
 directories.workspace = true
 iced.workspace = true
-iced_layershell = "0.19.1"
+iced_layershell = { version = "0.19.1", default-features = false }
 # iced_layershell 0.19 (through iced_exdevtools) breaks on winit-core 0.31.0-beta.3 and later.
 winit-core = "=0.31.0-beta.2"
 winit-common = "=0.31.0-beta.2"
