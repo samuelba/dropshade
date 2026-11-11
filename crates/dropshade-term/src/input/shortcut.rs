@@ -20,13 +20,16 @@ pub enum Shortcut {
     MoveTabRight,
     RenameTab,
     Search,
+    ZoomIn,
+    ZoomOut,
+    ZoomReset,
     /// Activates the tab at this zero-based index.
     GoToTab(u8),
 }
 
 impl Shortcut {
     /// Every action name a keybinding accepts, apart from `go-to-tab-1` to `go-to-tab-9`.
-    pub const NAMES: [&'static str; 15] = [
+    pub const NAMES: [&'static str; 18] = [
         "copy",
         "paste",
         "paste-primary",
@@ -42,6 +45,9 @@ impl Shortcut {
         "move-tab-right",
         "rename-tab",
         "search",
+        "zoom-in",
+        "zoom-out",
+        "zoom-reset",
     ];
 }
 
@@ -77,6 +83,9 @@ impl std::str::FromStr for Shortcut {
             "move-tab-right" => Self::MoveTabRight,
             "rename-tab" => Self::RenameTab,
             "search" => Self::Search,
+            "zoom-in" => Self::ZoomIn,
+            "zoom-out" => Self::ZoomOut,
+            "zoom-reset" => Self::ZoomReset,
             _ => return Err(format!("unknown action \"{name}\"")),
         };
         Ok(shortcut)
@@ -88,6 +97,7 @@ pub fn shortcut(key: &Key, modifiers: Modifiers) -> Option<Shortcut> {
     let (ctrl, shift, alt) = (modifiers.control(), modifiers.shift(), modifiers.alt());
     match key {
         Key::Character(c) if ctrl && shift && !alt => ctrl_shift_character(c),
+        Key::Character(c) if ctrl && !alt => ctrl_zoom(c),
         Key::Character(c) if alt && !ctrl && !shift => alt_digit(c),
         Key::Named(named) if ctrl && !alt => ctrl_named(*named, shift),
         Key::Named(named) if shift && !ctrl && !alt => shift_named(*named),
@@ -103,6 +113,16 @@ fn ctrl_shift_character(c: &str) -> Option<Shortcut> {
         "w" => Some(Shortcut::CloseTab),
         "r" => Some(Shortcut::RenameTab),
         "f" => Some(Shortcut::Search),
+        _ => ctrl_zoom(c),
+    }
+}
+
+/// Zoom keys, which work with or without Shift so `Ctrl+=` and `Ctrl++` both zoom in.
+fn ctrl_zoom(c: &str) -> Option<Shortcut> {
+    match c {
+        "=" | "+" => Some(Shortcut::ZoomIn),
+        "-" | "_" => Some(Shortcut::ZoomOut),
+        "0" | ")" => Some(Shortcut::ZoomReset),
         _ => None,
     }
 }
@@ -206,6 +226,19 @@ mod tests {
             named(Named::PageDown, ctrl_shift),
             Some(Shortcut::MoveTabRight)
         );
+    }
+
+    #[test]
+    fn zoom_shortcuts() {
+        let ctrl_shift = Modifiers::CTRL | Modifiers::SHIFT;
+        assert_eq!(character("=", Modifiers::CTRL), Some(Shortcut::ZoomIn));
+        assert_eq!(character("+", ctrl_shift), Some(Shortcut::ZoomIn));
+        assert_eq!(character("-", Modifiers::CTRL), Some(Shortcut::ZoomOut));
+        assert_eq!(character("0", Modifiers::CTRL), Some(Shortcut::ZoomReset));
+        assert_eq!(character("=", Modifiers::empty()), None);
+        assert_eq!("zoom-in".parse(), Ok(Shortcut::ZoomIn));
+        assert_eq!("zoom-out".parse(), Ok(Shortcut::ZoomOut));
+        assert_eq!("zoom-reset".parse(), Ok(Shortcut::ZoomReset));
     }
 
     #[test]

@@ -33,6 +33,7 @@ slide animation.
 | Shift+PageUp/PageDown/Home/End | Scroll the scrollback |
 | Ctrl+click | Open a link |
 | Ctrl+Shift+F | Search the scrollback (Enter: older match) |
+| Ctrl+= / Ctrl+- / Ctrl+0 | Zoom in / out / reset (all tabs, not saved) |
 
 Right-click the terminal for Copy, Paste, New Tab, Find, **Zoom** (in, out, normal size; for the
 session only, the configured font size stays), **Reset** (clears modes a crashed program left on,

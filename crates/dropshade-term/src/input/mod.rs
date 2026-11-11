@@ -5,7 +5,7 @@ mod kitty;
 mod paste;
 mod shortcut;
 
-pub use bindings::{Binding, BindingAction, Chord, Resolution, resolve};
+pub use bindings::{Binding, BindingAction, Chord, Resolution, resolve, shortcut_label};
 pub use paste::paste_bytes;
 pub use shortcut::{Shortcut, shortcut};
 
