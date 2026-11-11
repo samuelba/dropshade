@@ -23,6 +23,7 @@ export class Dropdown {
     constructor(prefs) {
         this._prefs = prefs;
         this._window = null;
+        this._shown = false;
         this._signals = [];
         this._focusId = global.display.connect('notify::focus-window', () => this._onFocusChanged());
     }
@@ -48,6 +49,10 @@ export class Dropdown {
         });
     }
 
+    /**
+     * Follows whether the drop-down is shown or on its way in, not the focus: after a click into
+     * another window the shortcut hides it rather than sliding it in again.
+     */
     toggle() {
         if (this._isShown())
             this.hide();
@@ -68,13 +73,17 @@ export class Dropdown {
         }
         window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
         Main.activateWindow(window, global.get_current_time());
+        if (this._isShown())
+            return;
+        this._shown = true;
         this._slide(actor, -rect.height, 0, () => {});
     }
 
     hide() {
         const window = this._window;
-        if (!window || window.minimized)
+        if (!window || window.minimized || !this._shown)
             return;
+        this._shown = false;
         const actor = window.get_compositor_private();
         const height = window.get_frame_rect().height;
         this._slide(actor, 0, -height, () => {
@@ -119,7 +128,7 @@ export class Dropdown {
 
     _isShown() {
         const window = this._window;
-        return window !== null && !window.minimized && window.has_focus();
+        return window !== null && !window.minimized && this._shown;
     }
 
     _monitorIndex() {
@@ -178,6 +187,7 @@ export class Dropdown {
             object.disconnect(id);
         this._signals = [];
         this._window = null;
+        this._shown = false;
     }
 }
 
