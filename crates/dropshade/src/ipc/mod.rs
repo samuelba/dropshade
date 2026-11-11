@@ -30,6 +30,8 @@ pub struct WindowSettings {
     pub hotkey: String,
     pub width: f64,
     pub height: f64,
+    /// "left", "center" or "right".
+    pub align: String,
     pub monitor: String,
     pub animation_duration: u32,
     pub hide_on_unfocus: bool,
@@ -43,6 +45,7 @@ impl WindowSettings {
             hotkey: window.hotkey.trim().to_owned(),
             width: window.width,
             height: window.height,
+            align: window.align.as_str().to_owned(),
             monitor: screens::resolve(&window.monitor, screens)
                 .as_str()
                 .to_owned(),
@@ -68,6 +71,7 @@ mod tests {
         let settings = WindowSettings::new(&config, None);
         assert_eq!(settings.hotkey, "<Super>grave");
         assert_eq!(settings.monitor, "DP-1");
+        assert_eq!(settings.align, "center");
         assert!((settings.height - 0.5).abs() < f64::EPSILON);
     }
 

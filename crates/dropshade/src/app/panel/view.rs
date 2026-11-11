@@ -24,6 +24,7 @@ pub(super) const TEXT_SIZE: f32 = 13.0;
 const HINT_SIZE: f32 = 11.5;
 const BAR_POSITIONS: [&str; 4] = ["top", "bottom", "left", "right"];
 const TAB_WIDTHS: [&str; 2] = ["fixed", "fit"];
+const ALIGNMENTS: [&str; 3] = ["left", "center", "right"];
 const CURSOR_SHAPES: [&str; 3] = ["block", "beam", "underline"];
 
 /// Everything a section needs to draw itself.
@@ -287,6 +288,16 @@ fn window(
         super::screen_list::screen_list(ctx),
         slider_row(ctx, Slider::Width),
         slider_row(ctx, Slider::Height),
+        hinted(
+            choice(
+                "Position",
+                strings(&ALIGNMENTS),
+                ctx.config.window.align.as_str(),
+                Choice::Align
+            ),
+            "Where a window narrower than the screen sits.",
+            ctx.colors,
+        ),
         slider_row(ctx, Slider::Animation),
         switch(ctx, "Hide when unfocused", Switch::HideOnUnfocus),
     ]

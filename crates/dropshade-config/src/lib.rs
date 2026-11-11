@@ -11,7 +11,7 @@ pub use error::ConfigError;
 pub use schema::{
     AnsiColors, Appearance, Binding, ColorOverrides, Config, CursorColors, CursorShape, Font,
     Input, Monitor, Monitors, PrimaryColors, Scrollback, SelectionColors, Session, TabBarPosition,
-    TabWidth, Terminal, ThemeChoice, Unlimited, Updates, Window,
+    TabWidth, Terminal, ThemeChoice, Unlimited, Updates, Window, WindowAlign,
 };
 
 /// The default configuration, documented; `dropshade config print-default` prints it.
@@ -157,6 +157,9 @@ mod tests {
             [terminal]
             scrollback = "unlimited"
 
+            [window]
+            align = "right"
+
             [keybindings]
             "ctrl+shift+t" = "new-tab"
             "ctrl+alt+l" = { send = "clear\r" }
@@ -170,6 +173,7 @@ mod tests {
         assert_eq!(config.appearance.tab_bar, TabBarPosition::Left);
         assert_eq!(config.appearance.tab_width, TabWidth::Fit);
         assert_eq!(config.terminal.scrollback.lines(), usize::MAX);
+        assert_eq!(config.window.align, WindowAlign::Right);
         assert_eq!(
             config.keybindings["ctrl+shift+t"],
             Binding::Action("new-tab".into())

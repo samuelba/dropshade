@@ -6,7 +6,7 @@
 
 use std::time::{Duration, Instant};
 
-use dropshade_config::Monitor;
+use dropshade_config::{Monitor, WindowAlign};
 use iced::{Size, Task, window};
 use iced_layershell::actions::{LayerShellCustomAction, LayerShellCustomActionWithId};
 use iced_layershell::reexport::{
@@ -28,6 +28,7 @@ pub struct Dropdown {
     settled: bool,
     width: f64,
     height: f64,
+    align: WindowAlign,
 }
 
 impl Dropdown {
@@ -46,6 +47,7 @@ impl Dropdown {
             settled: true,
             width: window.width,
             height: window.height,
+            align: window.align,
         };
         let settings = NewLayerShellSettings {
             size: Some((0, 0)),
@@ -91,7 +93,7 @@ impl Dropdown {
         Task::batch([
             layer(
                 Some(self.id),
-                LayerShellCustomAction::AnchorSizeChange(Anchor::Top, size),
+                LayerShellCustomAction::AnchorSizeChange(anchor(self.align), size),
             ),
             self.margin(now),
             layer(
@@ -138,6 +140,15 @@ fn layer(id: Option<window::Id>, action: LayerShellCustomAction) -> Task<Message
     Task::done(Message::Layer(LayerShellCustomActionWithId::new(
         id, action,
     )))
+}
+
+/// The top edge, plus the side the surface hugs; anchored to neither side it is centered.
+fn anchor(align: WindowAlign) -> Anchor {
+    match align {
+        WindowAlign::Left => Anchor::Top | Anchor::Left,
+        WindowAlign::Center => Anchor::Top,
+        WindowAlign::Right => Anchor::Top | Anchor::Right,
+    }
 }
 
 /// Wayland has no primary screen, so "primary" falls back to the compositor's choice.
@@ -252,6 +263,13 @@ mod tests {
         assert_eq!(top_margin(700, 0.5), -350);
         assert_eq!(top_margin(700, 1.0), 0);
         assert_eq!(top_margin(700, 1.5), 0);
+    }
+
+    #[test]
+    fn the_surface_hugs_the_aligned_side() {
+        assert_eq!(anchor(WindowAlign::Left), Anchor::Top | Anchor::Left);
+        assert_eq!(anchor(WindowAlign::Center), Anchor::Top);
+        assert_eq!(anchor(WindowAlign::Right), Anchor::Top | Anchor::Right);
     }
 
     #[test]

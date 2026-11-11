@@ -301,6 +301,8 @@ pub struct Window {
     pub width: f64,
     /// Height as a fraction of the monitor's work area.
     pub height: f64,
+    /// Where a window narrower than the work area sits.
+    pub align: WindowAlign,
     pub monitor: Monitors,
     /// Slide animation length in milliseconds; 0 disables it.
     pub animation_duration: u32,
@@ -314,9 +316,30 @@ impl Default for Window {
             hotkey: "F12".into(),
             width: 1.0,
             height: 0.5,
+            align: WindowAlign::Center,
             monitor: Monitors::default(),
             animation_duration: 180,
             hide_on_unfocus: false,
+        }
+    }
+}
+
+/// The horizontal position of the drop-down on its screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WindowAlign {
+    Left,
+    #[default]
+    Center,
+    Right,
+}
+
+impl WindowAlign {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Left => "left",
+            Self::Center => "center",
+            Self::Right => "right",
         }
     }
 }

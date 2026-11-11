@@ -77,6 +77,7 @@ pub enum Choice {
     TabBar,
     TabWidth,
     Cursor,
+    Align,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -389,6 +390,7 @@ impl App {
             Choice::TabBar => self.write("appearance", "tab_bar", SettingValue::Text(name)),
             Choice::TabWidth => self.write("appearance", "tab_width", SettingValue::Text(name)),
             Choice::Cursor => self.write("appearance", "cursor_shape", SettingValue::Text(name)),
+            Choice::Align => self.write("window", "align", SettingValue::Text(name)),
         }
     }
 

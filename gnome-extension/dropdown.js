@@ -142,7 +142,7 @@ export class Dropdown {
         const width = Math.round(area.width * this._prefs.width);
         const height = Math.round(area.height * this._prefs.height);
         return {
-            x: area.x + Math.round((area.width - width) / 2),
+            x: area.x + horizontalOffset(this._prefs.align, area.width - width),
             y: area.y,
             width,
             height,
@@ -178,5 +178,17 @@ export class Dropdown {
             object.disconnect(id);
         this._signals = [];
         this._window = null;
+    }
+}
+
+/** How far right of the work area's left edge a window leaves `spare` pixels for `align`. */
+function horizontalOffset(align, spare) {
+    switch (align) {
+    case 'left':
+        return 0;
+    case 'right':
+        return spare;
+    default:
+        return Math.round(spare / 2);
     }
 }
