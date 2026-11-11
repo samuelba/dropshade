@@ -170,7 +170,8 @@ impl App {
             ..SettingsPanel::default()
         });
         if self.binds_in_cosmic() {
-            self.hotkey = Some(crate::hotkey::cosmic_status());
+            let status = crate::hotkey::cosmic_status();
+            self.hotkey.status = Some((crate::hotkey::Binder::Cosmic, status));
         }
         if self.host == Host::Layer {
             let screens = crate::wayland::screens();

@@ -70,6 +70,7 @@ impl App {
                 Task::none()
             }
             Message::ConfigChanged => self.reload_config(),
+            Message::Portal(event) => self.portal_event(event),
             Message::ScreensChanged(screens) => {
                 self.screens = Some(screens);
                 self.publish_window_settings()

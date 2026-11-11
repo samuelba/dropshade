@@ -91,12 +91,22 @@ pub struct App {
     host: Host,
     /// The connected screens, to pick from `window.monitor`; `None` until known.
     screens: Option<Vec<Screen>>,
-    /// Dropshade's shortcut in COSMIC, when that is where the hotkey lives.
-    hotkey: Option<hotkey::Status>,
+    hotkey: HotkeyBinding,
     ipc: Option<zbus::Connection>,
     session_path: Option<PathBuf>,
     /// The last snapshot written, to skip saves when nothing changed.
     saved: Option<dropshade_session::Snapshot>,
+}
+
+/// Binding the hotkey outside GNOME.
+#[derive(Debug, Default)]
+struct HotkeyBinding {
+    /// Where it is bound, and how that went.
+    status: Option<(hotkey::Binder, hotkey::Status)>,
+    /// Counts requests to bind it through the portal; a new one asks again.
+    portal_requests: u32,
+    /// The desktop portal turned out to have no global shortcuts.
+    portal_missing: bool,
 }
 
 #[derive(Debug)]
@@ -137,6 +147,8 @@ pub enum Message {
     ConfigChanged,
     SystemTheme(Mode),
     Ipc(Command),
+    /// The desktop portal bound the hotkey or reported a press.
+    Portal(hotkey::PortalEvent),
     /// GNOME's compositor reported the connected screens.
     ScreensChanged(Vec<Screen>),
     IpcReady(Result<zbus::Connection, String>),
@@ -198,7 +210,7 @@ impl App {
             focused: false,
             host,
             screens: None,
-            hotkey: None,
+            hotkey: HotkeyBinding::default(),
             ipc: None,
             session_path: dropshade_session::session_path(),
             saved: None,
@@ -270,9 +282,19 @@ impl App {
         } else {
             Subscription::none()
         };
+        let portal = if self.binds_through_portal() {
+            let request = (
+                self.config.window.hotkey.trim().to_owned(),
+                self.hotkey.portal_requests,
+            );
+            Subscription::run_with(request, hotkey::portal_events).map(Message::Portal)
+        } else {
+            Subscription::none()
+        };
         Subscription::batch([
             autosave,
             screens,
+            portal,
             slide,
             Subscription::run(termination_signals),
             blink,
@@ -332,11 +354,36 @@ impl App {
         self.host == Host::Layer && hotkey::on_cosmic()
     }
 
-    /// Sets `hotkey` as the desktop's shortcut for Dropshade, where Dropshade does that.
+    /// Whether Dropshade asks the desktop portal for the hotkey: on layer-shell desktops other
+    /// than COSMIC. Where the portal has no global shortcuts this just finds out and stops.
+    fn binds_through_portal(&self) -> bool {
+        self.host == Host::Layer && !hotkey::on_cosmic()
+    }
+
+    /// Whether the settings panel offers the hotkey on a layer-shell desktop.
+    fn hotkey_settable(&self) -> bool {
+        self.binds_in_cosmic() || (self.binds_through_portal() && !self.hotkey.portal_missing)
+    }
+
+    /// Sets `hotkey` as the desktop's shortcut for Dropshade, where Dropshade does that. The
+    /// portal subscription follows the configured hotkey; this asks it again for the same one.
     fn bind_hotkey(&mut self, hotkey: &str) {
         if self.binds_in_cosmic() {
-            self.hotkey = Some(hotkey::bind_cosmic(hotkey));
+            self.hotkey.status = Some((hotkey::Binder::Cosmic, hotkey::bind_cosmic(hotkey)));
+        } else if self.binds_through_portal() {
+            self.hotkey.portal_requests = self.hotkey.portal_requests.wrapping_add(1);
         }
+    }
+
+    fn portal_event(&mut self, event: hotkey::PortalEvent) -> Task<Message> {
+        match event {
+            hotkey::PortalEvent::Toggle => return self.command(Command::Toggle),
+            hotkey::PortalEvent::Status(status) => {
+                self.hotkey.status = Some((hotkey::Binder::Portal, status));
+            }
+            hotkey::PortalEvent::Unavailable => self.hotkey.portal_missing = true,
+        }
+        Task::none()
     }
 
     fn apply_settings(&mut self) {

@@ -1,10 +1,22 @@
 //! Binding `window.hotkey` outside GNOME, where the Shell extension does it. On COSMIC Dropshade
-//! keeps its entry in COSMIC's custom shortcuts, so the key works before Dropshade runs.
+//! keeps its entry in COSMIC's custom shortcuts, so the key works before Dropshade runs. On other
+//! layer-shell desktops it asks the desktop portal for a global shortcut (KDE Plasma, Hyprland).
 
 pub mod accelerator;
 mod cosmic;
+mod portal;
 
 pub use accelerator::Accelerator;
+pub use portal::{Event as PortalEvent, events as portal_events};
+
+/// Who runs `dropshade toggle` on the hotkey.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Binder {
+    /// COSMIC's custom shortcuts, edited by Dropshade.
+    Cosmic,
+    /// The desktop portal's global shortcuts, while Dropshade runs.
+    Portal,
+}
 
 /// What the settings panel says about the hotkey.
 #[derive(Debug, Clone, PartialEq, Eq)]

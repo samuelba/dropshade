@@ -128,8 +128,14 @@ Dropshade. It only touches the shortcut named "Dropshade", reads the file the wa
 leaves it alone if anything looks unexpected or the keys are taken, and keeps the previous file in
 `~/.local/state/dropshade/cosmic-shortcuts-custom.backup`.
 
-Elsewhere, add a custom shortcut in your desktop's keyboard settings that runs `dropshade toggle`
-(use the full path if the binary is not on your `PATH`). The first press starts Dropshade.
+On KDE Plasma, Hyprland and other desktops whose portal offers global shortcuts, Dropshade asks
+the desktop for `window.hotkey` when it starts (Plasma asks you to confirm once). The desktop has
+the final say over the keys and lists the shortcut as "Show or hide Dropshade" in its shortcut
+settings. This only works while Dropshade runs, so start it with your session.
+
+Elsewhere (Sway, niri, ...), add a custom shortcut in your desktop's keyboard settings that runs
+`dropshade toggle` (use the full path if the binary is not on your `PATH`). The first press starts
+Dropshade.
 
 ### Other desktops and X11
 

@@ -72,7 +72,14 @@ impl App {
         let body = match ctx.panel.section {
             Section::Appearance => appearance(ctx, self.prefers_light),
             Section::Font => font_section(ctx),
-            Section::Window => window(ctx, self.host, self.hotkey.as_ref(), self.danger()),
+            Section::Window => {
+                let hotkey = if self.hotkey_settable() {
+                    HotkeyField::Shown(self.hotkey.status.as_ref())
+                } else {
+                    HotkeyField::Hidden
+                };
+                window(ctx, self.host, hotkey, self.danger())
+            }
             Section::Terminal => terminal(ctx),
             Section::Input => input(ctx),
             Section::Session => session(ctx),
@@ -232,13 +239,19 @@ fn font_section(ctx: Ctx<'_>) -> Element<'static, Message> {
     .into()
 }
 
+/// On layer-shell desktops, whether the hotkey can be set, with its binding once known.
+enum HotkeyField<'a> {
+    Hidden,
+    Shown(Option<&'a (hotkey::Binder, hotkey::Status)>),
+}
+
 fn window(
     ctx: Ctx<'_>,
     host: Host,
-    cosmic: Option<&hotkey::Status>,
+    hotkey: HotkeyField<'_>,
     danger: Color,
 ) -> Element<'static, Message> {
-    let hotkey = || {
+    let field = || {
         hinted(
             text_row(ctx, "Hotkey", Field::Hotkey, "F12"),
             "GNOME accelerator syntax, such as F12 or <Super>grave.",
@@ -247,21 +260,24 @@ fn window(
     };
     let applies = "Changes apply the next time the terminal drops down.";
     let (note, hotkey): (Element<'static, Message>, Element<'static, Message>) =
-        match (host, cosmic) {
-            (Host::Shell, _) => (Space::new().into(), hotkey()),
-            (Host::Layer, Some(status)) => (
-                hint(applies, ctx.colors),
-                column![
-                    hotkey(),
-                    row![
-                        Space::new().width(LABEL_WIDTH + 10.0),
-                        cosmic_status(status, ctx.colors, danger)
+        match (host, hotkey) {
+            (Host::Shell, _) => (Space::new().into(), field()),
+            (Host::Layer, HotkeyField::Shown(bound)) => {
+                let status = bound.map_or_else(
+                    || Space::new().into(),
+                    |(binder, status)| binding_status(*binder, status, ctx.colors, danger),
+                );
+                (
+                    hint(applies, ctx.colors),
+                    column![
+                        field(),
+                        row![Space::new().width(LABEL_WIDTH + 10.0), status]
                     ]
-                ]
-                .spacing(4)
-                .into(),
-            ),
-            (Host::Layer, None) => (
+                    .spacing(4)
+                    .into(),
+                )
+            }
+            (Host::Layer, HotkeyField::Hidden) => (
                 hint(
                     "Bind \"dropshade toggle\" to a key in your desktop's keyboard settings. \
                      Changes apply the next time the terminal drops down.",
@@ -274,7 +290,7 @@ fn window(
                     "These apply when the GNOME Shell extension shows Dropshade.",
                     ctx.colors,
                 ),
-                hotkey(),
+                field(),
             ),
         };
     column![
@@ -290,23 +306,47 @@ fn window(
     .into()
 }
 
-/// Whether COSMIC runs Dropshade on a key, and why not if it could not be set.
-fn cosmic_status(
+/// Which keys the desktop runs Dropshade on, and why not if they could not be set.
+fn binding_status(
+    binder: hotkey::Binder,
     status: &hotkey::Status,
     colors: UiColors,
     danger: Color,
 ) -> Element<'static, Message> {
-    let (message, color) = match status {
-        hotkey::Status::Bound(keys) => (
+    use hotkey::{Binder, Status};
+    let (message, color) = match (binder, status) {
+        (Binder::Cosmic, Status::Bound(keys)) => (
             format!("COSMIC runs Dropshade on {keys}. Press Enter in the field to change it."),
             colors.muted,
         ),
-        hotkey::Status::Unbound => (
+        (Binder::Cosmic, Status::Unbound) => (
             "Not in COSMIC's shortcuts yet: press Enter in the field to add it.".to_owned(),
             colors.accent,
         ),
-        hotkey::Status::Failed(error) => (
+        (Binder::Cosmic, Status::Failed(error)) => (
             format!("COSMIC's shortcuts were left alone: {error}"),
+            danger,
+        ),
+        (Binder::Portal, Status::Bound(keys)) if keys.is_empty() => (
+            "Registered with the desktop as \"Show or hide Dropshade\"; assign it a key in the \
+             desktop's shortcut settings."
+                .to_owned(),
+            colors.muted,
+        ),
+        (Binder::Portal, Status::Bound(keys)) => (
+            format!(
+                "The desktop toggles Dropshade on {keys} while it runs. The desktop has the final \
+                 say: if it keeps another key, change it in its shortcut settings."
+            ),
+            colors.muted,
+        ),
+        (Binder::Portal, Status::Unbound) => (
+            "The desktop did not add the shortcut. Press Enter in the field to ask again."
+                .to_owned(),
+            colors.accent,
+        ),
+        (Binder::Portal, Status::Failed(error)) => (
+            format!("The desktop's shortcut portal failed: {error}"),
             danger,
         ),
     };
