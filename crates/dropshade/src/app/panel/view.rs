@@ -400,6 +400,11 @@ fn terminal(ctx: Ctx<'_>) -> Element<'static, Message> {
             ctx.colors,
         ),
         scrollback,
+        hinted(
+            switch(ctx, "Shell integration", Switch::ShellIntegration),
+            "Lets bash and zsh mark prompts and commands, to jump between prompts, select a command's output and close idle tabs without asking. Applies to new tabs.",
+            ctx.colors,
+        ),
         subheading("Environment", ctx.colors),
         environment(ctx),
     ]

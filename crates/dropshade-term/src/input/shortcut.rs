@@ -25,13 +25,19 @@ pub enum Shortcut {
     ZoomReset,
     /// Fills the work area, or returns to the configured size.
     ToggleMaximize,
+    /// Scrolls the prompt above the top of the viewport into view (needs shell integration).
+    PreviousPrompt,
+    /// Scrolls the next prompt into view, or returns to the live end after the newest one.
+    NextPrompt,
+    /// Selects the output of the newest command (needs shell integration).
+    SelectCommandOutput,
     /// Activates the tab at this zero-based index.
     GoToTab(u8),
 }
 
 impl Shortcut {
     /// Every action name a keybinding accepts, apart from `go-to-tab-1` to `go-to-tab-9`.
-    pub const NAMES: [&'static str; 19] = [
+    pub const NAMES: [&'static str; 22] = [
         "copy",
         "paste",
         "paste-primary",
@@ -51,6 +57,9 @@ impl Shortcut {
         "zoom-out",
         "zoom-reset",
         "toggle-maximize",
+        "previous-prompt",
+        "next-prompt",
+        "select-command-output",
     ];
 }
 
@@ -90,6 +99,9 @@ impl std::str::FromStr for Shortcut {
             "zoom-out" => Self::ZoomOut,
             "zoom-reset" => Self::ZoomReset,
             "toggle-maximize" => Self::ToggleMaximize,
+            "previous-prompt" => Self::PreviousPrompt,
+            "next-prompt" => Self::NextPrompt,
+            "select-command-output" => Self::SelectCommandOutput,
             _ => return Err(format!("unknown action \"{name}\"")),
         };
         Ok(shortcut)
@@ -118,6 +130,7 @@ fn ctrl_shift_character(c: &str) -> Option<Shortcut> {
         "w" => Some(Shortcut::CloseTab),
         "r" => Some(Shortcut::RenameTab),
         "f" => Some(Shortcut::Search),
+        "a" => Some(Shortcut::SelectCommandOutput),
         _ => ctrl_zoom(c),
     }
 }
@@ -146,6 +159,8 @@ fn ctrl_named(named: Named, shift: bool) -> Option<Shortcut> {
         (Named::PageUp, false) | (Named::Tab, true) => Some(Shortcut::PreviousTab),
         (Named::PageUp, true) => Some(Shortcut::MoveTabLeft),
         (Named::PageDown, true) => Some(Shortcut::MoveTabRight),
+        (Named::ArrowUp, true) => Some(Shortcut::PreviousPrompt),
+        (Named::ArrowDown, true) => Some(Shortcut::NextPrompt),
         _ => None,
     }
 }
@@ -254,6 +269,30 @@ mod tests {
         );
         assert_eq!(named(Named::F11, Modifiers::CTRL), None);
         assert_eq!("toggle-maximize".parse(), Ok(Shortcut::ToggleMaximize));
+    }
+
+    #[test]
+    fn shell_integration_shortcuts() {
+        let ctrl_shift = Modifiers::CTRL | Modifiers::SHIFT;
+        assert_eq!(
+            named(Named::ArrowUp, ctrl_shift),
+            Some(Shortcut::PreviousPrompt)
+        );
+        assert_eq!(
+            named(Named::ArrowDown, ctrl_shift),
+            Some(Shortcut::NextPrompt)
+        );
+        assert_eq!(named(Named::ArrowUp, Modifiers::CTRL), None);
+        assert_eq!(
+            character("a", ctrl_shift),
+            Some(Shortcut::SelectCommandOutput)
+        );
+        assert_eq!("previous-prompt".parse(), Ok(Shortcut::PreviousPrompt));
+        assert_eq!("next-prompt".parse(), Ok(Shortcut::NextPrompt));
+        assert_eq!(
+            "select-command-output".parse(),
+            Ok(Shortcut::SelectCommandOutput)
+        );
     }
 
     #[test]

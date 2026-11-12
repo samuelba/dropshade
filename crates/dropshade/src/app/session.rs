@@ -9,6 +9,7 @@ use iced::futures::Stream;
 
 use super::commands::Running;
 use crate::settings::Settings;
+use crate::shell_integration;
 
 /// How long a new tab's output does not count as activity, so the first prompt of tabs opened
 /// together does not mark them.
@@ -43,10 +44,28 @@ pub fn spawn(
     } else {
         (settings.shell.clone(), working_directory)
     };
+    // Inside Flatpak the shell runs on the host, which is not set up from here.
+    let (command, env) = if settings.shell_integration
+        && !in_flatpak()
+        && let Some(scripts) = shell_integration::scripts_dir()
+    {
+        let launch = shell_integration::inject(
+            scripts,
+            command,
+            settings.env.clone(),
+            std::env::var("SHELL")
+                .ok()
+                .filter(|shell| !shell.is_empty()),
+            std::env::var("ZDOTDIR").ok(),
+        );
+        (launch.command, launch.env)
+    } else {
+        (command, settings.env.clone())
+    };
     let options = SpawnOptions {
         command,
         working_directory,
-        env: settings.env.clone(),
+        env,
         scrollback_lines: settings.scrollback_lines,
         cursor_style: settings.cursor_style,
         cell: settings.style.cell,

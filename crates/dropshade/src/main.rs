@@ -11,6 +11,7 @@ mod notifications;
 mod release;
 mod screens;
 mod settings;
+mod shell_integration;
 mod tabs;
 mod theme;
 mod wayland;

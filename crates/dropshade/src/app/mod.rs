@@ -131,7 +131,8 @@ struct Menu {
 #[derive(Debug)]
 struct PendingClose {
     id: TabId,
-    process: String,
+    /// The running program, when its name is known.
+    process: Option<String>,
 }
 
 #[derive(Debug, Clone)]

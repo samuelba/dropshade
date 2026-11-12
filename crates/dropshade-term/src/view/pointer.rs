@@ -104,9 +104,10 @@ fn press(state: &mut PointerState, button: Button, ctx: PointerContext) -> Optio
             })
         }
         Button::Middle => Some(Interaction::PastePrimary),
-        Button::Right => ctx
-            .position
-            .map(|p| Interaction::ContextMenu(Point::new(ctx.origin.x + p.x, ctx.origin.y + p.y))),
+        Button::Right => ctx.position.map(|p| Interaction::ContextMenu {
+            position: Point::new(ctx.origin.x + p.x, ctx.origin.y + p.y),
+            cell,
+        }),
     }
 }
 
@@ -291,10 +292,10 @@ mod tests {
             &pressed(mouse::Button::Right),
             ctx(12.0, 5.0, TermMode::empty(), Instant::now()),
         );
-        assert_eq!(
-            result,
-            Some(Interaction::ContextMenu(Point::new(112.0, 45.0)))
-        );
+        let Some(Interaction::ContextMenu { position, .. }) = result else {
+            panic!("expected a context menu, got {result:?}");
+        };
+        assert_eq!(position, Point::new(112.0, 45.0));
     }
 
     #[test]

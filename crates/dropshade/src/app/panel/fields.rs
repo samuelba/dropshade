@@ -198,6 +198,7 @@ pub enum Switch {
     UnlimitedScrollback,
     Ime,
     CopyOnSelect,
+    ShellIntegration,
     Restore,
     CheckUpdates,
     VisualBell,
@@ -221,6 +222,7 @@ impl Switch {
             }
             Self::Ime => config.input.ime,
             Self::CopyOnSelect => config.input.copy_on_select,
+            Self::ShellIntegration => config.terminal.shell_integration,
             Self::Restore => config.session.restore,
             Self::CheckUpdates => config.updates.check,
             Self::VisualBell => config.notifications.visual_bell,
@@ -238,6 +240,7 @@ impl Switch {
             Self::HideOnUnfocus => ("window", "hide_on_unfocus"),
             Self::Ime => ("input", "ime"),
             Self::CopyOnSelect => ("input", "copy_on_select"),
+            Self::ShellIntegration => ("terminal", "shell_integration"),
             Self::Restore => ("session", "restore"),
             Self::CheckUpdates => ("updates", "check"),
             Self::VisualBell => ("notifications", "visual_bell"),

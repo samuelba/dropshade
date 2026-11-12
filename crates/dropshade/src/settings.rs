@@ -29,6 +29,7 @@ pub struct Settings {
     pub env: HashMap<String, String>,
     pub working_directory: Option<PathBuf>,
     pub scrollback_lines: usize,
+    pub shell_integration: bool,
     pub cursor_style: CursorStyle,
     pub copy_on_select: bool,
     pub warnings: Vec<String>,
@@ -71,6 +72,7 @@ pub fn build(config: &Config, prefers_light: bool, themes_dir: Option<&Path>) ->
         env: terminal.env.clone().into_iter().collect(),
         working_directory: expand_home(&terminal.working_directory),
         scrollback_lines: terminal.scrollback.lines(),
+        shell_integration: terminal.shell_integration,
         cursor_style: CursorStyle {
             shape: cursor_shape(config.appearance.cursor_shape),
             blinking: config.appearance.cursor_blink,
