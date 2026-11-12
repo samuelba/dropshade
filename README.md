@@ -37,6 +37,7 @@ slide animation.
 | Ctrl+Shift+A | Select the last command's output (needs [shell integration](#shell-integration)) |
 | Ctrl+= / Ctrl+- / Ctrl+0 | Zoom in / out / reset (all tabs, not saved) |
 | F11 | Fill the screen / back to the configured size (hiding ends it) |
+| Ctrl+, | Open Settings |
 
 Right-click the terminal for Copy, Paste, **Select Command Output** (of the command you clicked on), New Tab, Find, **Zoom** (in, out, normal size; for the
 session only, the configured font size stays), **Toggle Maximize**, **Reset** (clears modes a crashed program left on,

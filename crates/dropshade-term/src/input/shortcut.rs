@@ -31,13 +31,15 @@ pub enum Shortcut {
     NextPrompt,
     /// Selects the output of the newest command (needs shell integration).
     SelectCommandOutput,
+    /// Opens the settings panel.
+    OpenSettings,
     /// Activates the tab at this zero-based index.
     GoToTab(u8),
 }
 
 impl Shortcut {
     /// Every action name a keybinding accepts, apart from `go-to-tab-1` to `go-to-tab-9`.
-    pub const NAMES: [&'static str; 22] = [
+    pub const NAMES: [&'static str; 23] = [
         "copy",
         "paste",
         "paste-primary",
@@ -60,6 +62,7 @@ impl Shortcut {
         "previous-prompt",
         "next-prompt",
         "select-command-output",
+        "open-settings",
     ];
 }
 
@@ -102,6 +105,7 @@ impl std::str::FromStr for Shortcut {
             "previous-prompt" => Self::PreviousPrompt,
             "next-prompt" => Self::NextPrompt,
             "select-command-output" => Self::SelectCommandOutput,
+            "open-settings" => Self::OpenSettings,
             _ => return Err(format!("unknown action \"{name}\"")),
         };
         Ok(shortcut)
@@ -113,6 +117,7 @@ pub fn shortcut(key: &Key, modifiers: Modifiers) -> Option<Shortcut> {
     let (ctrl, shift, alt) = (modifiers.control(), modifiers.shift(), modifiers.alt());
     match key {
         Key::Character(c) if ctrl && shift && !alt => ctrl_shift_character(c),
+        Key::Character(c) if ctrl && !alt && !shift && c == "," => Some(Shortcut::OpenSettings),
         Key::Character(c) if ctrl && !alt => ctrl_zoom(c),
         Key::Character(c) if alt && !ctrl && !shift => alt_digit(c),
         Key::Named(named) if ctrl && !alt => ctrl_named(*named, shift),
@@ -293,6 +298,17 @@ mod tests {
             "select-command-output".parse(),
             Ok(Shortcut::SelectCommandOutput)
         );
+    }
+
+    #[test]
+    fn ctrl_comma_opens_settings() {
+        assert_eq!(
+            character(",", Modifiers::CTRL),
+            Some(Shortcut::OpenSettings)
+        );
+        assert_eq!(character(",", Modifiers::empty()), None);
+        assert_eq!(character(",", Modifiers::CTRL | Modifiers::ALT), None);
+        assert_eq!("open-settings".parse(), Ok(Shortcut::OpenSettings));
     }
 
     #[test]

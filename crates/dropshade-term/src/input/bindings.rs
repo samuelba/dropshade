@@ -184,7 +184,7 @@ pub fn resolve(key: &Key, modifiers: Modifiers, bindings: &[Binding]) -> Resolut
 }
 
 /// Default chords for the shortcuts that appear in menus.
-const MENU_DEFAULTS: [(Shortcut, &str); 8] = [
+const MENU_DEFAULTS: [(Shortcut, &str); 9] = [
     (Shortcut::Copy, "ctrl+shift+c"),
     (Shortcut::Paste, "ctrl+shift+v"),
     (Shortcut::NewTab, "ctrl+shift+t"),
@@ -193,6 +193,7 @@ const MENU_DEFAULTS: [(Shortcut, &str); 8] = [
     (Shortcut::ZoomOut, "ctrl+-"),
     (Shortcut::ZoomReset, "ctrl+0"),
     (Shortcut::ToggleMaximize, "f11"),
+    (Shortcut::OpenSettings, "ctrl+,"),
 ];
 
 /// The chord that triggers `target`, for display: the first user binding to it, otherwise its
@@ -314,6 +315,10 @@ mod tests {
         assert_eq!(
             shortcut_label(Shortcut::ZoomIn, &[]).as_deref(),
             Some("Ctrl+=")
+        );
+        assert_eq!(
+            shortcut_label(Shortcut::OpenSettings, &[]).as_deref(),
+            Some("Ctrl+,")
         );
         assert_eq!(shortcut_label(Shortcut::CloseTab, &[]), None);
 

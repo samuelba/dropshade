@@ -258,6 +258,10 @@ impl App {
             Shortcut::ZoomReset => return self.set_zoom(Zoom::default()),
             Shortcut::ToggleMaximize => return self.toggle_maximize(),
             Shortcut::SelectCommandOutput => return self.select_command_output(None),
+            Shortcut::OpenSettings if self.settings_panel.is_none() => {
+                return self.open_settings();
+            }
+            Shortcut::OpenSettings => {}
             Shortcut::NextTab => self.tabs.cycle(1),
             Shortcut::PreviousTab => self.tabs.cycle(-1),
             Shortcut::MoveTabLeft => self.tabs.move_active(-1),
@@ -503,6 +507,7 @@ fn run_terminal_shortcut(
         | Shortcut::ZoomReset
         | Shortcut::ToggleMaximize
         | Shortcut::SelectCommandOutput
+        | Shortcut::OpenSettings
         | Shortcut::GoToTab(_) => {}
     }
     Task::none()

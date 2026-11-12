@@ -159,7 +159,7 @@ impl App {
             item("Reset", Some(MenuAction::Reset)),
             item("Reset and Clean", Some(MenuAction::ResetAndClear)),
             separator(colors),
-            item("Settings…", Some(MenuAction::Settings)),
+            shortcut_item("Settings…", MenuAction::Settings, Shortcut::OpenSettings),
             item("About Dropshade", Some(MenuAction::About)),
         ];
         let items = if self.release.is_some() {

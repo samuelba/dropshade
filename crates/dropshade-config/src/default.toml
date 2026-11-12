@@ -127,5 +127,6 @@ command_min_duration = 10
 #
 # Actions: copy, paste, paste-primary, new-tab, close-tab, next-tab, previous-tab,
 # move-tab-left, move-tab-right, rename-tab, go-to-tab-1 … go-to-tab-9,
-# scroll-page-up, scroll-page-down, scroll-to-top, scroll-to-bottom, toggle-maximize
+# scroll-page-up, scroll-page-down, scroll-to-top, scroll-to-bottom, toggle-maximize,
+# open-settings,
 # previous-prompt, next-prompt, select-command-output (these need shell integration)
