@@ -482,6 +482,11 @@ fn session(ctx: Ctx<'_>) -> Element<'static, Message> {
 fn notifications(ctx: Ctx<'_>) -> Element<'static, Message> {
     let mut rows = column![
         hinted(
+            switch(ctx, "Flash the terminal on the bell", Switch::VisualBell),
+            "A brief flash when the shell rings the bell, e.g. on an ambiguous tab completion.",
+            ctx.colors,
+        ),
+        hinted(
             switch(ctx, "Mark tabs that rang the bell", Switch::BellIndicator),
             "A dot in the accent color on background tabs, until you switch to them.",
             ctx.colors,
