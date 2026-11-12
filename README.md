@@ -46,6 +46,10 @@ there), **Reset and Clean** (also clears the scrollback), **Settings** and **Abo
 for theme and colors (with a color picker), font size, opacity, tab bar, drop-down size and screen, cursor and session restore that
 saves straight into `config.toml`, keeping its comments.
 
+When a program uses the mouse itself (zellij, tmux, vim with `mouse=a`, ...), clicks go to it.
+Hold **Shift** to click, select and open the menu in Dropshade instead, or press Ctrl+, for
+Settings.
+
 In tabs: middle-click closes, right-click opens a menu, and dragging reorders. Every shortcut can be
 changed in the `[keybindings]` section of the configuration.
 
