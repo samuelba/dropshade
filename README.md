@@ -23,7 +23,7 @@ slide animation.
 
 | Keys | Action |
 | ---- | ------ |
-| Ctrl+Shift+T / Ctrl+Shift+W | New tab / close tab (asks first if a program is still running) |
+| Ctrl+Shift+T / Ctrl+Shift+W | New tab / close tab (asks first if a command is still running) |
 | Ctrl+PageDown / Ctrl+PageUp, Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab |
 | Ctrl+Shift+PageUp / Ctrl+Shift+PageDown | Move tab left / right |
 | Alt+1 … Alt+9 | Go to tab 1–9 |
@@ -33,10 +33,12 @@ slide animation.
 | Shift+PageUp/PageDown/Home/End | Scroll the scrollback |
 | Ctrl+click | Open a link |
 | Ctrl+Shift+F | Search the scrollback (Enter: older match) |
+| Ctrl+Shift+Up / Ctrl+Shift+Down | Jump to the previous / next prompt (needs [shell integration](#shell-integration)) |
+| Ctrl+Shift+A | Select the last command's output (needs [shell integration](#shell-integration)) |
 | Ctrl+= / Ctrl+- / Ctrl+0 | Zoom in / out / reset (all tabs, not saved) |
 | F11 | Fill the screen / back to the configured size (hiding ends it) |
 
-Right-click the terminal for Copy, Paste, New Tab, Find, **Zoom** (in, out, normal size; for the
+Right-click the terminal for Copy, Paste, **Select Command Output** (of the command you clicked on), New Tab, Find, **Zoom** (in, out, normal size; for the
 session only, the configured font size stays), **Toggle Maximize**, **Reset** (clears modes a crashed program left on,
 like mouse reporting or the alternate screen, and clears the screen; scroll up to see what was
 there), **Reset and Clean** (also clears the scrollback), **Settings** and **About**. Settings is a panel
@@ -102,6 +104,30 @@ aarch64:
 On start, Dropshade asks GitHub for the latest release. When a newer one is out, it shows a
 notification once per version and a download link in About Dropshade. Turn this off with
 `[updates] check = false`, or under Settings → Session.
+
+## Shell integration
+
+Bash and zsh tell Dropshade where each prompt, command and command output is (with OSC 133
+marks). That makes three things possible:
+
+- **Jump between prompts** with Ctrl+Shift+Up / Ctrl+Shift+Down.
+- **Select a command's output**: right-click it and choose Select Command Output, or press
+  Ctrl+Shift+A for the last command. It goes to the primary selection (and the clipboard with
+  `copy_on_select`); Ctrl+Shift+C copies it.
+- **Close idle tabs without asking**: Ctrl+Shift+W only asks while a command runs, which also
+  works inside ssh, a nested shell or tmux. Without shell integration it asks whenever a program
+  other than the shell is in the foreground.
+
+Dropshade sets this up by itself. It writes small scripts to `~/.local/share/dropshade/shell-integration/`,
+then starts bash with `--rcfile` pointing at its script, which loads your `~/.bashrc` first. Zsh
+gets a `ZDOTDIR` whose `.zshenv` restores yours and loads your own files. Prompt themes such as
+starship keep working. Fish 4.0 and later sends the marks on its own. A shell configured with
+`shell_args` is started as given and is not set up, and neither is the shell in the Flatpak.
+
+Turn it off with `[terminal] shell_integration = false` (or under Settings → Terminal). Other shells
+and prompts can send the marks themselves: `ESC ] 133 ; A BEL` where the prompt starts,
+`133;B` where the command line starts, `133;C` where the output starts and `133;D;<exit status>`
+when the command finished.
 
 ## Bell, activity and finished commands
 

@@ -182,10 +182,12 @@ impl App {
         let card = container(
             column![
                 text(format!("Close “{label}”?")).size(16).font(bold),
-                text(format!(
-                    "“{}” is still running. Closing the tab stops it.",
-                    pending.process
-                ))
+                text(match &pending.process {
+                    Some(process) => {
+                        format!("“{process}” is still running. Closing the tab stops it.")
+                    }
+                    None => "A command is still running. Closing the tab stops it.".to_owned(),
+                })
                 .size(TEXT_SIZE)
                 .color(colors.muted),
                 actions,

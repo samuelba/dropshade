@@ -202,6 +202,8 @@ pub struct Terminal {
     /// Directory for the first tab; empty means the home directory.
     pub working_directory: String,
     pub env: BTreeMap<String, String>,
+    /// Sets up bash and zsh to report prompts and commands (OSC 133).
+    pub shell_integration: bool,
 }
 
 impl Default for Terminal {
@@ -212,6 +214,7 @@ impl Default for Terminal {
             scrollback: Scrollback::Lines(10_000),
             working_directory: String::new(),
             env: BTreeMap::new(),
+            shell_integration: true,
         }
     }
 }

@@ -61,8 +61,12 @@ pub enum Interaction {
     PastePrimary,
     /// Ctrl+click: open the link under this cell, if there is one.
     OpenLink(CellPosition),
-    /// Right-click outside mouse reporting: open the context menu at this window position.
-    ContextMenu(Point),
+    /// Right-click outside mouse reporting: open the context menu at this window position, for
+    /// the clicked cell.
+    ContextMenu {
+        position: Point,
+        cell: CellPosition,
+    },
 }
 
 /// Per-widget state kept by iced between events.

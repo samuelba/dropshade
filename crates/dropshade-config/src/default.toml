@@ -54,6 +54,9 @@ shell_args = []
 scrollback = 10000
 # Directory for the first tab; empty means your home directory.
 working_directory = ""
+# Let bash and zsh report their prompts and commands (OSC 133), for jumping between prompts,
+# selecting a command's output, and closing idle tabs without asking. Fish does this itself.
+shell_integration = true
 
 [terminal.env]
 # Extra environment variables, e.g. EDITOR = "nvim"
@@ -125,3 +128,4 @@ command_min_duration = 10
 # Actions: copy, paste, paste-primary, new-tab, close-tab, next-tab, previous-tab,
 # move-tab-left, move-tab-right, rename-tab, go-to-tab-1 … go-to-tab-9,
 # scroll-page-up, scroll-page-down, scroll-to-top, scroll-to-bottom, toggle-maximize
+# previous-prompt, next-prompt, select-command-output (these need shell integration)

@@ -4,10 +4,9 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use alacritty_terminal::event::{Event, EventListener};
-use alacritty_terminal::event_loop::{EventLoop, EventLoopSender, Msg};
 use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::index::{Boundary, Column, Direction, Line, Point, Side as GridSide};
 use alacritty_terminal::selection::{Selection, SelectionType};
@@ -25,7 +24,9 @@ use crate::colors::Palette;
 use crate::frame::{self, Frame};
 use crate::input::paste_bytes;
 use crate::links;
+use crate::marks::PromptMarks;
 use crate::mouse::CellPosition;
+use crate::pty_loop::{self, Msg, PtySender};
 use crate::reset;
 use crate::size::{CellSize, GridSize, Side};
 use crate::view::ScrollPosition;
@@ -159,7 +160,9 @@ impl SelectionKind {
 
 pub struct Terminal {
     term: Arc<FairMutex<Term<EventProxy>>>,
-    sender: EventLoopSender,
+    sender: PtySender,
+    /// Where the prompts and command output are, from the shell's OSC 133 marks.
+    marks: Arc<Mutex<PromptMarks>>,
     size: GridSize,
     cell: CellSize,
     title: Option<String>,
@@ -215,14 +218,14 @@ impl Terminal {
         let pty = tty::new(&pty_options, window_size, 0).map_err(SpawnError::Pty)?;
         let child_pid = pty.child().id();
         let pty_handle = pty.file().try_clone().map_err(SpawnError::Pty)?;
-        let event_loop = EventLoop::new(Arc::clone(&term), proxy, pty, true, false)
+        let marks = Arc::new(Mutex::new(PromptMarks::new(options.scrollback_lines)));
+        let loop_sender = pty_loop::spawn(pty, Arc::clone(&term), Arc::clone(&marks), proxy)
             .map_err(SpawnError::EventLoop)?;
-        let loop_sender = event_loop.channel();
-        event_loop.spawn();
 
         let terminal = Self {
             term,
             sender: loop_sender,
+            marks,
             size: options.size,
             cell: options.cell,
             title: None,
@@ -267,7 +270,14 @@ impl Terminal {
             return;
         }
         self.size = size;
-        self.term.lock().resize(size);
+        let mut term = self.term.lock();
+        let mut marks = lock(&self.marks);
+        let anchors = marks.anchors(&term);
+        term.resize(size);
+        if let Some(anchors) = anchors {
+            marks.reanchor(&term, anchors);
+        }
+        drop((term, marks));
         self.send(Msg::Resize(size.window_size(self.cell)));
     }
 
@@ -283,7 +293,13 @@ impl Terminal {
     /// Resets the emulator state (modes, charsets, the alternate screen) and clears the screen
     /// into the scrollback.
     pub fn reset(&self) {
-        reset::soft(&mut self.term.lock());
+        {
+            let mut term = self.term.lock();
+            let mut marks = lock(&self.marks);
+            let probe = PromptMarks::begin(&mut term);
+            reset::soft(&mut term);
+            marks.finish(&mut term, probe);
+        }
         self.redraw_prompt();
     }
 
@@ -291,6 +307,7 @@ impl Terminal {
     pub fn reset_and_clear(&mut self) {
         self.clear_search();
         reset::full(&mut self.term.lock());
+        lock(&self.marks).clear();
         self.redraw_prompt();
     }
 
@@ -312,6 +329,7 @@ impl Terminal {
             ..Config::default()
         };
         term.set_options(config);
+        lock(&self.marks).set_max_history(scrollback_lines);
     }
 
     /// Jumps the viewport back to the live end of the output.
@@ -497,6 +515,67 @@ impl Terminal {
         true
     }
 
+    /// Whether the shell runs a command, as its OSC 133 marks tell, or `None` when the shell
+    /// sends no marks.
+    pub fn command_running(&self) -> Option<bool> {
+        lock(&self.marks).command_running()
+    }
+
+    /// Scrolls the previous or next prompt to the top of the viewport. Past the newest prompt it
+    /// returns to the live end. False when there is no prompt to go to.
+    pub fn jump_to_prompt(&self, direction: SearchDirection) -> bool {
+        let mut term = self.term.lock();
+        let marks = lock(&self.marks);
+        let top = Line(-i32::try_from(term.grid().display_offset()).unwrap_or(i32::MAX));
+        let target = match direction {
+            SearchDirection::Older => marks.previous_prompt(top),
+            SearchDirection::Newer => marks.next_prompt(top),
+        };
+        let offset = match target {
+            Some(line) => -line.0.min(0),
+            None if direction == SearchDirection::Newer && top.0 < 0 => 0,
+            None => return false,
+        };
+        term.scroll_display(Scroll::Delta(offset.saturating_add(top.0)));
+        true
+    }
+
+    /// Selects a command's output: the one shown at `at`, or else the newest. False when there is
+    /// none.
+    pub fn select_command_output(&self, at: Option<CellPosition>) -> bool {
+        let mut term = self.term.lock();
+        let marks = lock(&self.marks);
+        let cursor = term.grid().cursor.point;
+        let last_column = term.last_column();
+        let output = match at {
+            Some(at) => {
+                let line = grid_point(term.grid().display_offset(), at).line;
+                marks.output_at(line, cursor, last_column)
+            }
+            None => marks.last_output(cursor, last_column),
+        };
+        let Some((start, end)) = output else {
+            return false;
+        };
+        let mut selection = Selection::new(SelectionType::Simple, start, GridSide::Left);
+        selection.update(end, GridSide::Right);
+        term.selection = Some(selection);
+        if at.is_none() {
+            term.scroll_to_point(start);
+        }
+        true
+    }
+
+    /// Whether the cell shows a command's output.
+    pub fn has_command_output_at(&self, at: CellPosition) -> bool {
+        let term = self.term.lock();
+        let marks = lock(&self.marks);
+        let line = grid_point(term.grid().display_offset(), at).line;
+        marks
+            .output_at(line, term.grid().cursor.point, term.last_column())
+            .is_some()
+    }
+
     /// Sends pasted text, using bracketed paste when the application asked for it.
     pub fn paste(&self, text: &str) {
         let bracketed = self.mode().contains(TermMode::BRACKETED_PASTE);
@@ -556,6 +635,10 @@ impl Drop for Terminal {
     fn drop(&mut self) {
         self.send(Msg::Shutdown);
     }
+}
+
+fn lock(marks: &Mutex<PromptMarks>) -> MutexGuard<'_, PromptMarks> {
+    marks.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 #[allow(clippy::cast_possible_wrap)]

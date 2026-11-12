@@ -568,3 +568,143 @@ mod search {
         assert!(!terminal.search("absent"));
     }
 }
+
+mod shell_integration {
+    use std::time::{Duration, Instant};
+
+    use dropshade_term::mouse::CellPosition;
+    use dropshade_term::{GridSize, SearchDirection};
+
+    use super::{TIMEOUT, spawn, wait_for};
+
+    const SIZE: GridSize = GridSize {
+        columns: 40,
+        lines: 10,
+    };
+
+    fn wait_until(mut condition: impl FnMut() -> bool) -> bool {
+        let deadline = Instant::now() + TIMEOUT;
+        while !condition() {
+            if Instant::now() > deadline {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        true
+    }
+
+    /// A shell session as an integrated shell reports it: one finished command, then a prompt.
+    const SESSION: &str = r"printf '\033]133;A\007$ \033]133;B\007ls\r\n\033]133;C\007one\r\ntwo\r\n\033]133;D;0\007\033]133;A\007$ \033]133;B\007'; sleep 3";
+
+    #[test]
+    fn without_marks_nothing_is_known_about_commands() {
+        let terminal = spawn("printf 'plain'; sleep 2", SIZE);
+        wait_for(&terminal, "plain");
+        assert_eq!(terminal.command_running(), None);
+        assert!(!terminal.select_command_output(None));
+        assert!(!terminal.jump_to_prompt(SearchDirection::Older));
+    }
+
+    #[test]
+    fn the_output_of_the_last_command_can_be_selected() {
+        let terminal = spawn(SESSION, SIZE);
+        assert!(wait_until(|| terminal.command_running() == Some(false)));
+        assert!(terminal.select_command_output(None));
+        assert_eq!(terminal.selection_text().as_deref(), Some("one\ntwo"));
+    }
+
+    #[test]
+    fn the_output_under_a_cell_can_be_selected() {
+        let terminal = spawn(SESSION, SIZE);
+        assert!(wait_until(|| terminal.command_running() == Some(false)));
+        let output = CellPosition { column: 0, line: 2 };
+        let prompt = CellPosition { column: 0, line: 0 };
+        assert!(terminal.has_command_output_at(output));
+        assert!(!terminal.has_command_output_at(prompt));
+        assert!(terminal.select_command_output(Some(output)));
+        assert_eq!(terminal.selection_text().as_deref(), Some("one\ntwo"));
+    }
+
+    #[test]
+    fn a_command_runs_between_its_output_and_end_marks() {
+        let terminal = spawn(
+            r"printf '\033]133;A\007$ \033]133;B\007sleep\r\n\033]133;C\007'; sleep 1; printf '\033]133;D;0\007'; sleep 3",
+            SIZE,
+        );
+        assert!(wait_until(|| terminal.command_running() == Some(true)));
+        assert!(wait_until(|| terminal.command_running() == Some(false)));
+    }
+
+    #[test]
+    fn prompts_can_be_jumped_to_in_the_scrollback() {
+        let terminal = spawn(
+            r"printf '\033]133;A\007$ first\r\n\033]133;C\007'; seq 30; printf '\033]133;D;0\007\033]133;A\007$ '; sleep 3",
+            SIZE,
+        );
+        assert!(wait_until(|| terminal.command_running() == Some(false)));
+        assert!(terminal.jump_to_prompt(SearchDirection::Older));
+        assert!(super::screen_text(&terminal).starts_with("$ first"));
+        assert!(terminal.jump_to_prompt(SearchDirection::Newer));
+        assert_eq!(terminal.scroll_position().offset, 0);
+    }
+}
+
+mod bash_integration {
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    use std::time::{Duration, Instant};
+
+    use dropshade_term::{GridSize, SpawnOptions, Terminal};
+
+    use super::TIMEOUT;
+
+    fn wait_until(mut condition: impl FnMut() -> bool) -> bool {
+        let deadline = Instant::now() + TIMEOUT;
+        while !condition() {
+            if Instant::now() > deadline {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        true
+    }
+
+    /// Bash started the way dropshade starts it, with an empty home so no rc file interferes.
+    #[test]
+    fn the_bash_script_marks_commands_and_their_output() {
+        let script = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../dropshade/shell-integration/bash/dropshade.bash");
+        let home = std::env::temp_dir().join(format!("dropshade-bash-{}", std::process::id()));
+        std::fs::create_dir_all(&home).unwrap();
+        let options = SpawnOptions {
+            command: Some((
+                "bash".into(),
+                vec!["--rcfile".into(), script.to_string_lossy().into_owned()],
+            )),
+            env: HashMap::from([
+                ("HOME".to_owned(), home.to_string_lossy().into_owned()),
+                ("PS1".to_owned(), "$ ".to_owned()),
+            ]),
+            size: GridSize {
+                columns: 40,
+                lines: 10,
+            },
+            ..SpawnOptions::default()
+        };
+        let (terminal, _events) = Terminal::spawn(options).expect("spawn bash");
+        assert!(wait_until(|| terminal.command_running() == Some(false)));
+
+        terminal.write(&b"printf 'one\\ntwo\\n'\r"[..]);
+        assert!(wait_until(|| {
+            terminal.select_command_output(None)
+                && terminal.selection_text().as_deref() == Some("one\ntwo")
+        }));
+
+        terminal.write(&b"sleep 5\r"[..]);
+        assert!(wait_until(|| terminal.command_running() == Some(true)));
+        terminal.write(&b"\x03"[..]);
+        assert!(wait_until(|| terminal.command_running() == Some(false)));
+        drop(terminal);
+        std::fs::remove_dir_all(home).unwrap();
+    }
+}

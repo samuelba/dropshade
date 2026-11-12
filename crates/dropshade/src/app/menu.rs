@@ -5,6 +5,7 @@ use iced::{Element, Fill, Point, Size, Task};
 
 use dropshade_term::Shortcut;
 use dropshade_term::input::shortcut_label;
+use dropshade_term::mouse::CellPosition;
 
 use super::zoom::Zoom;
 use super::{App, Message};
@@ -17,9 +18,9 @@ const SEPARATOR_HEIGHT: f32 = 9.0;
 const CARD_PADDING: f32 = 4.0;
 const TEXT_SIZE: f32 = 13.0;
 /// Items before the one that opens the zoom submenu, and the separators between them.
-const ITEMS_BEFORE_ZOOM: f32 = 4.0;
+const ITEMS_BEFORE_ZOOM: f32 = 5.0;
 const SEPARATORS_BEFORE_ZOOM: f32 = 2.0;
-const ITEMS: f32 = 10.0;
+const ITEMS: f32 = 11.0;
 const SEPARATORS: f32 = 5.0;
 const SUBMENU_ITEMS: f32 = 3.0;
 
@@ -27,6 +28,7 @@ const SUBMENU_ITEMS: f32 = 3.0;
 pub enum MenuAction {
     Copy,
     Paste,
+    SelectCommandOutput,
     NewTab,
     Find,
     ShowZoomMenu,
@@ -42,17 +44,20 @@ pub enum MenuAction {
     Dismiss,
 }
 
-/// The open context menu: where it is, and whether its zoom submenu is showing.
+/// The open context menu: where it is, the cell it was opened on, and whether its zoom submenu
+/// is showing.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct TerminalMenu {
     pub position: Point,
+    pub cell: CellPosition,
     pub zoom_open: bool,
 }
 
 impl TerminalMenu {
-    pub fn at(position: Point) -> Self {
+    pub fn at(position: Point, cell: CellPosition) -> Self {
         Self {
             position,
+            cell,
             zoom_open: false,
         }
     }
@@ -66,8 +71,11 @@ impl App {
             }
             return Task::none();
         }
-        self.terminal_menu = None;
+        let menu = self.terminal_menu.take();
         let shortcut = match action {
+            MenuAction::SelectCommandOutput => {
+                return self.select_command_output(menu.map(|menu| menu.cell));
+            }
             MenuAction::Copy => dropshade_term::Shortcut::Copy,
             MenuAction::Paste => dropshade_term::Shortcut::Paste,
             MenuAction::NewTab => dropshade_term::Shortcut::NewTab,
@@ -110,17 +118,20 @@ impl App {
 
     pub(super) fn terminal_menu_layer(&self, menu: TerminalMenu) -> Element<'_, Message> {
         let colors = self.settings.colors;
-        let has_selection = self
-            .tabs
-            .active()
-            .is_some_and(|tab| tab.content.terminal.selection_text().is_some());
+        let terminal = self.tabs.active().map(|tab| &tab.content.terminal);
+        let has_selection = terminal.is_some_and(|terminal| terminal.selection_text().is_some());
+        let has_output = terminal.is_some_and(|terminal| terminal.has_command_output_at(menu.cell));
         let bindings = &self.settings.input.bindings;
         let item = |label: &'static str, action: Option<MenuAction>| {
             mouse_area(item_button(colors, label, action, None))
                 .on_enter(Message::Menu(MenuAction::HideZoomMenu))
         };
         let shortcut_item = |label: &'static str, action: MenuAction, shortcut: Shortcut| {
-            let enabled = !matches!(action, MenuAction::Copy) || has_selection;
+            let enabled = match action {
+                MenuAction::Copy => has_selection,
+                MenuAction::SelectCommandOutput => has_output,
+                _ => true,
+            };
             let hint = shortcut_label(shortcut, bindings);
             mouse_area(item_button(colors, label, enabled.then_some(action), hint))
                 .on_enter(Message::Menu(MenuAction::HideZoomMenu))
@@ -128,6 +139,11 @@ impl App {
         let items = column![
             shortcut_item("Copy", MenuAction::Copy, Shortcut::Copy),
             shortcut_item("Paste", MenuAction::Paste, Shortcut::Paste),
+            shortcut_item(
+                "Select Command Output",
+                MenuAction::SelectCommandOutput,
+                Shortcut::SelectCommandOutput,
+            ),
             separator(colors),
             shortcut_item("New Tab", MenuAction::NewTab, Shortcut::NewTab),
             shortcut_item("Find…", MenuAction::Find, Shortcut::Search),

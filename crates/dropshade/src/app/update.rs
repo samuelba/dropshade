@@ -3,7 +3,8 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use dropshade_term::{Interaction, Notice, Shortcut, TermEvent, Terminal, links};
+use dropshade_term::mouse::CellPosition;
+use dropshade_term::{Interaction, Notice, SearchDirection, Shortcut, TermEvent, Terminal, links};
 use iced::Task;
 use iced::widget::{Id, operation};
 
@@ -37,8 +38,8 @@ impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Term(id, event) => self.terminal_event(id, event),
-            Message::Interaction(Interaction::ContextMenu(position)) => {
-                self.terminal_menu = Some(TerminalMenu::at(position));
+            Message::Interaction(Interaction::ContextMenu { position, cell }) => {
+                self.terminal_menu = Some(TerminalMenu::at(position, cell));
                 Task::none()
             }
             Message::Interaction(Interaction::Shortcut(shortcut)) => self.shortcut(shortcut),
@@ -256,6 +257,7 @@ impl App {
             Shortcut::ZoomOut => return self.set_zoom(self.zoom.zoom_out()),
             Shortcut::ZoomReset => return self.set_zoom(Zoom::default()),
             Shortcut::ToggleMaximize => return self.toggle_maximize(),
+            Shortcut::SelectCommandOutput => return self.select_command_output(None),
             Shortcut::NextTab => self.tabs.cycle(1),
             Shortcut::PreviousTab => self.tabs.cycle(-1),
             Shortcut::MoveTabLeft => self.tabs.move_active(-1),
@@ -340,18 +342,40 @@ impl App {
         Task::none()
     }
 
+    /// Selects a command's output (the one at `at`, or the newest) as the primary selection,
+    /// and copies it too when copy-on-select is on.
+    pub(super) fn select_command_output(&mut self, at: Option<CellPosition>) -> Task<Message> {
+        let Some(tab) = self.tabs.active() else {
+            return Task::none();
+        };
+        let terminal = &tab.content.terminal;
+        if !terminal.select_command_output(at) {
+            return Task::none();
+        }
+        let Some(text) = terminal.selection_text() else {
+            return Task::none();
+        };
+        if self.settings.copy_on_select {
+            return Task::batch([
+                self.clipboard.write(Selection::Primary, text.clone()),
+                self.clipboard.write(Selection::Clipboard, text),
+            ]);
+        }
+        self.clipboard.write(Selection::Primary, text)
+    }
+
     fn request_close(&mut self, id: TabId) -> Task<Message> {
         self.menu = None;
         let running = self
             .tabs
             .get(id)
-            .and_then(|tab| tab.content.terminal.foreground_process());
+            .and_then(|tab| running_command(&tab.content.terminal));
         match running {
-            Some(process) => {
+            Some(running) => {
                 self.tabs.activate(id);
                 self.pending_close = Some(PendingClose {
                     id,
-                    process: process.name,
+                    process: running.name,
                 });
                 Task::none()
             }
@@ -395,6 +419,24 @@ impl App {
     }
 }
 
+/// Something closing the terminal would interrupt.
+struct RunningCommand {
+    /// The program's name, when it is known.
+    name: Option<String>,
+}
+
+/// What runs in the terminal, if anything. With shell integration the shell's marks tell (which
+/// also covers ssh or a nested shell sitting at a prompt); otherwise any foreground program
+/// other than the shell counts.
+fn running_command(terminal: &Terminal) -> Option<RunningCommand> {
+    let foreground = || terminal.foreground_process().map(|process| process.name);
+    match terminal.command_running() {
+        Some(false) => None,
+        Some(true) => Some(RunningCommand { name: foreground() }),
+        None => foreground().map(|name| RunningCommand { name: Some(name) }),
+    }
+}
+
 fn apply(terminal: &mut Terminal, clipboard: Clipboard, interaction: Interaction) -> Task<Message> {
     match interaction {
         Interaction::Input(bytes) => {
@@ -420,7 +462,7 @@ fn apply(terminal: &mut Terminal, clipboard: Clipboard, interaction: Interaction
         Interaction::Shortcut(shortcut) => {
             return run_terminal_shortcut(terminal, clipboard, shortcut);
         }
-        Interaction::ContextMenu(_) => {}
+        Interaction::ContextMenu { .. } => {}
     }
     Task::none()
 }
@@ -442,6 +484,12 @@ fn run_terminal_shortcut(
         Shortcut::ScrollPageDown => terminal.scroll_page(false),
         Shortcut::ScrollToTop => terminal.scroll_to_top(),
         Shortcut::ScrollToBottom => terminal.scroll_to_bottom(),
+        Shortcut::PreviousPrompt => {
+            terminal.jump_to_prompt(SearchDirection::Older);
+        }
+        Shortcut::NextPrompt => {
+            terminal.jump_to_prompt(SearchDirection::Newer);
+        }
         Shortcut::NewTab
         | Shortcut::CloseTab
         | Shortcut::NextTab
@@ -454,6 +502,7 @@ fn run_terminal_shortcut(
         | Shortcut::ZoomOut
         | Shortcut::ZoomReset
         | Shortcut::ToggleMaximize
+        | Shortcut::SelectCommandOutput
         | Shortcut::GoToTab(_) => {}
     }
     Task::none()
