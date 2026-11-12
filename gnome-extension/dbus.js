@@ -8,17 +8,19 @@ const INTERFACE = `
     <method name="Toggle"/>
     <method name="Show"/>
     <method name="Hide"/>
+    <method name="ToggleMaximize"/>
     <property name="IsManaged" type="b" access="read"/>
   </interface>
 </node>`;
 
 /** Lets the app and the command line drive the drop-down through D-Bus. */
 export class ShellService {
-    constructor({toggle, show, hide, isManaged}) {
+    constructor({toggle, show, hide, toggleMaximize, isManaged}) {
         this._exported = Gio.DBusExportedObject.wrapJSObject(INTERFACE, {
             Toggle: toggle,
             Show: show,
             Hide: hide,
+            ToggleMaximize: toggleMaximize,
             get IsManaged() {
                 return isManaged();
             },

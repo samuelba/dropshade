@@ -184,7 +184,7 @@ pub fn resolve(key: &Key, modifiers: Modifiers, bindings: &[Binding]) -> Resolut
 }
 
 /// Default chords for the shortcuts that appear in menus.
-const MENU_DEFAULTS: [(Shortcut, &str); 7] = [
+const MENU_DEFAULTS: [(Shortcut, &str); 8] = [
     (Shortcut::Copy, "ctrl+shift+c"),
     (Shortcut::Paste, "ctrl+shift+v"),
     (Shortcut::NewTab, "ctrl+shift+t"),
@@ -192,6 +192,7 @@ const MENU_DEFAULTS: [(Shortcut, &str); 7] = [
     (Shortcut::ZoomIn, "ctrl+="),
     (Shortcut::ZoomOut, "ctrl+-"),
     (Shortcut::ZoomReset, "ctrl+0"),
+    (Shortcut::ToggleMaximize, "f11"),
 ];
 
 /// The chord that triggers `target`, for display: the first user binding to it, otherwise its

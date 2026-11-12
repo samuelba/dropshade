@@ -27,6 +27,7 @@ pub trait Shell {
     fn toggle(&self) -> zbus::Result<()>;
     fn show(&self) -> zbus::Result<()>;
     fn hide(&self) -> zbus::Result<()>;
+    fn toggle_maximize(&self) -> zbus::Result<()>;
 }
 
 /// Who is already on the bus.
@@ -62,6 +63,10 @@ pub async fn shell(connection: &Connection, action: Visibility) -> zbus::Result<
         Visibility::Show => shell.show().await,
         Visibility::Hide => shell.hide().await,
     }
+}
+
+pub async fn shell_toggle_maximize(connection: &Connection) -> zbus::Result<()> {
+    ShellProxy::new(connection).await?.toggle_maximize().await
 }
 
 pub async fn app(connection: &Connection, action: Visibility) -> zbus::Result<()> {

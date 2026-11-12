@@ -19,8 +19,8 @@ const TEXT_SIZE: f32 = 13.0;
 /// Items before the one that opens the zoom submenu, and the separators between them.
 const ITEMS_BEFORE_ZOOM: f32 = 4.0;
 const SEPARATORS_BEFORE_ZOOM: f32 = 2.0;
-const ITEMS: f32 = 9.0;
-const SEPARATORS: f32 = 4.0;
+const ITEMS: f32 = 10.0;
+const SEPARATORS: f32 = 5.0;
 const SUBMENU_ITEMS: f32 = 3.0;
 
 #[derive(Debug, Clone, Copy)]
@@ -34,6 +34,7 @@ pub enum MenuAction {
     ZoomIn,
     ZoomOut,
     ZoomNormal,
+    ToggleMaximize,
     Reset,
     ResetAndClear,
     Settings,
@@ -71,6 +72,7 @@ impl App {
             MenuAction::Paste => dropshade_term::Shortcut::Paste,
             MenuAction::NewTab => dropshade_term::Shortcut::NewTab,
             MenuAction::Find => dropshade_term::Shortcut::Search,
+            MenuAction::ToggleMaximize => dropshade_term::Shortcut::ToggleMaximize,
             MenuAction::ZoomIn => return self.set_zoom(self.zoom.zoom_in()),
             MenuAction::ZoomOut => return self.set_zoom(self.zoom.zoom_out()),
             MenuAction::ZoomNormal => return self.set_zoom(Zoom::default()),
@@ -131,6 +133,12 @@ impl App {
             shortcut_item("Find…", MenuAction::Find, Shortcut::Search),
             separator(colors),
             zoom_item(colors, menu.zoom_open),
+            separator(colors),
+            shortcut_item(
+                "Toggle Maximize",
+                MenuAction::ToggleMaximize,
+                Shortcut::ToggleMaximize,
+            ),
             separator(colors),
             item("Reset", Some(MenuAction::Reset)),
             item("Reset and Clean", Some(MenuAction::ResetAndClear)),

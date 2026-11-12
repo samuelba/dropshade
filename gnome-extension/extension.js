@@ -48,6 +48,7 @@ export default class DropshadeExtension extends Extension {
             toggle: () => this._toggle(),
             show: () => this._show(),
             hide: () => this._dropdown.hide(),
+            toggleMaximize: () => this._dropdown.toggleMaximize(),
             isManaged: () => this._dropdown.attached,
         });
     }

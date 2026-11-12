@@ -255,6 +255,7 @@ impl App {
             Shortcut::ZoomIn => return self.set_zoom(self.zoom.zoom_in()),
             Shortcut::ZoomOut => return self.set_zoom(self.zoom.zoom_out()),
             Shortcut::ZoomReset => return self.set_zoom(Zoom::default()),
+            Shortcut::ToggleMaximize => return self.toggle_maximize(),
             Shortcut::NextTab => self.tabs.cycle(1),
             Shortcut::PreviousTab => self.tabs.cycle(-1),
             Shortcut::MoveTabLeft => self.tabs.move_active(-1),
@@ -452,6 +453,7 @@ fn run_terminal_shortcut(
         | Shortcut::ZoomIn
         | Shortcut::ZoomOut
         | Shortcut::ZoomReset
+        | Shortcut::ToggleMaximize
         | Shortcut::GoToTab(_) => {}
     }
     Task::none()

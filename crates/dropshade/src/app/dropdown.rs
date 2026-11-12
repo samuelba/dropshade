@@ -23,6 +23,10 @@ pub struct Dropdown {
     pub id: window::Id,
     /// The surface size, once the work area is known.
     size: Option<(u32, u32)>,
+    /// The work area the surface measured.
+    work_area: Size,
+    /// Fills the work area instead of the configured fractions, until it slides out.
+    maximized: bool,
     slide: Slide,
     /// The last tick put the surface where the slide ends.
     settled: bool,
@@ -43,6 +47,8 @@ impl Dropdown {
         let dropdown = Self {
             id,
             size: None,
+            work_area: Size::ZERO,
+            maximized: false,
             slide: Slide::new(0.0, 0.0, Instant::now(), duration),
             settled: true,
             width: window.width,
@@ -86,22 +92,44 @@ impl Dropdown {
         if self.size.is_some() {
             return Task::none();
         }
-        let size = surface_size(work_area, self.width, self.height);
-        self.size = Some(size);
+        self.work_area = work_area;
         self.slide = Slide::new(0.0, 1.0, now, self.slide.duration);
         self.settled = false;
         Task::batch([
-            layer(
-                Some(self.id),
-                LayerShellCustomAction::AnchorSizeChange(anchor(self.align), size),
-            ),
-            self.margin(now),
+            self.resize(now),
             layer(
                 Some(self.id),
                 LayerShellCustomAction::KeyboardInteractivityChange(
                     KeyboardInteractivity::OnDemand,
                 ),
             ),
+        ])
+    }
+
+    /// Switches between filling the work area and the configured size.
+    pub fn toggle_maximize(&mut self, now: Instant) -> Task<Message> {
+        if self.size.is_none() {
+            return Task::none();
+        }
+        self.maximized = !self.maximized;
+        self.resize(now)
+    }
+
+    /// Sizes the surface for the work area and places it where the slide is now.
+    fn resize(&mut self, now: Instant) -> Task<Message> {
+        let (width, height) = if self.maximized {
+            (1.0, 1.0)
+        } else {
+            (self.width, self.height)
+        };
+        let size = surface_size(self.work_area, width, height);
+        self.size = Some(size);
+        Task::batch([
+            layer(
+                Some(self.id),
+                LayerShellCustomAction::AnchorSizeChange(anchor(self.align), size),
+            ),
+            self.margin(now),
         ])
     }
 
@@ -371,6 +399,26 @@ mod tests {
         assert!(!dropdown.showing());
         assert!(!dropdown.tick(shown + FULL / 2).1);
         assert!(dropdown.tick(shown + FULL).1);
+    }
+
+    #[test]
+    fn maximizing_fills_the_work_area_and_toggles_back() {
+        let (mut dropdown, _) = Dropdown::open(&window(), None);
+        let now = Instant::now();
+        let _ = dropdown.placed(Size::new(2000.0, 1000.0), now);
+        let configured = dropdown.size;
+        let _ = dropdown.toggle_maximize(now);
+        assert_eq!(dropdown.size, Some((2000, 1000)));
+        let _ = dropdown.toggle_maximize(now);
+        assert_eq!(dropdown.size, configured);
+    }
+
+    #[test]
+    fn maximizing_before_it_is_placed_does_nothing() {
+        let (mut dropdown, _) = Dropdown::open(&window(), None);
+        let _ = dropdown.toggle_maximize(Instant::now());
+        assert!(dropdown.measuring());
+        assert!(!dropdown.maximized);
     }
 
     #[test]

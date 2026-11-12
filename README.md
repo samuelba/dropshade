@@ -34,9 +34,10 @@ slide animation.
 | Ctrl+click | Open a link |
 | Ctrl+Shift+F | Search the scrollback (Enter: older match) |
 | Ctrl+= / Ctrl+- / Ctrl+0 | Zoom in / out / reset (all tabs, not saved) |
+| F11 | Fill the screen / back to the configured size (hiding ends it) |
 
 Right-click the terminal for Copy, Paste, New Tab, Find, **Zoom** (in, out, normal size; for the
-session only, the configured font size stays), **Reset** (clears modes a crashed program left on,
+session only, the configured font size stays), **Toggle Maximize**, **Reset** (clears modes a crashed program left on,
 like mouse reporting or the alternate screen, and clears the screen; scroll up to see what was
 there), **Reset and Clean** (also clears the scrollback), **Settings** and **About**. Settings is a panel
 for theme and colors (with a color picker), font size, opacity, tab bar, drop-down size and screen, cursor and session restore that

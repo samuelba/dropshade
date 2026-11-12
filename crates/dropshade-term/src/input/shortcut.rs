@@ -23,13 +23,15 @@ pub enum Shortcut {
     ZoomIn,
     ZoomOut,
     ZoomReset,
+    /// Fills the work area, or returns to the configured size.
+    ToggleMaximize,
     /// Activates the tab at this zero-based index.
     GoToTab(u8),
 }
 
 impl Shortcut {
     /// Every action name a keybinding accepts, apart from `go-to-tab-1` to `go-to-tab-9`.
-    pub const NAMES: [&'static str; 18] = [
+    pub const NAMES: [&'static str; 19] = [
         "copy",
         "paste",
         "paste-primary",
@@ -48,6 +50,7 @@ impl Shortcut {
         "zoom-in",
         "zoom-out",
         "zoom-reset",
+        "toggle-maximize",
     ];
 }
 
@@ -86,6 +89,7 @@ impl std::str::FromStr for Shortcut {
             "zoom-in" => Self::ZoomIn,
             "zoom-out" => Self::ZoomOut,
             "zoom-reset" => Self::ZoomReset,
+            "toggle-maximize" => Self::ToggleMaximize,
             _ => return Err(format!("unknown action \"{name}\"")),
         };
         Ok(shortcut)
@@ -101,6 +105,7 @@ pub fn shortcut(key: &Key, modifiers: Modifiers) -> Option<Shortcut> {
         Key::Character(c) if alt && !ctrl && !shift => alt_digit(c),
         Key::Named(named) if ctrl && !alt => ctrl_named(*named, shift),
         Key::Named(named) if shift && !ctrl && !alt => shift_named(*named),
+        Key::Named(Named::F11) if modifiers.is_empty() => Some(Shortcut::ToggleMaximize),
         _ => None,
     }
 }
@@ -239,6 +244,16 @@ mod tests {
         assert_eq!("zoom-in".parse(), Ok(Shortcut::ZoomIn));
         assert_eq!("zoom-out".parse(), Ok(Shortcut::ZoomOut));
         assert_eq!("zoom-reset".parse(), Ok(Shortcut::ZoomReset));
+    }
+
+    #[test]
+    fn f11_toggles_maximize() {
+        assert_eq!(
+            named(Named::F11, Modifiers::empty()),
+            Some(Shortcut::ToggleMaximize)
+        );
+        assert_eq!(named(Named::F11, Modifiers::CTRL), None);
+        assert_eq!("toggle-maximize".parse(), Ok(Shortcut::ToggleMaximize));
     }
 
     #[test]
