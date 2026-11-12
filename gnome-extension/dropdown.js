@@ -50,6 +50,20 @@ export class Dropdown {
     }
 
     /**
+     * Takes over a window that is already on screen, e.g. after the extension was disabled and
+     * enabled again, keeping it shown or hidden as it is.
+     */
+    adopt(window) {
+        this.detach();
+        this._window = window;
+        setListed(window, false);
+        this._connect(window, 'unmanaged', () => this._forget());
+        window.make_above();
+        window.stick();
+        this._shown = !window.minimized;
+    }
+
+    /**
      * Follows whether the drop-down is shown or on its way in, not the focus: after a click into
      * another window the shortcut hides it rather than sliding it in again.
      */

@@ -33,6 +33,11 @@ export default class DropshadeExtension extends Extension {
                 this._indicator.running = false;
             },
         });
+        const window = this._launcher.findWindow();
+        if (window) {
+            this._dropdown.adopt(window);
+            this._indicator.running = true;
+        }
         Main.wm.addKeybinding(
             SHORTCUT_KEY,
             this._settings,

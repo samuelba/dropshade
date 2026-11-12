@@ -70,4 +70,20 @@ click 760 439 1; sleep 2; shot 20-settings
 echo "21. the panel writes to config.toml"
 click 766 476 1; sleep 2
 sed 's/^/    | /' "$config_file"
+is_managed() {
+    call --dest dev.samuelba.Dropshade.Shell --object-path /dev/samuelba/Dropshade/Shell \
+        --method org.freedesktop.DBus.Properties.Get dev.samuelba.Dropshade.Shell IsManaged
+}
+echo "22. the app outlives the extension being disabled and enabled again (as on screen lock)"
+pid="$(app_pid)"
+# What GNOME does to every extension enabled after one it turns off.
+evaljs "const e = Main.extensionManager.lookup('$SMOKE_UUID').stateObj; e.disable(); e.enable(); ''" \
+    >/dev/null
+sleep 1
+gnome-extensions disable "$SMOKE_UUID"; sleep 1; gnome-extensions enable "$SMOKE_UUID"; sleep 2
+echo "    same app: $([[ "$(app_pid)" == "$pid" ]] && echo yes || echo no), managed: $(is_managed)"
+"$dropshade_cli" hide; sleep 1; "$dropshade_cli" show; sleep 2; inspect; shot 22-reenabled
+echo "23. disabling the extension for good stops the app"
+gnome-extensions disable "$SMOKE_UUID"; sleep 5
+echo "    app $pid still running: $(kill -0 "$pid" 2>/dev/null && echo yes || echo no)"
 echo "screenshots: $SMOKE_DEV/out"
