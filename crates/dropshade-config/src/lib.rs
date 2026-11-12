@@ -302,15 +302,17 @@ mod tests {
     #[test]
     fn notifications_section_controls_indicators_and_command_notifications() {
         let defaults = Config::default().notifications;
+        assert!(!defaults.visual_bell);
         assert!(defaults.bell_indicator);
         assert!(!defaults.activity_indicator);
         assert!(defaults.command_finished);
         assert_eq!(defaults.command_min_duration, 10);
         let config = parse_str(
-            "[notifications]\nbell_indicator = false\nactivity_indicator = true\n\
+            "[notifications]\nvisual_bell = true\nbell_indicator = false\nactivity_indicator = true\n\
              command_finished = false\ncommand_min_duration = 30\n",
         )
         .expect("valid");
+        assert!(config.notifications.visual_bell);
         assert!(!config.notifications.bell_indicator);
         assert!(config.notifications.activity_indicator);
         assert!(!config.notifications.command_finished);

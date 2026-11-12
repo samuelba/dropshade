@@ -293,9 +293,12 @@ impl Default for Updates {
 }
 
 /// Telling the user about tabs and commands that need attention.
+#[allow(clippy::struct_excessive_bools)] // independent on/off settings
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Notifications {
+    /// Flash the terminal briefly when it rings the bell.
+    pub visual_bell: bool,
     /// Mark background tabs that rang the bell.
     pub bell_indicator: bool,
     /// Mark background tabs that printed output.
@@ -310,6 +313,7 @@ pub struct Notifications {
 impl Default for Notifications {
     fn default() -> Self {
         Self {
+            visual_bell: false,
             bell_indicator: true,
             activity_indicator: false,
             command_finished: true,

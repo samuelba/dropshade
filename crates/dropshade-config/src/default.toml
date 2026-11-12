@@ -104,6 +104,8 @@ layout = ""
 check = true
 
 [notifications]
+# Flash the terminal briefly when it rings the bell, e.g. on an ambiguous tab completion.
+visual_bell = false
 # Mark background tabs that rang the bell.
 bell_indicator = true
 # Mark background tabs that printed output.

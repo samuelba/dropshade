@@ -165,7 +165,7 @@ impl App {
             }
             Some(Notice::Copy { text, primary }) => self.clipboard.write(selection(primary), text),
             Some(Notice::Bell) => {
-                tab.content.bell = true;
+                tab.content.bell = self.config.notifications.visual_bell;
                 if self.config.notifications.bell_indicator {
                     self.tabs.notice(id, Attention::Bell);
                 }
