@@ -63,6 +63,7 @@ assets = [
     ["../../gnome-extension/*.js", "usr/share/gnome-shell/extensions/dropshade@samuelba.dev/", "644"],
     ["../../gnome-extension/metadata.json", "usr/share/gnome-shell/extensions/dropshade@samuelba.dev/", "644"],
     ["../../gnome-extension/LICENSE", "usr/share/gnome-shell/extensions/dropshade@samuelba.dev/", "644"],
+    ["../../gnome-extension/icons/dropshade-symbolic.svg", "usr/share/gnome-shell/extensions/dropshade@samuelba.dev/icons/", "644"],
     ["../../gnome-extension/schemas/org.gnome.shell.extensions.dropshade.gschema.xml", "usr/share/glib-2.0/schemas/", "644"],
     ["../../README.md", "usr/share/doc/dropshade/", "644"],
 ]
@@ -78,6 +79,7 @@ assets = [
     { source = "../../gnome-extension/*.js", dest = "/usr/share/gnome-shell/extensions/dropshade@samuelba.dev/", mode = "644" },
     { source = "../../gnome-extension/metadata.json", dest = "/usr/share/gnome-shell/extensions/dropshade@samuelba.dev/metadata.json", mode = "644" },
     { source = "../../gnome-extension/LICENSE", dest = "/usr/share/gnome-shell/extensions/dropshade@samuelba.dev/LICENSE", mode = "644" },
+    { source = "../../gnome-extension/icons/dropshade-symbolic.svg", dest = "/usr/share/gnome-shell/extensions/dropshade@samuelba.dev/icons/dropshade-symbolic.svg", mode = "644" },
     { source = "../../gnome-extension/schemas/org.gnome.shell.extensions.dropshade.gschema.xml", dest = "/usr/share/glib-2.0/schemas/org.gnome.shell.extensions.dropshade.gschema.xml", mode = "644" },
     { source = "../../README.md", dest = "/usr/share/doc/dropshade/README.md", mode = "644", doc = true },
 ]
