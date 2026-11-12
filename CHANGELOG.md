@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.0](https://github.com/samuelba/dropshade/compare/v0.5.0...v0.6.0) (2026-11-12)
+
+
+### Features
+
+* add shell integration for bash and zsh with OSC 133 marks (@samuelba) ([789dbc8](https://github.com/samuelba/dropshade/commit/789dbc854785cfc0747732a29225bb614d55bc16))
+* make the visual bell optional and off by default (@samuelba) ([a581134](https://github.com/samuelba/dropshade/commit/a581134a7a28251e82504e88d495312f7e241fc2))
+* toggle maximize with F11 or the terminal menu (@samuelba) ([62917df](https://github.com/samuelba/dropshade/commit/62917dfb853478cb800965ec3f97709887ee127d))
+
+
+### Bug Fixes
+
+* draw emoji with the color emoji font (@samuelba) ([17901c3](https://github.com/samuelba/dropshade/commit/17901c3138da67baf55710bbb7c1f1340cb88a27))
+* **gnome-extension:** icon for gnome appindicator in deb and rpm (@samuelba) ([c4a5ffe](https://github.com/samuelba/dropshade/commit/c4a5ffeb51eb505737f205bffd3c464d471fe5e6))
+* **gnome-extension:** keep the app running when the extension reloads (@samuelba) ([49e6652](https://github.com/samuelba/dropshade/commit/49e665263b988c8a744e89d76c2dc0f115cfd1fb))
+
 ## [0.5.0](https://github.com/samuelba/dropshade/compare/v0.4.1...v0.5.0) (2026-11-12)
 
 
