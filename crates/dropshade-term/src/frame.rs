@@ -16,6 +16,8 @@ pub struct RunStyle {
     pub italic: bool,
     pub underline: bool,
     pub strikeout: bool,
+    /// Drawn with the color emoji font, in a run of its own.
+    pub emoji: bool,
 }
 
 /// Consecutive cells on one row that share colors and style.
@@ -53,6 +55,7 @@ impl From<Flags> for RunStyle {
             italic: flags.contains(Flags::ITALIC),
             underline: flags.intersects(Flags::ALL_UNDERLINES),
             strikeout: flags.contains(Flags::STRIKEOUT),
+            emoji: false,
         }
     }
 }
@@ -81,14 +84,19 @@ pub fn build<T: EventListener>(term: &Term<T>, palette: &Palette) -> Frame {
         {
             colors = palette.selected(colors);
         }
+        let zerowidth = cell.zerowidth().unwrap_or_default();
+        let wide = cell.flags.contains(Flags::WIDE_CHAR);
         runs.push(CellInput {
             row: point.line,
             column: point.column.0,
             c: cell.c,
-            zerowidth: cell.zerowidth().unwrap_or_default(),
+            zerowidth,
             colors,
-            style: RunStyle::from(cell.flags),
-            wide: cell.flags.contains(Flags::WIDE_CHAR),
+            style: RunStyle {
+                emoji: is_emoji(cell.c, zerowidth, wide),
+                ..RunStyle::from(cell.flags)
+            },
+            wide,
         });
     }
 
@@ -108,6 +116,26 @@ pub fn build<T: EventListener>(term: &Term<T>, palette: &Palette) -> Frame {
         runs: runs.finish(),
         cursor,
     }
+}
+
+/// Variation selector 16: show the preceding character as an emoji.
+const EMOJI_PRESENTATION: char = '\u{FE0F}';
+/// Variation selector 15: show the preceding character as text.
+const TEXT_PRESENTATION: char = '\u{FE0E}';
+
+/// Whether a cell holds an emoji: a character the program asked to show as one (followed by
+/// VS16), or a double-width pictograph. A narrow symbol on its own, like a plain ⚠, is text.
+fn is_emoji(c: char, zerowidth: &[char], wide: bool) -> bool {
+    if zerowidth.contains(&TEXT_PRESENTATION) {
+        return false;
+    }
+    if zerowidth.contains(&EMOJI_PRESENTATION) {
+        return true;
+    }
+    wide && matches!(
+        u32::from(c),
+        0x1F000..=0x1FAFF | 0x2300..=0x23FF | 0x2600..=0x27BF | 0x2B00..=0x2BFF
+    )
 }
 
 #[derive(Clone, Copy)]
@@ -138,8 +166,9 @@ impl RunCollector {
     }
 
     fn push(&mut self, cell: CellInput<'_>) {
+        let alone = cell.wide || cell.style.emoji;
         if let Some((run, false)) = &mut self.current
-            && !cell.wide
+            && !alone
             && run.row == cell.row
             && run.column + run.width == cell.column
             && run.colors == cell.colors
@@ -161,7 +190,7 @@ impl RunCollector {
             colors: cell.colors,
             style: cell.style,
         };
-        self.current = Some((run, cell.wide));
+        self.current = Some((run, alone));
     }
 
     fn flush(&mut self) {
@@ -283,7 +312,8 @@ mod tests {
                 bold: true,
                 italic: true,
                 underline: true,
-                strikeout: true
+                strikeout: true,
+                emoji: false,
             }
         );
     }
@@ -300,6 +330,25 @@ mod tests {
         let frame = frame_for("日x".as_bytes());
         assert_eq!(texts(&frame), vec![(0, 0, "日"), (0, 2, "x")]);
         assert_eq!(frame.runs[0].width, 2);
+    }
+
+    #[test]
+    fn emoji_presentation_gets_its_own_run() {
+        let frame = frame_for("a\u{26A0}\u{FE0F}b".as_bytes());
+        assert_eq!(
+            texts(&frame),
+            vec![(0, 0, "a"), (0, 1, "\u{26A0}\u{FE0F}"), (0, 2, "b")]
+        );
+        assert!(frame.runs[1].style.emoji);
+        assert!(!frame.runs[0].style.emoji && !frame.runs[2].style.emoji);
+    }
+
+    #[test]
+    fn wide_pictographs_are_emoji_but_plain_symbols_and_cjk_are_text() {
+        let frame = frame_for("\u{1F600}\u{26A0}\u{26A0}\u{FE0E}日".as_bytes());
+        let emoji: Vec<bool> = frame.runs.iter().map(|r| r.style.emoji).collect();
+        assert_eq!(texts(&frame)[0].2, "\u{1F600}");
+        assert_eq!(emoji, vec![true, false, false]);
     }
 
     #[test]
