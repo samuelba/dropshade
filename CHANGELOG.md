@@ -5,22 +5,16 @@
 
 ### Features
 
-* add shell integration for bash and zsh with OSC 133 marks ([f96d393](https://github.com/samuelba/dropshade/commit/f96d3932e11388442ff76d2d92e4a5cae31b0010))
-* add shell integration for bash and zsh with OSC 133 marks ([789dbc8](https://github.com/samuelba/dropshade/commit/789dbc854785cfc0747732a29225bb614d55bc16))
-* make the visual bell optional and off by default ([e811f94](https://github.com/samuelba/dropshade/commit/e811f94f1504c678ae52dedc1f0632e4391affb0))
-* make the visual bell optional and off by default ([a581134](https://github.com/samuelba/dropshade/commit/a581134a7a28251e82504e88d495312f7e241fc2))
-* toggle maximize with F11 or the terminal menu ([2e9a642](https://github.com/samuelba/dropshade/commit/2e9a642e83e16166a22dc1d9cde066a1e75cb3b3))
-* toggle maximize with F11 or the terminal menu ([62917df](https://github.com/samuelba/dropshade/commit/62917dfb853478cb800965ec3f97709887ee127d))
+* add shell integration for bash and zsh with OSC 133 marks (@samuelba) ([789dbc8](https://github.com/samuelba/dropshade/commit/789dbc854785cfc0747732a29225bb614d55bc16))
+* make the visual bell optional and off by default (@samuelba) ([a581134](https://github.com/samuelba/dropshade/commit/a581134a7a28251e82504e88d495312f7e241fc2))
+* toggle maximize with F11 or the terminal menu (@samuelba) ([62917df](https://github.com/samuelba/dropshade/commit/62917dfb853478cb800965ec3f97709887ee127d))
 
 
 ### Bug Fixes
 
-* draw emoji with the color emoji font ([9d51ad7](https://github.com/samuelba/dropshade/commit/9d51ad7637565a3c95dac6e0ffd0eb93a8a60fb7))
-* draw emoji with the color emoji font ([17901c3](https://github.com/samuelba/dropshade/commit/17901c3138da67baf55710bbb7c1f1340cb88a27))
-* **gnome-extension:** icon for gnome appindicator in deb and rpm ([cb98cc3](https://github.com/samuelba/dropshade/commit/cb98cc3d759fd2226f939bff3e406bc7f286e7a0))
-* **gnome-extension:** icon for gnome appindicator in deb and rpm ([c4a5ffe](https://github.com/samuelba/dropshade/commit/c4a5ffeb51eb505737f205bffd3c464d471fe5e6))
-* **gnome-extension:** keep the app running when the extension reloads ([aa4c450](https://github.com/samuelba/dropshade/commit/aa4c450a9b8a85c3e62c37a6f5995f80669eef48))
-* **gnome-extension:** keep the app running when the extension reloads ([49e6652](https://github.com/samuelba/dropshade/commit/49e665263b988c8a744e89d76c2dc0f115cfd1fb))
+* draw emoji with the color emoji font (@samuelba) ([17901c3](https://github.com/samuelba/dropshade/commit/17901c3138da67baf55710bbb7c1f1340cb88a27))
+* **gnome-extension:** icon for gnome appindicator in deb and rpm (@samuelba) ([c4a5ffe](https://github.com/samuelba/dropshade/commit/c4a5ffeb51eb505737f205bffd3c464d471fe5e6))
+* **gnome-extension:** keep the app running when the extension reloads (@samuelba) ([49e6652](https://github.com/samuelba/dropshade/commit/49e665263b988c8a744e89d76c2dc0f115cfd1fb))
 
 ## [0.5.0](https://github.com/samuelba/dropshade/compare/v0.4.1...v0.5.0) (2026-11-12)
 
