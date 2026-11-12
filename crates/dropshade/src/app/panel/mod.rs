@@ -39,11 +39,12 @@ pub enum Section {
     Terminal,
     Input,
     Session,
+    Notifications,
     Keybindings,
 }
 
 impl Section {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Appearance,
         Self::Colors,
         Self::Font,
@@ -51,6 +52,7 @@ impl Section {
         Self::Terminal,
         Self::Input,
         Self::Session,
+        Self::Notifications,
         Self::Keybindings,
     ];
 
@@ -63,6 +65,7 @@ impl Section {
             Self::Terminal => "Terminal",
             Self::Input => "Input",
             Self::Session => "Session",
+            Self::Notifications => "Notifications",
             Self::Keybindings => "Keybindings",
         }
     }

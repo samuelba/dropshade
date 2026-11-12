@@ -19,6 +19,7 @@ pub struct Config {
     pub window: Window,
     pub session: Session,
     pub updates: Updates,
+    pub notifications: Notifications,
     /// Chord (e.g. `"ctrl+shift+t"`) to action name or `{ send = "text" }`.
     pub keybindings: BTreeMap<String, Binding>,
 }
@@ -288,6 +289,32 @@ pub struct Updates {
 impl Default for Updates {
     fn default() -> Self {
         Self { check: true }
+    }
+}
+
+/// Telling the user about tabs and commands that need attention.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Notifications {
+    /// Mark background tabs that rang the bell.
+    pub bell_indicator: bool,
+    /// Mark background tabs that printed output.
+    pub activity_indicator: bool,
+    /// Send a desktop notification when a long command finishes while Dropshade is hidden or
+    /// unfocused.
+    pub command_finished: bool,
+    /// How many seconds a command has to run to count as long.
+    pub command_min_duration: u32,
+}
+
+impl Default for Notifications {
+    fn default() -> Self {
+        Self {
+            bell_indicator: true,
+            activity_indicator: false,
+            command_finished: true,
+            command_min_duration: 10,
+        }
     }
 }
 

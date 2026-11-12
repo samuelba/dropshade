@@ -1,12 +1,18 @@
-//! What a tab holds: a running terminal plus its blink and bell state.
+//! What a tab holds: a running terminal plus its blink, bell and foreground-command state.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use dropshade_term::{SpawnError, SpawnOptions, TermEvent, Terminal};
 use iced::futures::Stream;
 
+use super::commands::Running;
 use crate::settings::Settings;
+
+/// How long a new tab's output does not count as activity, so the first prompt of tabs opened
+/// together does not mark them.
+const STARTUP_QUIET: Duration = Duration::from_secs(1);
 
 #[derive(Debug)]
 pub struct Session {
@@ -16,6 +22,10 @@ pub struct Session {
     /// A layout's startup command, typed once the shell has drawn its first output (its prompt),
     /// so it is not echoed a second time as type-ahead.
     pub pending_command: Option<String>,
+    /// Output before this does not mark the tab as active.
+    pub quiet_until: Instant,
+    /// The command in the foreground at the last look, to notice when it finishes.
+    pub running: Option<Running>,
 }
 
 /// Starts a shell with the current settings, optionally in `working_directory`.
@@ -49,6 +59,8 @@ pub fn spawn(
             cursor_on: true,
             bell: false,
             pending_command: None,
+            quiet_until: Instant::now() + STARTUP_QUIET,
+            running: None,
         },
         events,
     ))

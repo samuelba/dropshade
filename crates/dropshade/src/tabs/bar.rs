@@ -9,7 +9,7 @@ use iced::widget::{
 };
 use iced::{Color, Element, Fill, Font, Length, Padding, Point};
 
-use super::model::{Tab, TabId, Tabs};
+use super::model::{Attention, Tab, TabId, Tabs};
 use crate::theme::UiColors;
 
 pub const RENAME_INPUT: &str = "tab-rename";
@@ -28,6 +28,8 @@ const LABEL_PADDING_RIGHT: f32 = 6.0;
 const VERTICAL_LABEL_PADDING_LEFT: f32 = 8.0;
 const VERTICAL_LABEL_PADDING_RIGHT: f32 = 6.0;
 const ELLIPSIS: &str = "…";
+const ATTENTION_DOT: &str = "●";
+const ATTENTION_DOT_SIZE: f32 = 8.0;
 const RENAME_PLACEHOLDER: &str = "Tab name";
 const RENAME_PADDING: f32 = 6.0;
 
@@ -124,11 +126,26 @@ fn available_width(bar_width: f32, count: usize) -> f32 {
     bar_width - 2.0 * SPACING - NEW_TAB_BUTTON_WIDTH - count * SPACING
 }
 
-/// Width a horizontal tab needs to show `label` in full, close button included.
-fn natural_width(label: &str) -> f32 {
-    (LABEL_PADDING_LEFT + label_width(label) + SPACING + close_button_width() + LABEL_PADDING_RIGHT)
+/// Width a horizontal tab needs to show `label` in full, its attention dot and close button
+/// included.
+fn natural_width(label: &str, attention: Attention) -> f32 {
+    (LABEL_PADDING_LEFT
+        + attention_width(attention)
+        + label_width(label)
+        + SPACING
+        + close_button_width()
+        + LABEL_PADDING_RIGHT)
         .ceil()
         + 1.0
+}
+
+/// Room the attention dot takes in front of the label, spacing included.
+fn attention_width(attention: Attention) -> f32 {
+    if attention == Attention::None {
+        0.0
+    } else {
+        metrics::text_width(ATTENTION_DOT, Font::DEFAULT, ATTENTION_DOT_SIZE) + SPACING
+    }
 }
 
 fn label_width(label: &str) -> f32 {
@@ -140,13 +157,13 @@ fn close_button_width() -> f32 {
 }
 
 /// Room left for the label of a tab that is `tab_width` wide.
-fn label_room(position: BarPosition, tab_width: f32) -> f32 {
+fn label_room(position: BarPosition, tab_width: f32, attention: Attention) -> f32 {
     let padding = if position.is_horizontal() {
         LABEL_PADDING_LEFT + LABEL_PADDING_RIGHT
     } else {
         ACCENT_THICKNESS + VERTICAL_LABEL_PADDING_LEFT + VERTICAL_LABEL_PADDING_RIGHT
     };
-    tab_width - padding - SPACING - close_button_width()
+    tab_width - padding - SPACING - close_button_width() - attention_width(attention)
 }
 
 /// `label` as is when it fits in `max_width`, otherwise its longest prefix that fits with an
@@ -174,9 +191,9 @@ fn tab_widths<T>(tabs: &Tabs<T>, state: BarState<'_>) -> Vec<f32> {
                         } else {
                             draft
                         };
-                        natural_width(shown) + 2.0 * RENAME_PADDING
+                        natural_width(shown, Attention::None) + 2.0 * RENAME_PADDING
                     }
-                    _ => natural_width(tab.label()),
+                    _ => natural_width(tab.label(), tab.attention),
                 })
                 .collect();
             fitted_widths(state.width, &natural)
@@ -240,14 +257,23 @@ fn entry<'a, T>(
             .padding([2.0, RENAME_PADDING])
             .width(Fill)
             .into(),
-        _ => container(
-            text(ellipsize(tab.label(), label_room(state.position, width)))
-                .size(LABEL_SIZE)
-                .wrapping(Wrapping::None),
-        )
-        .width(Fill)
-        .clip(true)
-        .into(),
+        _ => {
+            let room = label_room(state.position, width, tab.attention);
+            let label = container(
+                text(ellipsize(tab.label(), room))
+                    .size(LABEL_SIZE)
+                    .wrapping(Wrapping::None),
+            )
+            .width(Fill)
+            .clip(true);
+            match attention_dot(tab.attention, colors) {
+                Some(dot) => row![dot, label]
+                    .spacing(SPACING)
+                    .align_y(iced::Center)
+                    .into(),
+                None => label.into(),
+            }
+        }
     };
     let close_color = if active || hovered {
         colors.muted
@@ -315,6 +341,22 @@ fn entry<'a, T>(
         .into()
 }
 
+/// A dot in front of the label of a tab that rang the bell (accent) or printed output (muted).
+fn attention_dot<'a>(attention: Attention, colors: UiColors) -> Option<Element<'a, TabMessage>> {
+    let color = match attention {
+        Attention::None => return None,
+        Attention::Activity => colors.muted,
+        Attention::Bell => colors.accent,
+    };
+    Some(
+        text(ATTENTION_DOT)
+            .size(ATTENTION_DOT_SIZE)
+            .color(color)
+            .wrapping(Wrapping::None)
+            .into(),
+    )
+}
+
 fn icon_button(label: &str, color: Color, colors: UiColors) -> button::Button<'_, TabMessage> {
     button(text(label).size(LABEL_SIZE + 3.0).center())
         .padding([0.0, CLOSE_PADDING])
@@ -376,6 +418,19 @@ mod tests {
 
     #[test]
     fn longer_labels_need_wider_tabs() {
-        assert!(super::natural_width("a much longer tab name") > super::natural_width("sh"));
+        let none = super::Attention::None;
+        assert!(
+            super::natural_width("a much longer tab name", none) > super::natural_width("sh", none)
+        );
+    }
+
+    #[test]
+    fn a_marked_tab_leaves_room_for_its_dot() {
+        use super::{Attention, BarPosition, label_room, natural_width};
+        assert!(natural_width("sh", Attention::Bell) > natural_width("sh", Attention::None));
+        assert!(
+            label_room(BarPosition::Top, 200.0, Attention::Activity)
+                < label_room(BarPosition::Top, 200.0, Attention::None)
+        );
     }
 }

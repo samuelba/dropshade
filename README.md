@@ -102,6 +102,15 @@ On start, Dropshade asks GitHub for the latest release. When a newer one is out,
 notification once per version and a download link in About Dropshade. Turn this off with
 `[updates] check = false`, or under Settings → Session.
 
+## Bell, activity and finished commands
+
+A background tab that rings the bell gets a dot in the accent color until you switch to it; with
+`[notifications] activity_indicator = true` a muted dot also marks background tabs that printed
+output. When a command that ran for at least `command_min_duration` seconds (10 by default)
+finishes while Dropshade is hidden or unfocused, a desktop notification says so; clicking it
+shows Dropshade on that tab. Change these under Settings → Notifications. In the Flatpak the
+shell runs outside the sandbox, so finished commands cannot be noticed there.
+
 ## Getting started
 
 ```sh

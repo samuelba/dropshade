@@ -126,6 +126,8 @@ pub enum SearchDirection {
 /// What the UI should do after an emulator event was handled.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Notice {
+    /// The shell or an application printed something.
+    Output,
     Redraw,
     TitleChanged,
     Bell,
@@ -505,9 +507,8 @@ impl Terminal {
     /// Applies an emulator event and tells the UI how to react.
     pub fn handle_event(&mut self, event: Event, palette: &Palette) -> Option<Notice> {
         match event {
-            Event::Wakeup | Event::CursorBlinkingChange | Event::MouseCursorDirty => {
-                Some(Notice::Redraw)
-            }
+            Event::Wakeup => Some(Notice::Output),
+            Event::CursorBlinkingChange | Event::MouseCursorDirty => Some(Notice::Redraw),
             Event::Title(title) => {
                 self.title = Some(title);
                 Some(Notice::TitleChanged)

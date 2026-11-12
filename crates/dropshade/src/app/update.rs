@@ -1,18 +1,21 @@
 //! How the application reacts to messages.
 
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use dropshade_term::{Interaction, Notice, Shortcut, TermEvent, Terminal, links};
 use iced::Task;
 use iced::widget::{Id, operation};
 
+use super::commands::{self, Finished};
 use super::zoom::Zoom;
 use super::{
     AboutMessage, App, Menu, Message, PendingClose, Rename, SettingsMessage, TerminalMenu, session,
 };
 use crate::clipboard::{Clipboard, Selection};
 use crate::ipc::client::Visibility;
-use crate::tabs::{TabId, TabMessage, bar};
+use crate::notifications::{self, DEFAULT_ACTION, Notification};
+use crate::tabs::{Attention, TabId, TabMessage, bar};
 
 impl App {
     fn set_drop_target(&mut self, target: Option<crate::dnd::DropTarget>) -> Task<Message> {
@@ -121,6 +124,8 @@ impl App {
             Message::CloseRequested => self.visibility(Visibility::Hide),
             Message::WindowFocused(focused) => self.window_focused(focused),
             Message::Slide => self.slide_step(),
+            Message::PollCommands => self.poll_commands(),
+            Message::ShowTab(id) => self.show_tab(id),
             Message::SystemTheme(mode) => {
                 let prefers_light = mode == iced::theme::Mode::Light;
                 if prefers_light != self.prefers_light {
@@ -161,18 +166,49 @@ impl App {
             Some(Notice::Copy { text, primary }) => self.clipboard.write(selection(primary), text),
             Some(Notice::Bell) => {
                 tab.content.bell = true;
+                if self.config.notifications.bell_indicator {
+                    self.tabs.notice(id, Attention::Bell);
+                }
                 Task::none()
             }
-            Some(Notice::Redraw) => {
+            Some(Notice::Output) => {
                 if let Some(command) = tab.content.pending_command.take() {
                     tab.content
                         .terminal
                         .write(format!("{command}\r").into_bytes());
                 }
+                if self.config.notifications.activity_indicator
+                    && Instant::now() >= tab.content.quiet_until
+                {
+                    self.tabs.notice(id, Attention::Activity);
+                }
                 Task::none()
             }
-            None => Task::none(),
+            Some(Notice::Redraw) | None => Task::none(),
         }
+    }
+
+    fn show_tab(&mut self, id: TabId) -> Task<Message> {
+        self.tabs.activate(id);
+        self.visibility(Visibility::Show)
+    }
+
+    /// Looks which tabs' foreground commands finished, and announces the long ones while the
+    /// window is out of sight or out of focus.
+    fn poll_commands(&mut self) -> Task<Message> {
+        let min = Duration::from_secs(self.config.notifications.command_min_duration.into());
+        let now = Instant::now();
+        let unattended = !self.focused;
+        let mut announcements = Vec::new();
+        for tab in self.tabs.iter_mut() {
+            let current = tab.content.terminal.foreground_process();
+            let (running, finished) = commands::step(tab.content.running.take(), current, now, min);
+            tab.content.running = running;
+            if let Some(finished) = finished.filter(|_| unattended) {
+                announcements.push(announce_finished(tab.id, tab.label().to_owned(), finished));
+            }
+        }
+        Task::batch(announcements)
     }
 
     fn interaction(&mut self, interaction: Interaction) -> Task<Message> {
@@ -419,6 +455,30 @@ fn run_terminal_shortcut(
         | Shortcut::GoToTab(_) => {}
     }
     Task::none()
+}
+
+/// A notification that `finished` ended in the tab labelled `label`; clicking it shows the tab.
+fn announce_finished(id: TabId, label: String, finished: Finished) -> Task<Message> {
+    Task::perform(
+        async move {
+            let summary = format!("{} finished", finished.name);
+            let body = format!("in {label} after {}", commands::describe(finished.elapsed));
+            let notification = Notification {
+                summary: &summary,
+                body: &body,
+                actions: &[DEFAULT_ACTION, "Show"],
+            };
+            notifications::show_and_wait(notification).await
+        },
+        move |result| match result {
+            Ok(Some(_)) => Message::ShowTab(id),
+            Ok(None) => Message::Done,
+            Err(error) => {
+                tracing::warn!(%error, "cannot show the command notification");
+                Message::Done
+            }
+        },
+    )
 }
 
 pub(super) fn open_link(url: &str) {

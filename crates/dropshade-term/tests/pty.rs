@@ -150,7 +150,7 @@ mod events {
     }
 
     #[test]
-    fn notices_for_redraw_bell_and_exit() {
+    fn notices_for_output_redraw_bell_and_exit() {
         let mut terminal = spawn(
             "sleep 2",
             GridSize {
@@ -161,6 +161,10 @@ mod events {
         let palette = Palette::default();
         assert_eq!(
             terminal.handle_event(TermEvent::Wakeup, &palette),
+            Some(Notice::Output)
+        );
+        assert_eq!(
+            terminal.handle_event(TermEvent::MouseCursorDirty, &palette),
             Some(Notice::Redraw)
         );
         assert_eq!(

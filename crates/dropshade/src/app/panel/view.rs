@@ -87,6 +87,7 @@ impl App {
             Section::Terminal => terminal(ctx),
             Section::Input => input(ctx),
             Section::Session => session(ctx),
+            Section::Notifications => notifications(ctx),
             Section::Keybindings => keybindings(ctx),
         };
         column![heading, body].spacing(16).into()
@@ -476,6 +477,31 @@ fn session(ctx: Ctx<'_>) -> Element<'static, Message> {
     ]
     .spacing(12)
     .into()
+}
+
+fn notifications(ctx: Ctx<'_>) -> Element<'static, Message> {
+    let mut rows = column![
+        hinted(
+            switch(ctx, "Mark tabs that rang the bell", Switch::BellIndicator),
+            "A dot in the accent color on background tabs, until you switch to them.",
+            ctx.colors,
+        ),
+        hinted(
+            switch(ctx, "Mark tabs with new output", Switch::ActivityIndicator),
+            "A muted dot on background tabs that printed something.",
+            ctx.colors,
+        ),
+        hinted(
+            switch(ctx, "Notify when a long command finishes", Switch::CommandFinished),
+            "A desktop notification while Dropshade is hidden or unfocused. Clicking it shows the tab.",
+            ctx.colors,
+        ),
+    ]
+    .spacing(12);
+    if ctx.config.notifications.command_finished {
+        rows = rows.push(slider_row(ctx, Slider::CommandMinDuration));
+    }
+    rows.into()
 }
 
 fn keybindings(ctx: Ctx<'_>) -> Element<'static, Message> {
