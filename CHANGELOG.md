@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.0](https://github.com/samuelba/dropshade/compare/v0.4.1...v0.5.0) (2026-11-12)
+
+
+### Features
+
+* mark tabs on bell or output and notify when long commands finish ([5824735](https://github.com/samuelba/dropshade/commit/58247355946404689a82376f082a04e25d72f523))
+* mark tabs on bell or output and notify when long commands finish ([f8ed0b9](https://github.com/samuelba/dropshade/commit/f8ed0b98478baec6c499a3a53c7a6ecb2640bb1a))
+* paste files dropped onto the window as quoted paths ([81f5361](https://github.com/samuelba/dropshade/commit/81f5361afdc58095f37aef5b88ee5f73b95eecbc))
+* paste files dropped onto the window as quoted paths ([237ce36](https://github.com/samuelba/dropshade/commit/237ce3643edc1cb3ac0fb8c3ab502bdce92f32fc))
+* **tabs:** shorten long tab labels with an ellipsis ([50cc913](https://github.com/samuelba/dropshade/commit/50cc9133cd22c6ce3806a6a917077a8db6a6fee4))
+* **tabs:** shorten long tab labels with an ellipsis ([dd90f0f](https://github.com/samuelba/dropshade/commit/dd90f0fb11181efca2e74bd5a2101e5579f0606c))
+* **term:** add zoom shortcuts ([6041f64](https://github.com/samuelba/dropshade/commit/6041f642fe35355bba51f9b15b1ea74b450dc7d7))
+* **term:** show shortcut hints in the context menu ([0a369c5](https://github.com/samuelba/dropshade/commit/0a369c573bab005e3ee042f2a53b929c3aa34b8b))
+* **term:** show shortcut hints in the context menu ([22db49f](https://github.com/samuelba/dropshade/commit/22db49fd482600fb51420f1b8aadacdd32a5c476))
+
 ## [0.4.1](https://github.com/samuelba/dropshade/compare/v0.4.0...v0.4.1) (2026-11-11)
 
 
