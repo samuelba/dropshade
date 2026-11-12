@@ -47,10 +47,11 @@ for theme and colors (with a color picker), font size, opacity, tab bar, drop-do
 saves straight into `config.toml`, keeping its comments.
 
 When a program uses the mouse itself (zellij, tmux, vim with `mouse=a`, ...), clicks go to it.
-Hold **Shift** to click, select and open the menu in Dropshade instead, or press Ctrl+, for
-Settings.
+Hold **Shift** to click, select and open the menu in Dropshade instead, right-click the empty
+part of the tab bar, or press Ctrl+, for Settings.
 
-In tabs: middle-click closes, right-click opens a menu, and dragging reorders. Every shortcut can be
+In tabs: middle-click closes, right-click opens a menu, and dragging reorders. Right-click the
+empty part of the tab bar for the terminal menu. Every shortcut can be
 changed in the `[keybindings]` section of the configuration.
 
 ## Configuration

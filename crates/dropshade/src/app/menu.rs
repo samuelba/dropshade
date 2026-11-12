@@ -44,17 +44,17 @@ pub enum MenuAction {
     Dismiss,
 }
 
-/// The open context menu: where it is, the cell it was opened on, and whether its zoom submenu
-/// is showing.
+/// The open context menu: where it is, the cell it was opened on (none when opened from the tab
+/// bar), and whether its zoom submenu is showing.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct TerminalMenu {
     pub position: Point,
-    pub cell: CellPosition,
+    pub cell: Option<CellPosition>,
     pub zoom_open: bool,
 }
 
 impl TerminalMenu {
-    pub fn at(position: Point, cell: CellPosition) -> Self {
+    pub fn at(position: Point, cell: Option<CellPosition>) -> Self {
         Self {
             position,
             cell,
@@ -74,7 +74,7 @@ impl App {
         let menu = self.terminal_menu.take();
         let shortcut = match action {
             MenuAction::SelectCommandOutput => {
-                return self.select_command_output(menu.map(|menu| menu.cell));
+                return self.select_command_output(menu.and_then(|menu| menu.cell));
             }
             MenuAction::Copy => dropshade_term::Shortcut::Copy,
             MenuAction::Paste => dropshade_term::Shortcut::Paste,
@@ -120,7 +120,7 @@ impl App {
         let colors = self.settings.colors;
         let terminal = self.tabs.active().map(|tab| &tab.content.terminal);
         let has_selection = terminal.is_some_and(|terminal| terminal.selection_text().is_some());
-        let has_output = terminal.is_some_and(|terminal| terminal.has_command_output_at(menu.cell));
+        let has_output = terminal.is_some_and(|terminal| terminal.has_command_output(menu.cell));
         let bindings = &self.settings.input.bindings;
         let item = |label: &'static str, action: Option<MenuAction>| {
             mouse_area(item_button(colors, label, action, None))

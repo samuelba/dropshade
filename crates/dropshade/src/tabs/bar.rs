@@ -70,6 +70,9 @@ pub enum TabMessage {
     RenameInput(String),
     CommitRename,
     OpenMenu(TabId),
+    /// Right-click on the bar outside the tabs: the terminal menu, for when the terminal's
+    /// program keeps right-clicks to itself.
+    OpenBarMenu,
     CloseMenu,
     MoveLeft(TabId),
     MoveRight(TabId),
@@ -237,7 +240,10 @@ pub fn view<'a, T>(tabs: &'a Tabs<T>, state: BarState<'a>) -> Element<'a, TabMes
     } else {
         bar.height(Fill)
     };
-    mouse_area(bar).on_move(TabMessage::PointerMoved).into()
+    mouse_area(bar)
+        .on_move(TabMessage::PointerMoved)
+        .on_right_press(TabMessage::OpenBarMenu)
+        .into()
 }
 
 fn entry<'a, T>(

@@ -216,12 +216,17 @@ fn arrow(host: Host) -> mouse::Interaction {
 
 /// Where the tab context menu opens: at the pointer, translated from bar to window coordinates
 /// and kept inside the window.
-fn menu_position(bar: BarPosition, pointer: Point, window: Size) -> Point {
-    let origin = match bar {
+/// The tab bar's top-left corner in the window.
+pub(super) fn bar_origin(bar: BarPosition, window: Size) -> Point {
+    match bar {
         BarPosition::Top | BarPosition::Left => Point::ORIGIN,
         BarPosition::Bottom => Point::new(0.0, window.height - bar::HORIZONTAL_HEIGHT),
         BarPosition::Right => Point::new(window.width - bar::VERTICAL_WIDTH, 0.0),
-    };
+    }
+}
+
+fn menu_position(bar: BarPosition, pointer: Point, window: Size) -> Point {
+    let origin = bar_origin(bar, window);
     let height = MENU_ITEMS * MENU_ITEM_HEIGHT + 2.0 * MENU_PADDING;
     Point::new(
         (origin.x + pointer.x).clamp(0.0, (window.width - MENU_WIDTH).max(0.0)),
@@ -263,6 +268,20 @@ mod tests {
     fn right_bar_menus_are_shifted_into_view() {
         let at = menu_position(BarPosition::Right, Point::new(150.0, 40.0), WINDOW);
         assert_eq!(at, Point::new(WINDOW.width - MENU_WIDTH, 40.0));
+    }
+
+    #[test]
+    fn bar_origin_is_the_corner_the_bar_starts_at() {
+        assert_eq!(bar_origin(BarPosition::Top, WINDOW), Point::ORIGIN);
+        assert_eq!(bar_origin(BarPosition::Left, WINDOW), Point::ORIGIN);
+        assert_eq!(
+            bar_origin(BarPosition::Bottom, WINDOW),
+            Point::new(0.0, WINDOW.height - bar::HORIZONTAL_HEIGHT)
+        );
+        assert_eq!(
+            bar_origin(BarPosition::Right, WINDOW),
+            Point::new(WINDOW.width - bar::VERTICAL_WIDTH, 0.0)
+        );
     }
 
     #[test]
