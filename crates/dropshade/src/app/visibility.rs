@@ -94,6 +94,37 @@ impl App {
         }
     }
 
+    /// Fills the work area, or returns to the configured size. Hiding ends it.
+    pub(super) fn toggle_maximize(&mut self) -> Task<Message> {
+        match self.host {
+            Host::Layer => self.dropdown.as_mut().map_or_else(Task::none, |dropdown| {
+                dropdown.toggle_maximize(Instant::now())
+            }),
+            Host::Shell => self.forward_maximize_to_shell(),
+            Host::Window => self.window.map_or_else(Task::none, window::toggle_maximize),
+        }
+    }
+
+    fn forward_maximize_to_shell(&self) -> Task<Message> {
+        let Some(connection) = self.ipc.clone() else {
+            tracing::warn!("cannot reach the GNOME Shell extension: no D-Bus connection");
+            return Task::none();
+        };
+        Task::perform(
+            async move { client::shell_toggle_maximize(&connection).await },
+            |result| {
+                if let Err(error) = result {
+                    tracing::warn!(
+                        %error,
+                        "the GNOME Shell extension cannot maximize; update it with \
+                         `dropshade gnome-extension install`"
+                    );
+                }
+                Message::Done
+            },
+        )
+    }
+
     /// Toggling follows whether the drop-down is shown or on its way in, not the focus: after a
     /// click into another window the hotkey hides it rather than focusing it again.
     fn slide(&mut self, action: Visibility) -> Task<Message> {

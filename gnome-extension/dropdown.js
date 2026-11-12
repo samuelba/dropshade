@@ -24,6 +24,7 @@ export class Dropdown {
         this._prefs = prefs;
         this._window = null;
         this._shown = false;
+        this._maximized = false;
         this._signals = [];
         this._focusId = global.display.connect('notify::focus-window', () => this._onFocusChanged());
     }
@@ -93,11 +94,22 @@ export class Dropdown {
         this._slide(actor, -rect.height, 0, () => {});
     }
 
+    /** Fills the work area, or returns to the configured size; hiding ends it. */
+    toggleMaximize() {
+        const window = this._window;
+        if (!this._isShown())
+            return;
+        this._maximized = !this._maximized;
+        const rect = this._targetRect();
+        window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
+    }
+
     hide() {
         const window = this._window;
         if (!window || window.minimized || !this._shown)
             return;
         this._shown = false;
+        this._maximized = false;
         const actor = window.get_compositor_private();
         const height = window.get_frame_rect().height;
         this._slide(actor, 0, -height, () => {
@@ -162,8 +174,8 @@ export class Dropdown {
 
     _targetRect() {
         const area = Main.layoutManager.getWorkAreaForMonitor(this._monitorIndex());
-        const width = Math.round(area.width * this._prefs.width);
-        const height = Math.round(area.height * this._prefs.height);
+        const width = this._maximized ? area.width : Math.round(area.width * this._prefs.width);
+        const height = this._maximized ? area.height : Math.round(area.height * this._prefs.height);
         return {
             x: area.x + horizontalOffset(this._prefs.align, area.width - width),
             y: area.y,
@@ -202,6 +214,7 @@ export class Dropdown {
         this._signals = [];
         this._window = null;
         this._shown = false;
+        this._maximized = false;
     }
 }
 
