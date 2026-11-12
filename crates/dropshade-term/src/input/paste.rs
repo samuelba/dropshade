@@ -12,9 +12,49 @@ pub fn paste_bytes(text: &str, bracketed: bool) -> Vec<u8> {
     }
 }
 
+/// `path` quoted for a POSIX-style shell, followed by a space so further drops or typing continue
+/// cleanly. Plain paths stay bare; anything else is single-quoted.
+pub fn shell_quoted_path(path: &str) -> String {
+    let plain = !path.is_empty()
+        && path
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_@%+=:,./-".contains(c));
+    if plain {
+        format!("{path} ")
+    } else {
+        format!("'{}' ", path.replace('\'', "'\\''"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plain_paths_are_left_bare() {
+        assert_eq!(
+            shell_quoted_path("/home/sam/a-b_c.txt"),
+            "/home/sam/a-b_c.txt "
+        );
+    }
+
+    #[test]
+    fn paths_with_spaces_and_metacharacters_are_single_quoted() {
+        assert_eq!(
+            shell_quoted_path("/tmp/my file $(x).txt"),
+            "'/tmp/my file $(x).txt' "
+        );
+    }
+
+    #[test]
+    fn single_quotes_in_paths_are_escaped() {
+        assert_eq!(shell_quoted_path("/tmp/it's"), "'/tmp/it'\\''s' ");
+    }
+
+    #[test]
+    fn empty_path_becomes_an_empty_quoted_string() {
+        assert_eq!(shell_quoted_path(""), "'' ");
+    }
 
     #[test]
     fn bracketed_paste_wraps_text_in_markers() {

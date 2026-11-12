@@ -3,6 +3,7 @@
 mod app;
 mod cli;
 mod clipboard;
+mod dnd;
 mod extension;
 mod hotkey;
 mod ipc;
@@ -164,9 +165,27 @@ fn run(
 ) -> ExitCode {
     dropshade_term::setup_env();
     tracing::debug!(?host, ?clipboard, "showing and hiding");
-    let boot = move || App::boot(config_path.clone(), host, clipboard, startup.clone());
+    // A layer surface lives on a connection made here, shared with the drop target; winit's
+    // window shares its own once it opens.
+    let layer_connection = (host == Host::Layer)
+        .then(|| {
+            wayland_client::Connection::connect_to_env()
+                .inspect_err(|error| tracing::warn!(%error, "dropped files are ignored"))
+                .ok()
+        })
+        .flatten();
+    let drop_target = layer_connection.clone().map(dnd::DropTarget::new);
+    let boot = move || {
+        App::boot(
+            config_path.clone(),
+            host,
+            clipboard,
+            startup.clone(),
+            drop_target.clone(),
+        )
+    };
     let result = match host {
-        Host::Layer => run_layer(boot),
+        Host::Layer => run_layer(boot, layer_connection),
         Host::Shell | Host::Window => run_window(boot),
     };
     match result {
@@ -185,7 +204,11 @@ fn style(_: &App, theme: &Theme) -> iced::theme::Style {
     }
 }
 
-fn run_layer(boot: impl Fn() -> (App, iced::Task<app::Message>) + 'static) -> Result<(), String> {
+fn run_layer(
+    boot: impl Fn() -> (App, iced::Task<app::Message>) + 'static,
+    connection: Option<wayland_client::Connection>,
+) -> Result<(), String> {
+    use iced_layershell::reexport::WithConnection;
     use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
 
     iced_layershell::daemon(boot, LAYER_NAMESPACE, App::update, App::view)
@@ -199,6 +222,7 @@ fn run_layer(boot: impl Fn() -> (App, iced::Task<app::Message>) + 'static) -> Re
                 start_mode: StartMode::Background,
                 ..LayerShellSettings::default()
             },
+            with_connection: connection.map(WithConnection::Value),
             ..Settings::default()
         })
         .run()

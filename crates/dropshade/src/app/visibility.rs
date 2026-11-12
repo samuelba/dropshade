@@ -129,10 +129,17 @@ impl App {
     /// work area it was measuring.
     pub(super) fn window_opened(&mut self, id: window::Id, size: iced::Size) -> Task<Message> {
         self.window_size = size;
-        match self.dropdown.as_mut() {
+        let placed = match self.dropdown.as_mut() {
             Some(dropdown) if dropdown.id == id => dropdown.placed(size, Instant::now()),
             _ => Task::none(),
-        }
+        };
+        // iced_layershell ignores window::run; its connection was handed over at boot.
+        let drop_target = if self.drop_target.is_none() && self.host != Host::Layer {
+            window::run(id, crate::dnd::DropTarget::of_window).map(Message::DropTarget)
+        } else {
+            Task::none()
+        };
+        Task::batch([placed, drop_target])
     }
 
     pub(super) fn window_closed(&mut self, id: window::Id) {

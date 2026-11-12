@@ -6,7 +6,7 @@ mod paste;
 mod shortcut;
 
 pub use bindings::{Binding, BindingAction, Chord, Resolution, resolve, shortcut_label};
-pub use paste::paste_bytes;
+pub use paste::{paste_bytes, shell_quoted_path};
 pub use shortcut::{Shortcut, shortcut};
 
 use alacritty_terminal::term::TermMode;
