@@ -1,5 +1,7 @@
 //! Measures monospace cells and text widths with the font system iced renders with.
 
+use std::sync::OnceLock;
+
 use iced::Font;
 use iced_graphics::text::{cosmic_text, font_system, to_attributes};
 
@@ -73,6 +75,53 @@ pub fn font_installed(family: &str) -> bool {
     })
 }
 
+/// Color emoji families, most preferred first.
+const EMOJI_FAMILIES: &[&str] = &[
+    "Noto Color Emoji",
+    "Twemoji",
+    "JoyPixels",
+    "OpenMoji Color",
+    "Apple Color Emoji",
+    "Segoe UI Emoji",
+];
+
+/// The installed color emoji font and how wide its emoji are, in ems.
+#[derive(Debug, Clone, Copy)]
+pub struct EmojiFont {
+    pub font: Font,
+    pub advance: f32,
+}
+
+/// The installed color emoji font, looked up once. Text fonts often carry monochrome
+/// versions of symbols like ⚠, which the font fallback would pick before any emoji font.
+pub fn emoji_font() -> Option<EmojiFont> {
+    static EMOJI: OnceLock<Option<EmojiFont>> = OnceLock::new();
+    *EMOJI.get_or_init(|| {
+        let family = {
+            let mut system = font_system().write().ok()?;
+            let families: Vec<String> = system
+                .raw()
+                .db()
+                .faces()
+                .flat_map(|face| face.families.iter().map(|(name, _)| name.clone()))
+                .collect();
+            EMOJI_FAMILIES
+                .iter()
+                .find_map(|wanted| families.iter().find(|f| f.eq_ignore_ascii_case(wanted)))
+                .or_else(|| families.iter().find(|f| f.contains("Emoji")))?
+                .clone()
+        };
+        let name: &'static str = Box::leak(family.into_boxed_str());
+        tracing::debug!("drawing emoji with \"{name}\"");
+        let font = Font::with_name(name);
+        let advance = text_width("\u{1F600}", font, 100.0) / 100.0;
+        Some(EmojiFont {
+            font,
+            advance: if advance > 0.0 { advance } else { 1.0 },
+        })
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,6 +143,17 @@ mod tests {
         let long = text_width("abcdefgh", Font::DEFAULT, 13.0);
         assert!(short > 0.0 && long > short, "{short} vs {long}");
         assert!(text_width("", Font::DEFAULT, 13.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn emoji_fonts_have_a_usable_width_when_installed() {
+        if let Some(emoji) = emoji_font() {
+            assert!(
+                emoji.advance > 0.5 && emoji.advance < 2.0,
+                "{}",
+                emoji.advance
+            );
+        }
     }
 
     #[test]

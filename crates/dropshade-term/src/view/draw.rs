@@ -8,7 +8,8 @@ use unicode_width::UnicodeWidthStr;
 
 use super::{TerminalView, ViewState, scrollbar};
 use crate::colors::to_iced;
-use crate::frame::{Cursor, Run};
+use crate::frame::{Cursor, Run, RunStyle};
+use crate::metrics;
 
 const BAR_THICKNESS: f32 = 2.0;
 const DECORATION_THICKNESS: f32 = 1.0;
@@ -28,6 +29,12 @@ impl<Message> TerminalView<'_, Message> {
         canvas.fill_rectangle(Point::ORIGIN, bounds.size(), background);
         for run in &snapshot.runs {
             self.draw_run(&mut canvas, run);
+        }
+        // Emoji may be wider than their cells, so they go on top of the neighbouring runs.
+        for run in snapshot.runs.iter().filter(|run| run.style.emoji) {
+            let fg = to_iced(run.colors.fg, 1.0);
+            let origin = self.origin(run.row, run.column);
+            canvas.fill_text(self.text(&run.text, origin, fg, run.style));
         }
         if let Some(cursor) = snapshot.cursor {
             self.draw_cursor(&mut canvas, cursor, state.focused, &snapshot.runs);
@@ -84,7 +91,9 @@ impl<Message> TerminalView<'_, Message> {
             );
         }
         let fg = to_iced(run.colors.fg, 1.0);
-        canvas.fill_text(self.text(&run.text, origin, fg, run.style.bold, run.style.italic));
+        if !run.style.emoji {
+            canvas.fill_text(self.text(&run.text, origin, fg, run.style));
+        }
         if run.style.underline {
             let y = origin.y + cell.height - DECORATION_THICKNESS;
             canvas.fill_rectangle(
@@ -121,9 +130,9 @@ impl<Message> TerminalView<'_, Message> {
         match shape {
             CursorShape::Block => {
                 canvas.fill_rectangle(origin, Size::new(width, cell.height), color);
-                if let Some((c, bold, italic)) = char_at(runs, cursor) {
+                if let Some((text, style)) = text_at(runs, cursor) {
                     let bg = to_iced(self.style.palette.cursor_text(), 1.0);
-                    canvas.fill_text(self.text(&c.to_string(), origin, bg, bold, italic));
+                    canvas.fill_text(self.text(&text, origin, bg, style));
                 }
             }
             CursorShape::Beam => {
@@ -147,7 +156,19 @@ impl<Message> TerminalView<'_, Message> {
         }
     }
 
-    fn text(&self, content: &str, position: Point, color: Color, bold: bool, italic: bool) -> Text {
+    fn text(&self, content: &str, position: Point, color: Color, style: RunStyle) -> Text {
+        if style.emoji
+            && let Some(emoji) = metrics::emoji_font()
+        {
+            // At most two cells wide, the width terminals give an emoji.
+            let fit = 2.0 * self.style.cell.width / emoji.advance;
+            return Text {
+                size: Pixels(self.style.font_size.min(fit)),
+                font: emoji.font,
+                ..self.text(content, position, color, RunStyle::default())
+            };
+        }
+        let RunStyle { bold, italic, .. } = style;
         let font = Font {
             weight: if bold {
                 font::Weight::Bold
@@ -185,7 +206,7 @@ impl<Message> TerminalView<'_, Message> {
             to_iced(palette.background, 1.0),
         );
         let fg = to_iced(palette.foreground, 1.0);
-        canvas.fill_text(self.text(preedit, origin, fg, false, false));
+        canvas.fill_text(self.text(preedit, origin, fg, RunStyle::default()));
         let underline = Point::new(origin.x, origin.y + cell.height - DECORATION_THICKNESS);
         canvas.fill_rectangle(
             underline,
@@ -195,12 +216,21 @@ impl<Message> TerminalView<'_, Message> {
     }
 }
 
-fn char_at(runs: &[Run], cursor: Cursor) -> Option<(char, bool, bool)> {
+/// The text under the cursor and its style: one character, or a whole emoji sequence.
+fn text_at(runs: &[Run], cursor: Cursor) -> Option<(String, RunStyle)> {
     let run = runs.iter().find(|run| {
         run.row == cursor.row && (run.column..run.column + run.width).contains(&cursor.column)
     })?;
+    let style = RunStyle {
+        underline: false,
+        strikeout: false,
+        ..run.style
+    };
+    if run.style.emoji {
+        return Some((run.text.clone(), style));
+    }
     let c = run.text.chars().nth(cursor.column - run.column)?;
-    Some((c, run.style.bold, run.style.italic))
+    Some((c.to_string(), style))
 }
 
 #[cfg(test)]
@@ -230,6 +260,8 @@ mod tests {
             shape: CursorShape::Block,
             wide: false,
         };
-        assert_eq!(char_at(&[run], cursor), Some(('b', true, false)));
+        let (text, style) = text_at(&[run], cursor).expect("cursor inside the run");
+        assert_eq!(text, "b");
+        assert!(style.bold && !style.italic);
     }
 }
