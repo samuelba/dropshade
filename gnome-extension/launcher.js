@@ -7,6 +7,16 @@ import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 
 const DEFAULT_COMMAND = ['dropshade'];
 const SIGTERM = 15;
+const STOP_DELAY_SECONDS = 3;
+
+/**
+ * The app a destroyed launcher left running, waiting for the next launcher to take it over.
+ * GNOME disables and re-enables every extension enabled after one it turns off; when the screen
+ * locks it turns off each extension without the unlock-dialog session mode, so this extension
+ * can be disabled and enabled several times in a row. Stopping the app each time would lose its
+ * tabs, so it is only stopped when no launcher takes it over within STOP_DELAY_SECONDS.
+ */
+let parked = null;
 
 /**
  * Starts argv as a Wayland client whose windows Mutter can attribute to it. GNOME 47 replaced
@@ -33,14 +43,30 @@ export class AppLauncher {
         this._onExit = onExit;
         this._client = null;
         this._subprocess = null;
+        this._cancellable = new Gio.Cancellable();
         this._windowCreatedId = global.display.connect('window-created', (_display, window) => {
             if (this._client?.owns_window(window))
                 this._onWindow(window);
         });
+        if (parked) {
+            GLib.source_remove(parked.stopId);
+            this._track(parked.client, parked.subprocess);
+            parked = null;
+        }
     }
 
     get running() {
         return this._client !== null;
+    }
+
+    /** The app's window if it already has one, e.g. when taken over from an earlier launcher. */
+    findWindow() {
+        const client = this._client;
+        if (!client)
+            return null;
+        return global.get_window_actors()
+            .map(actor => actor.meta_window)
+            .find(window => client.owns_window(window)) ?? null;
     }
 
     launch() {
@@ -64,9 +90,13 @@ export class AppLauncher {
             Main.notifyError('Dropshade could not start', `${argv[0]}: ${error.message}`);
             return;
         }
-        this._client = spawned.client;
-        this._subprocess = spawned.subprocess;
-        this._watchExit(spawned.client, spawned.subprocess);
+        this._track(spawned.client, spawned.subprocess);
+    }
+
+    _track(client, subprocess) {
+        this._client = client;
+        this._subprocess = subprocess;
+        this._watchExit(client, subprocess);
     }
 
     _notifyMissing(program) {
@@ -95,10 +125,12 @@ export class AppLauncher {
     }
 
     _watchExit(client, subprocess) {
-        subprocess.wait_async(null, (proc, result) => {
+        subprocess.wait_async(this._cancellable, (proc, result) => {
             try {
                 proc.wait_finish(result);
             } catch (error) {
+                if (error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+                    return;
                 console.error(`Dropshade: waiting for the app failed: ${error.message}`);
             }
             if (this._client !== client)
@@ -109,12 +141,24 @@ export class AppLauncher {
         });
     }
 
+    /** Parks a running app for the next launcher; see `parked`. */
     destroy() {
         global.display.disconnect(this._windowCreatedId);
+        this._cancellable.cancel();
         this._missingNotification?.destroy();
+        const client = this._client;
         const subprocess = this._subprocess;
         this._client = null;
         this._subprocess = null;
-        subprocess?.send_signal(SIGTERM);
+        if (!subprocess)
+            return;
+
+        const stopId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, STOP_DELAY_SECONDS, () => {
+            if (parked?.stopId === stopId)
+                parked = null;
+            subprocess.send_signal(SIGTERM);
+            return GLib.SOURCE_REMOVE;
+        });
+        parked = {client, subprocess, stopId};
     }
 }
