@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.7.0](https://github.com/samuelba/dropshade/compare/v0.6.0...v0.7.0) (2026-11-13)
+
+
+### Features
+
+* add settings for the window's vertical position and animation (@samuelba) ([b8a4e0c](https://github.com/samuelba/dropshade/commit/b8a4e0cf7580867c3ad97f589d9675f494fa98d3))
+* add settings to jump to the newest output on output or keystroke (@samuelba) ([e9b60aa](https://github.com/samuelba/dropshade/commit/e9b60aaf7dd492482484d516d04e2ec9cd46692f))
+* add vi mode to select output with the keyboard (Ctrl+Shift+Space) (@samuelba) ([0c5fbd9](https://github.com/samuelba/dropshade/commit/0c5fbd96810421d14a8e0580d8213795e9dc471c))
+* open settings with Ctrl+, (rebindable as open-settings) (@samuelba) ([1f00334](https://github.com/samuelba/dropshade/commit/1f00334e2a5183c05f238643c13df209aca6ea37))
+* open the terminal menu from the empty part of the tab bar (@samuelba) ([c52ea30](https://github.com/samuelba/dropshade/commit/c52ea30f9123c3c3b49603971c86d39702db1aad))
+* save and restore split panes in sessions and layouts (@samuelba) ([4424ba8](https://github.com/samuelba/dropshade/commit/4424ba832156839a59c5992a1f3670c7a36dc933))
+* split tabs into panes (Ctrl+Shift+R right, Ctrl+Shift+D down) (@samuelba) ([38a20c9](https://github.com/samuelba/dropshade/commit/38a20c99a2a2be52a9f85175a381814ba966c017))
+
+
+### Bug Fixes
+
+* **gnome:** use the desktop's cursor theme before GNOME 48 (@samuelba) ([fb9ccd1](https://github.com/samuelba/dropshade/commit/fb9ccd181568a32f7a5742407a28c2cbdd429043))
+
 ## [0.6.0](https://github.com/samuelba/dropshade/compare/v0.5.0...v0.6.0) (2026-11-12)
 
 
