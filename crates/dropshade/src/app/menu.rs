@@ -18,9 +18,9 @@ const SEPARATOR_HEIGHT: f32 = 9.0;
 const CARD_PADDING: f32 = 4.0;
 const TEXT_SIZE: f32 = 13.0;
 /// Items before the one that opens the zoom submenu, and the separators between them.
-const ITEMS_BEFORE_ZOOM: f32 = 5.0;
+const ITEMS_BEFORE_ZOOM: f32 = 6.0;
 const SEPARATORS_BEFORE_ZOOM: f32 = 2.0;
-const ITEMS: f32 = 11.0;
+const ITEMS: f32 = 12.0;
 const SEPARATORS: f32 = 5.0;
 const SUBMENU_ITEMS: f32 = 3.0;
 
@@ -29,6 +29,7 @@ pub enum MenuAction {
     Copy,
     Paste,
     SelectCommandOutput,
+    SelectWithKeyboard,
     NewTab,
     Find,
     ShowZoomMenu,
@@ -76,6 +77,7 @@ impl App {
             MenuAction::SelectCommandOutput => {
                 return self.select_command_output(menu.and_then(|menu| menu.cell));
             }
+            MenuAction::SelectWithKeyboard => dropshade_term::Shortcut::ToggleViMode,
             MenuAction::Copy => dropshade_term::Shortcut::Copy,
             MenuAction::Paste => dropshade_term::Shortcut::Paste,
             MenuAction::NewTab => dropshade_term::Shortcut::NewTab,
@@ -143,6 +145,11 @@ impl App {
                 "Select Command Output",
                 MenuAction::SelectCommandOutput,
                 Shortcut::SelectCommandOutput,
+            ),
+            shortcut_item(
+                "Select with Keyboard",
+                MenuAction::SelectWithKeyboard,
+                Shortcut::ToggleViMode,
             ),
             separator(colors),
             shortcut_item("New Tab", MenuAction::NewTab, Shortcut::NewTab),

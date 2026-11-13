@@ -13,6 +13,7 @@ mod pty_loop;
 mod reset;
 pub mod size;
 pub mod terminal;
+pub mod vi;
 pub mod view;
 
 pub use alacritty_terminal;
@@ -25,6 +26,7 @@ pub use size::{CellSize, GridSize};
 pub use terminal::{
     ForegroundProcess, Notice, SearchDirection, SelectionKind, SpawnError, SpawnOptions, Terminal,
 };
+pub use vi::{ViAction, ViScroll, ViSelection};
 pub use view::{
     Interaction, PointerState, ScrollPosition, TerminalView, TerminalWidget, ViewState, ViewStyle,
 };

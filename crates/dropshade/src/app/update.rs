@@ -4,7 +4,9 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use dropshade_term::mouse::CellPosition;
-use dropshade_term::{Interaction, Notice, SearchDirection, Shortcut, TermEvent, Terminal, links};
+use dropshade_term::{
+    Interaction, Notice, SearchDirection, Shortcut, TermEvent, Terminal, ViAction, links,
+};
 use iced::widget::{Id, operation};
 use iced::{Point, Task};
 
@@ -174,7 +176,8 @@ impl App {
                 Task::none()
             }
             Some(Notice::Output) => {
-                if self.settings.scroll.on_output {
+                // In vi mode the view stays on what is being selected.
+                if self.settings.scroll.on_output && !tab.content.terminal.vi_mode() {
                     tab.content.terminal.scroll_to_bottom();
                 }
                 if let Some(command) = tab.content.pending_command.take() {
@@ -217,6 +220,9 @@ impl App {
     }
 
     fn interaction(&mut self, interaction: Interaction) -> Task<Message> {
+        if let Interaction::Vi(action) = interaction {
+            return self.vi_action(action);
+        }
         let Some(tab) = self.tabs.active_mut() else {
             return Task::none();
         };
@@ -236,6 +242,42 @@ impl App {
             tab.content.terminal.scroll_to_bottom();
         }
         apply(&mut tab.content.terminal, self.clipboard, interaction)
+    }
+
+    /// A key pressed in vi mode.
+    fn vi_action(&mut self, action: ViAction) -> Task<Message> {
+        let Some(tab) = self.tabs.active_mut() else {
+            return Task::none();
+        };
+        tab.content.cursor_on = true;
+        let terminal = &mut tab.content.terminal;
+        match action {
+            ViAction::Motion(motion) => terminal.vi_motion(motion),
+            ViAction::Select(kind) => terminal.vi_select(kind),
+            ViAction::Scroll(scroll) => terminal.vi_scroll(scroll),
+            ViAction::Top => terminal.vi_goto_top(),
+            ViAction::Bottom => terminal.vi_goto_bottom(),
+            ViAction::Escape if terminal.vi_selection().is_some() => terminal.clear_selection(),
+            ViAction::Escape | ViAction::Exit => terminal.toggle_vi_mode(),
+            ViAction::Yank => {
+                let text = terminal.selection_text();
+                terminal.toggle_vi_mode();
+                return text.map_or_else(Task::none, |text| {
+                    Task::batch([
+                        self.clipboard.write(Selection::Primary, text.clone()),
+                        self.clipboard.write(Selection::Clipboard, text),
+                    ])
+                });
+            }
+            ViAction::Search(direction) => {
+                terminal.start_vi_search(direction);
+                return self.open_search();
+            }
+            ViAction::SearchNext { reverse } => {
+                terminal.vi_search_next(reverse);
+            }
+        }
+        Task::none()
     }
 
     fn shortcut(&mut self, shortcut: Shortcut) -> Task<Message> {
@@ -269,6 +311,12 @@ impl App {
                 return self.open_settings();
             }
             Shortcut::OpenSettings => {}
+            Shortcut::ToggleViMode => {
+                if let Some(tab) = self.tabs.active_mut() {
+                    tab.content.terminal.toggle_vi_mode();
+                    tab.content.cursor_on = true;
+                }
+            }
             Shortcut::NextTab => self.tabs.cycle(1),
             Shortcut::PreviousTab => self.tabs.cycle(-1),
             Shortcut::MoveTabLeft => self.tabs.move_active(-1),
@@ -478,7 +526,8 @@ fn apply(terminal: &mut Terminal, clipboard: Clipboard, interaction: Interaction
         Interaction::Shortcut(shortcut) => {
             return run_terminal_shortcut(terminal, clipboard, shortcut);
         }
-        Interaction::ContextMenu { .. } => {}
+        // Vi mode keys are handled before this, in `vi_action`.
+        Interaction::ContextMenu { .. } | Interaction::Vi(_) => {}
     }
     Task::none()
 }
@@ -520,6 +569,7 @@ fn run_terminal_shortcut(
         | Shortcut::ToggleMaximize
         | Shortcut::SelectCommandOutput
         | Shortcut::OpenSettings
+        | Shortcut::ToggleViMode
         | Shortcut::GoToTab(_) => {}
     }
     Task::none()

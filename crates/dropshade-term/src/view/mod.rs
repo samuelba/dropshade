@@ -17,6 +17,7 @@ use crate::input::{self, InputConfig, KeyPress, Resolution, Shortcut};
 use crate::mouse::CellPosition;
 use crate::size::{CellSize, GridSize, Side};
 use crate::terminal::{SelectionKind, Terminal};
+use crate::vi::{self, ViAction};
 
 pub use pointer::PointerState;
 pub use scrollbar::ScrollPosition;
@@ -67,6 +68,8 @@ pub enum Interaction {
         position: Point,
         cell: CellPosition,
     },
+    /// A key pressed in vi mode.
+    Vi(ViAction),
 }
 
 /// Per-widget state kept by iced between events.
@@ -77,6 +80,8 @@ pub struct ViewState {
     focused: bool,
     /// Text the input method is composing, shown at the cursor until it is committed.
     preedit: Option<String>,
+    /// The first key of a two-key vi command (`gg`).
+    vi_pending: Option<char>,
 }
 
 impl Default for ViewState {
@@ -86,6 +91,7 @@ impl Default for ViewState {
             scrollbar: ScrollbarState::default(),
             focused: true,
             preedit: None,
+            vi_pending: None,
         }
     }
 }
@@ -168,6 +174,10 @@ impl<'a, Message> TerminalView<'a, Message> {
         state: &mut ViewState,
         event: &input_method::Event,
     ) -> Action<Message> {
+        if self.terminal.vi_mode() {
+            state.preedit = None;
+            return Action::capture();
+        }
         match event {
             input_method::Event::Preedit(text, _) => {
                 state.preedit = (!text.is_empty()).then(|| text.clone());
@@ -234,8 +244,17 @@ impl<'a, Message> TerminalView<'a, Message> {
         }
     }
 
-    fn key_pressed(&self, press: KeyPress<'_>) -> Option<Interaction> {
-        match input::resolve(press.key, press.modifiers, &self.input.bindings) {
+    fn key_pressed(&self, state: &mut ViewState, press: KeyPress<'_>) -> Option<Interaction> {
+        let resolution = input::resolve(press.key, press.modifiers, &self.input.bindings);
+        if let Resolution::Shortcut(shortcut) = resolution {
+            state.vi_pending = None;
+            return Some(Interaction::Shortcut(shortcut));
+        }
+        if self.terminal.vi_mode() {
+            return vi::resolve(press, &mut state.vi_pending).map(Interaction::Vi);
+        }
+        state.vi_pending = None;
+        match resolution {
             Resolution::Shortcut(shortcut) => Some(Interaction::Shortcut(shortcut)),
             Resolution::Send(bytes) => Some(Interaction::Input(bytes)),
             Resolution::Encode => {
@@ -299,8 +318,14 @@ impl<Message> TerminalView<'_, Message> {
                     modifiers: *modifiers,
                     text: text.as_deref(),
                 };
-                let interaction = self.key_pressed(press)?;
-                Some(Action::publish((self.on_interaction)(interaction)).and_capture())
+                match self.key_pressed(state, press) {
+                    Some(interaction) => {
+                        Some(Action::publish((self.on_interaction)(interaction)).and_capture())
+                    }
+                    // In vi mode every key stays here, even the ones that do nothing.
+                    None if self.terminal.vi_mode() => Some(Action::capture()),
+                    None => None,
+                }
             }
             Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
                 state.pointer.modifiers = *modifiers;

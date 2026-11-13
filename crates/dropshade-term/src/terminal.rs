@@ -16,7 +16,8 @@ use alacritty_terminal::term::{
     ClipboardType, Config, Term, TermMode, point_to_viewport, viewport_to_point,
 };
 use alacritty_terminal::tty;
-use alacritty_terminal::vte::ansi::CursorStyle;
+use alacritty_terminal::vi_mode::ViMotion;
+use alacritty_terminal::vte::ansi::{CursorShape, CursorStyle};
 use iced::futures::Stream;
 use iced::futures::channel::mpsc;
 
@@ -29,6 +30,7 @@ use crate::mouse::CellPosition;
 use crate::pty_loop::{self, Msg, PtySender};
 use crate::reset;
 use crate::size::{CellSize, GridSize, Side};
+use crate::vi::{ViScroll, ViSelection};
 use crate::view::ScrollPosition;
 
 /// Forwards emulator events from the pty thread to the UI.
@@ -171,6 +173,10 @@ pub struct Terminal {
     pty: File,
     search: Option<RegexSearch>,
     search_match: Option<Match>,
+    /// Which way searches go in vi mode: the way `/` or `?` started the last one.
+    vi_direction: SearchDirection,
+    /// Where the vi cursor was when the search bar opened; typing searches from there.
+    search_origin: Option<Point>,
 }
 
 impl std::fmt::Debug for Terminal {
@@ -194,12 +200,11 @@ impl Terminal {
     ) -> Result<(Self, impl Stream<Item = Event> + Send + 'static), SpawnError> {
         let (sender, receiver) = mpsc::unbounded();
         let proxy = EventProxy::new(sender);
-        let config = Config {
-            scrolling_history: options.scrollback_lines,
-            kitty_keyboard: options.kitty_keyboard,
-            default_cursor_style: options.cursor_style,
-            ..Config::default()
-        };
+        let config = term_config(
+            options.scrollback_lines,
+            options.kitty_keyboard,
+            options.cursor_style,
+        );
         let term = Arc::new(FairMutex::new(Term::new(
             config,
             &options.size,
@@ -233,6 +238,8 @@ impl Terminal {
             pty: pty_handle,
             search: None,
             search_match: None,
+            vi_direction: SearchDirection::Older,
+            search_origin: None,
         };
         Ok((terminal, receiver))
     }
@@ -322,13 +329,7 @@ impl Terminal {
     /// Applies changed settings to a running terminal.
     pub fn update_options(&self, scrollback_lines: usize, cursor_style: CursorStyle) {
         let mut term = self.term.lock();
-        let config = Config {
-            scrolling_history: scrollback_lines,
-            kitty_keyboard: true,
-            default_cursor_style: cursor_style,
-            ..Config::default()
-        };
-        term.set_options(config);
+        term.set_options(term_config(scrollback_lines, true, cursor_style));
         lock(&self.marks).set_max_history(scrollback_lines);
     }
 
@@ -377,6 +378,9 @@ impl Terminal {
     pub fn select(&self, kind: SelectionKind, at: CellPosition, side: Side) {
         let mut term = self.term.lock();
         let point = grid_point(term.grid().display_offset(), at);
+        if term.mode().contains(TermMode::VI) {
+            term.vi_mode_cursor.point = point;
+        }
         let kind = match kind {
             SelectionKind::Simple => SelectionType::Simple,
             SelectionKind::Word => SelectionType::Semantic,
@@ -389,6 +393,9 @@ impl Terminal {
     pub fn extend_selection(&self, to: CellPosition, side: Side) {
         let mut term = self.term.lock();
         let point = grid_point(term.grid().display_offset(), to);
+        if term.mode().contains(TermMode::VI) {
+            term.vi_mode_cursor.point = point;
+        }
         if let Some(selection) = term.selection.as_mut() {
             selection.update(point, grid_side(side));
         }
@@ -457,15 +464,27 @@ impl Terminal {
 
     /// Searches the output and scrollback for `query` as plain text, newest match first. The match
     /// becomes the selection and is scrolled into view. Lowercase queries ignore case.
+    ///
+    /// In vi mode the match moves the vi cursor instead, searching from where the search began.
     pub fn search(&mut self, query: &str) -> bool {
-        self.clear_search();
+        if self.search_match.take().is_some() {
+            self.term.lock().selection = None;
+        }
+        self.search = None;
         if query.is_empty() {
+            if let Some(origin) = self.search_origin.filter(|_| self.vi_mode()) {
+                self.term.lock().vi_goto_point(origin);
+            }
             return false;
         }
         let Ok(regex) = RegexSearch::new(&escape_regex(query)) else {
             return false;
         };
         self.search = Some(regex);
+        if self.vi_mode() {
+            let origin = self.search_origin.unwrap_or_else(|| self.vi_cursor());
+            return self.find_from(origin, self.vi_direction);
+        }
         let origin = {
             let term = self.term.lock();
             let bottom = i32::try_from(term.screen_lines()).unwrap_or(i32::MAX) - 1;
@@ -476,6 +495,9 @@ impl Terminal {
 
     /// Moves to the next match of the current search, wrapping around at the ends.
     pub fn search_next(&mut self, direction: SearchDirection) -> bool {
+        if self.vi_mode() && self.search.is_some() {
+            return self.find_from(self.vi_cursor(), direction);
+        }
         let Some(current) = self.search_match.clone() else {
             return false;
         };
@@ -492,11 +514,30 @@ impl Terminal {
         }
     }
 
+    /// Ends the search. In vi mode the query is kept, so `n` and `N` can repeat it.
     pub fn clear_search(&mut self) {
         if self.search_match.take().is_some() {
             self.term.lock().selection = None;
         }
-        self.search = None;
+        self.search_origin = None;
+        if !self.vi_mode() {
+            self.search = None;
+        }
+    }
+
+    /// Searches from just past `point`, towards older or newer output.
+    fn find_from(&mut self, point: Point, direction: SearchDirection) -> bool {
+        let origin = {
+            let term = self.term.lock();
+            match direction {
+                SearchDirection::Older => point.sub(&*term, Boundary::None, 1),
+                SearchDirection::Newer => point.add(&*term, Boundary::None, 1),
+            }
+        };
+        match direction {
+            SearchDirection::Older => self.find(origin, Direction::Left, GridSide::Right),
+            SearchDirection::Newer => self.find(origin, Direction::Right, GridSide::Left),
+        }
     }
 
     fn find(&mut self, origin: Point, direction: Direction, side: GridSide) -> bool {
@@ -507,12 +548,127 @@ impl Terminal {
         let Some(found) = term.search_next(regex, origin, direction, side, None) else {
             return false;
         };
+        if term.mode().contains(TermMode::VI) {
+            term.vi_goto_point(*found.start());
+            return true;
+        }
         term.scroll_to_point(*found.start());
         let mut selection = Selection::new(SelectionType::Simple, *found.start(), GridSide::Left);
         selection.update(*found.end(), GridSide::Right);
         term.selection = Some(selection);
         self.search_match = Some(found);
         true
+    }
+
+    pub fn vi_mode(&self) -> bool {
+        self.mode().contains(TermMode::VI)
+    }
+
+    /// Turns vi mode on, with its cursor where the terminal cursor is (or at the top of the view
+    /// when that is scrolled away), or off. Either way the selection goes; leaving also ends the
+    /// search.
+    pub fn toggle_vi_mode(&mut self) {
+        if self.vi_mode() {
+            self.search = None;
+            self.search_match = None;
+            self.search_origin = None;
+        }
+        let mut term = self.term.lock();
+        term.selection = None;
+        term.toggle_vi_mode();
+    }
+
+    pub fn vi_motion(&self, motion: ViMotion) {
+        self.term.lock().vi_motion(motion);
+    }
+
+    /// Starts a selection of `kind` at the vi cursor, switches the current one to `kind`, or
+    /// clears it when it already is one.
+    pub fn vi_select(&self, kind: ViSelection) {
+        let mut term = self.term.lock();
+        let ty = selection_type(kind);
+        let current = term
+            .selection
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| s.ty);
+        match current {
+            Some(current) if current == ty => term.selection = None,
+            Some(_) => {
+                if let Some(selection) = term.selection.as_mut() {
+                    selection.ty = ty;
+                }
+            }
+            None => {
+                let mut selection = Selection::new(ty, term.vi_mode_cursor.point, GridSide::Left);
+                selection.include_all();
+                term.selection = Some(selection);
+            }
+        }
+    }
+
+    /// The kind of the vi mode selection, or `None` when nothing is selected.
+    pub fn vi_selection(&self) -> Option<ViSelection> {
+        let term = self.term.lock();
+        let selection = term.selection.as_ref().filter(|s| !s.is_empty())?;
+        Some(match selection.ty {
+            SelectionType::Simple => ViSelection::Simple,
+            SelectionType::Lines => ViSelection::Line,
+            SelectionType::Block => ViSelection::Block,
+            SelectionType::Semantic => ViSelection::Semantic,
+        })
+    }
+
+    /// Scrolls by half or whole pages; the vi cursor moves the same number of lines.
+    pub fn vi_scroll(&self, scroll: ViScroll) {
+        let mut term = self.term.lock();
+        let screen = i32::try_from(term.screen_lines()).unwrap_or(i32::MAX);
+        let lines = match scroll {
+            ViScroll::HalfPageUp => screen / 2,
+            ViScroll::HalfPageDown => -(screen / 2),
+            ViScroll::PageUp => screen,
+            ViScroll::PageDown => -screen,
+        };
+        let cursor = term.vi_mode_cursor.scroll(&*term, lines);
+        term.vi_mode_cursor = cursor;
+        term.scroll_display(Scroll::Delta(lines));
+    }
+
+    /// Moves the vi cursor to the oldest line of the scrollback.
+    pub fn vi_goto_top(&self) {
+        let mut term = self.term.lock();
+        let point = Point::new(term.topmost_line(), Column(0));
+        term.vi_goto_point(point);
+    }
+
+    /// Moves the vi cursor to the line the terminal cursor is on: the newest output.
+    pub fn vi_goto_bottom(&self) {
+        let mut term = self.term.lock();
+        let point = Point::new(term.grid().cursor.point.line, Column(0));
+        term.vi_goto_point(point);
+    }
+
+    /// Opens a vi mode search towards `direction`; it starts at the vi cursor.
+    pub fn start_vi_search(&mut self, direction: SearchDirection) {
+        self.vi_direction = direction;
+        self.search_origin = Some(self.vi_cursor());
+    }
+
+    /// Repeats the last vi mode search, the same way or the other way. False without a match.
+    pub fn vi_search_next(&mut self, reverse: bool) -> bool {
+        if self.search.is_none() {
+            return false;
+        }
+        let direction = match (self.vi_direction, reverse) {
+            (direction, false) => direction,
+            (SearchDirection::Older, true) => SearchDirection::Newer,
+            (SearchDirection::Newer, true) => SearchDirection::Older,
+        };
+        self.find_from(self.vi_cursor(), direction)
+    }
+
+    fn vi_cursor(&self) -> Point {
+        self.term.lock().vi_mode_cursor.point
     }
 
     /// Whether the shell runs a command, as its OSC 133 marks tell, or `None` when the shell
@@ -651,6 +807,29 @@ fn grid_point(display_offset: usize, at: CellPosition) -> Point {
     viewport_to_point(display_offset, Point::new(at.line, Column(at.column)))
 }
 
+/// The emulator settings; the vi mode cursor is always a steady block.
+fn term_config(scrollback_lines: usize, kitty_keyboard: bool, cursor_style: CursorStyle) -> Config {
+    Config {
+        scrolling_history: scrollback_lines,
+        kitty_keyboard,
+        default_cursor_style: cursor_style,
+        vi_mode_cursor_style: Some(CursorStyle {
+            shape: CursorShape::Block,
+            blinking: false,
+        }),
+        ..Config::default()
+    }
+}
+
+fn selection_type(kind: ViSelection) -> SelectionType {
+    match kind {
+        ViSelection::Simple => SelectionType::Simple,
+        ViSelection::Line => SelectionType::Lines,
+        ViSelection::Block => SelectionType::Block,
+        ViSelection::Semantic => SelectionType::Semantic,
+    }
+}
+
 fn grid_side(side: Side) -> GridSide {
     match side {
         Side::Left => GridSide::Left,
@@ -687,5 +866,65 @@ mod tests {
     fn the_users_env_overrides_the_terminal_type() {
         let user = HashMap::from([("TERM".to_owned(), "alacritty".to_owned())]);
         assert_eq!(child_env(user)["TERM"], "alacritty");
+    }
+
+    /// A terminal showing `text`, once the shell has printed it.
+    fn terminal_showing(text: &str) -> Terminal {
+        let options = SpawnOptions {
+            command: Some((
+                "sh".into(),
+                vec!["-c".into(), format!("printf '{text}'; sleep 5")],
+            )),
+            size: GridSize {
+                columns: 40,
+                lines: 5,
+            },
+            ..SpawnOptions::default()
+        };
+        let terminal = Terminal::spawn(options).expect("spawn sh").0;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while terminal.term.lock().grid()[Line(0)][Column(0)].c != text.chars().next().unwrap() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the shell printed nothing"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        terminal
+    }
+
+    #[test]
+    fn vi_mode_selects_with_motions() {
+        let mut terminal = terminal_showing("hello world");
+        terminal.toggle_vi_mode();
+        assert!(terminal.vi_mode());
+        terminal.vi_motion(ViMotion::First);
+        terminal.vi_select(ViSelection::Simple);
+        assert_eq!(terminal.vi_selection(), Some(ViSelection::Simple));
+        terminal.vi_motion(ViMotion::SemanticRightEnd);
+        assert_eq!(terminal.selection_text().as_deref(), Some("hello"));
+
+        terminal.vi_select(ViSelection::Line);
+        assert_eq!(terminal.vi_selection(), Some(ViSelection::Line));
+        terminal.vi_select(ViSelection::Line);
+        assert_eq!(terminal.vi_selection(), None);
+
+        terminal.toggle_vi_mode();
+        assert!(!terminal.vi_mode());
+    }
+
+    #[test]
+    fn vi_search_moves_the_cursor_and_keeps_the_query() {
+        let mut terminal = terminal_showing("one two one");
+        terminal.toggle_vi_mode();
+        terminal.vi_motion(ViMotion::First);
+        terminal.start_vi_search(SearchDirection::Newer);
+        assert!(terminal.search("one"));
+        assert_eq!(terminal.vi_cursor(), Point::new(Line(0), Column(8)));
+        assert_eq!(terminal.vi_selection(), None);
+
+        terminal.clear_search();
+        assert!(terminal.vi_search_next(false));
+        assert_eq!(terminal.vi_cursor(), Point::new(Line(0), Column(0)));
     }
 }
