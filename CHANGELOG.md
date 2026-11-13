@@ -5,24 +5,18 @@
 
 ### Features
 
-* add settings for the window's vertical position and animation ([2486055](https://github.com/samuelba/dropshade/commit/24860553822ec47faf34995a634562c25938575d))
-* add settings for the window's vertical position and animation ([b8a4e0c](https://github.com/samuelba/dropshade/commit/b8a4e0cf7580867c3ad97f589d9675f494fa98d3))
-* add settings to jump to the newest output on output or keystroke ([e9b60aa](https://github.com/samuelba/dropshade/commit/e9b60aaf7dd492482484d516d04e2ec9cd46692f))
-* add vi mode to select output with the keyboard (Ctrl+Shift+Space) ([aa6b38b](https://github.com/samuelba/dropshade/commit/aa6b38bc033e981cf3f63277b3e3f93e728e41e7))
-* add vi mode to select output with the keyboard (Ctrl+Shift+Space) ([0c5fbd9](https://github.com/samuelba/dropshade/commit/0c5fbd96810421d14a8e0580d8213795e9dc471c))
-* open settings with Ctrl+, (rebindable as open-settings) ([ff1febb](https://github.com/samuelba/dropshade/commit/ff1febbb0aa4dda9cb49c8b7743880e6363045c9))
-* open settings with Ctrl+, (rebindable as open-settings) ([1f00334](https://github.com/samuelba/dropshade/commit/1f00334e2a5183c05f238643c13df209aca6ea37))
-* open the terminal menu from the empty part of the tab bar ([2a8a6fa](https://github.com/samuelba/dropshade/commit/2a8a6fa365399fda5874498c2551d40645d8d3d5))
-* open the terminal menu from the empty part of the tab bar ([c52ea30](https://github.com/samuelba/dropshade/commit/c52ea30f9123c3c3b49603971c86d39702db1aad))
-* save and restore split panes in sessions and layouts ([2bd3b5a](https://github.com/samuelba/dropshade/commit/2bd3b5aa298ee3b83069fd4dddca2f5456b2f058))
-* save and restore split panes in sessions and layouts ([4424ba8](https://github.com/samuelba/dropshade/commit/4424ba832156839a59c5992a1f3670c7a36dc933))
-* split tabs into panes (Ctrl+Shift+R right, Ctrl+Shift+D down) ([38a20c9](https://github.com/samuelba/dropshade/commit/38a20c99a2a2be52a9f85175a381814ba966c017))
+* add settings for the window's vertical position and animation (@samuelba) ([b8a4e0c](https://github.com/samuelba/dropshade/commit/b8a4e0cf7580867c3ad97f589d9675f494fa98d3))
+* add settings to jump to the newest output on output or keystroke (@samuelba) ([e9b60aa](https://github.com/samuelba/dropshade/commit/e9b60aaf7dd492482484d516d04e2ec9cd46692f))
+* add vi mode to select output with the keyboard (Ctrl+Shift+Space) (@samuelba) ([0c5fbd9](https://github.com/samuelba/dropshade/commit/0c5fbd96810421d14a8e0580d8213795e9dc471c))
+* open settings with Ctrl+, (rebindable as open-settings) (@samuelba) ([1f00334](https://github.com/samuelba/dropshade/commit/1f00334e2a5183c05f238643c13df209aca6ea37))
+* open the terminal menu from the empty part of the tab bar (@samuelba) ([c52ea30](https://github.com/samuelba/dropshade/commit/c52ea30f9123c3c3b49603971c86d39702db1aad))
+* save and restore split panes in sessions and layouts (@samuelba) ([4424ba8](https://github.com/samuelba/dropshade/commit/4424ba832156839a59c5992a1f3670c7a36dc933))
+* split tabs into panes (Ctrl+Shift+R right, Ctrl+Shift+D down) (@samuelba) ([38a20c9](https://github.com/samuelba/dropshade/commit/38a20c99a2a2be52a9f85175a381814ba966c017))
 
 
 ### Bug Fixes
 
-* **gnome:** use the desktop's cursor theme before GNOME 48 ([e16d539](https://github.com/samuelba/dropshade/commit/e16d539e5f061f8d1e72b3057f4b4387dcecf91b))
-* **gnome:** use the desktop's cursor theme before GNOME 48 ([fb9ccd1](https://github.com/samuelba/dropshade/commit/fb9ccd181568a32f7a5742407a28c2cbdd429043))
+* **gnome:** use the desktop's cursor theme before GNOME 48 (@samuelba) ([fb9ccd1](https://github.com/samuelba/dropshade/commit/fb9ccd181568a32f7a5742407a28c2cbdd429043))
 
 ## [0.6.0](https://github.com/samuelba/dropshade/compare/v0.5.0...v0.6.0) (2026-11-12)
 
