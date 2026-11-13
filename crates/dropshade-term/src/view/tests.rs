@@ -44,13 +44,26 @@ fn update(
     bounds: Rectangle,
     cursor: mouse::Cursor,
 ) -> Option<(Interaction, Status)> {
-    let terminal = terminal();
+    update_with(
+        &terminal(),
+        &mut ViewState::default(),
+        event,
+        bounds,
+        cursor,
+    )
+}
+
+fn update_with(
+    terminal: &Terminal,
+    state: &mut ViewState,
+    event: &Event,
+    bounds: Rectangle,
+    cursor: mouse::Cursor,
+) -> Option<(Interaction, Status)> {
     let style = style();
     let input = InputConfig::default();
-    let view = TerminalView::new(&terminal, &style, &input, |interaction| interaction);
-    let (message, _, status) = view
-        .update(&mut ViewState::default(), event, bounds, cursor)?
-        .into_inner();
+    let view = TerminalView::new(terminal, &style, &input, |interaction| interaction);
+    let (message, _, status) = view.update(state, event, bounds, cursor)?.into_inner();
     message.map(|message| (message, status))
 }
 
@@ -247,4 +260,97 @@ fn input_after_unfocus_restores_focus() {
             assert!(state.focused, "{input:?} should restore focus");
         }
     });
+}
+
+fn key_event(key: Key, modifiers: Modifiers, text: Option<&str>) -> Event {
+    Event::Keyboard(keyboard::Event::KeyPressed {
+        key: key.clone(),
+        modified_key: key,
+        physical_key: Physical::Unidentified(NativeCode::Unidentified),
+        location: Location::Standard,
+        modifiers,
+        text: text.map(Into::into),
+        repeat: false,
+    })
+}
+
+/// A key press in vi mode: what it published, if anything, and whether it was captured.
+fn vi_key(
+    terminal: &Terminal,
+    state: &mut ViewState,
+    event: &Event,
+) -> (Option<Interaction>, Status) {
+    let style = style();
+    let input = InputConfig::default();
+    let view = TerminalView::new(terminal, &style, &input, |interaction| interaction);
+    let action = view
+        .update(
+            state,
+            event,
+            bounds(660.0, 404.0),
+            mouse::Cursor::Unavailable,
+        )
+        .expect("vi mode handles every key");
+    let (message, _, status) = action.into_inner();
+    (message, status)
+}
+
+#[test]
+fn ctrl_shift_space_toggles_vi_mode() {
+    let event = key_event(
+        Key::Named(keyboard::key::Named::Space),
+        Modifiers::CTRL | Modifiers::SHIFT,
+        Some(" "),
+    );
+    let result = update(&event, bounds(660.0, 404.0), mouse::Cursor::Unavailable);
+    assert_eq!(
+        result,
+        Some((
+            Interaction::Shortcut(input::Shortcut::ToggleViMode),
+            Status::Captured
+        ))
+    );
+}
+
+#[test]
+fn vi_mode_keeps_keys_from_the_shell() {
+    let mut terminal = terminal();
+    terminal.toggle_vi_mode();
+    let mut state = ViewState::default();
+
+    let x = key_event(Key::Character("x".into()), Modifiers::empty(), Some("x"));
+    assert_eq!(vi_key(&terminal, &mut state, &x), (None, Status::Captured));
+
+    let j = key_event(Key::Character("j".into()), Modifiers::empty(), Some("j"));
+    assert_eq!(
+        vi_key(&terminal, &mut state, &j),
+        (
+            Some(Interaction::Vi(ViAction::Motion(
+                alacritty_terminal::vi_mode::ViMotion::Down
+            ))),
+            Status::Captured
+        )
+    );
+
+    let g = key_event(Key::Character("g".into()), Modifiers::empty(), Some("g"));
+    assert_eq!(vi_key(&terminal, &mut state, &g), (None, Status::Captured));
+    assert_eq!(
+        vi_key(&terminal, &mut state, &g).0,
+        Some(Interaction::Vi(ViAction::Top))
+    );
+}
+
+#[test]
+fn shortcuts_still_work_in_vi_mode() {
+    let mut terminal = terminal();
+    terminal.toggle_vi_mode();
+    let copy = key_event(
+        Key::Character("c".into()),
+        Modifiers::CTRL | Modifiers::SHIFT,
+        Some("C"),
+    );
+    assert_eq!(
+        vi_key(&terminal, &mut ViewState::default(), &copy).0,
+        Some(Interaction::Shortcut(input::Shortcut::Copy))
+    );
 }

@@ -33,13 +33,15 @@ pub enum Shortcut {
     SelectCommandOutput,
     /// Opens the settings panel.
     OpenSettings,
+    /// Turns vi mode (keyboard selection) on or off.
+    ToggleViMode,
     /// Activates the tab at this zero-based index.
     GoToTab(u8),
 }
 
 impl Shortcut {
     /// Every action name a keybinding accepts, apart from `go-to-tab-1` to `go-to-tab-9`.
-    pub const NAMES: [&'static str; 23] = [
+    pub const NAMES: [&'static str; 24] = [
         "copy",
         "paste",
         "paste-primary",
@@ -63,6 +65,7 @@ impl Shortcut {
         "next-prompt",
         "select-command-output",
         "open-settings",
+        "toggle-vi-mode",
     ];
 }
 
@@ -106,6 +109,7 @@ impl std::str::FromStr for Shortcut {
             "next-prompt" => Self::NextPrompt,
             "select-command-output" => Self::SelectCommandOutput,
             "open-settings" => Self::OpenSettings,
+            "toggle-vi-mode" => Self::ToggleViMode,
             _ => return Err(format!("unknown action \"{name}\"")),
         };
         Ok(shortcut)
@@ -166,6 +170,7 @@ fn ctrl_named(named: Named, shift: bool) -> Option<Shortcut> {
         (Named::PageDown, true) => Some(Shortcut::MoveTabRight),
         (Named::ArrowUp, true) => Some(Shortcut::PreviousPrompt),
         (Named::ArrowDown, true) => Some(Shortcut::NextPrompt),
+        (Named::Space, true) => Some(Shortcut::ToggleViMode),
         _ => None,
     }
 }
@@ -309,6 +314,16 @@ mod tests {
         assert_eq!(character(",", Modifiers::empty()), None);
         assert_eq!(character(",", Modifiers::CTRL | Modifiers::ALT), None);
         assert_eq!("open-settings".parse(), Ok(Shortcut::OpenSettings));
+    }
+
+    #[test]
+    fn ctrl_shift_space_toggles_vi_mode() {
+        assert_eq!(
+            named(Named::Space, Modifiers::CTRL | Modifiers::SHIFT),
+            Some(Shortcut::ToggleViMode)
+        );
+        assert_eq!(named(Named::Space, Modifiers::CTRL), None);
+        assert_eq!("toggle-vi-mode".parse(), Ok(Shortcut::ToggleViMode));
     }
 
     #[test]

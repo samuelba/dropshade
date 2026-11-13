@@ -7,13 +7,20 @@ use iced::{Color, Font, Pixels, Point, Rectangle, Renderer, Size, font, mouse};
 use unicode_width::UnicodeWidthStr;
 
 use super::{TerminalView, ViewState, scrollbar};
-use crate::colors::to_iced;
+use crate::colors::{CellColors, to_iced};
 use crate::frame::{Cursor, Run, RunStyle};
 use crate::metrics;
+use crate::vi::ViSelection;
 
 const BAR_THICKNESS: f32 = 2.0;
 const DECORATION_THICKNESS: f32 = 1.0;
 const BELL_OPACITY: f32 = 0.08;
+/// Room kept free for the scrollbar at the right edge, and around the vi mode badge.
+const BADGE_RIGHT: f32 = 16.0;
+const BADGE_TOP: f32 = 4.0;
+const BADGE_PADDING_X: f32 = 6.0;
+const BADGE_PADDING_Y: f32 = 2.0;
+const BADGE_RADIUS: f32 = 4.0;
 
 impl<Message> TerminalView<'_, Message> {
     pub(super) fn render(
@@ -43,6 +50,7 @@ impl<Message> TerminalView<'_, Message> {
             }
         }
         self.draw_scrollbar(&mut canvas, state, bounds, cursor);
+        self.draw_vi_badge(&mut canvas, bounds);
         if self.bell {
             let flash = to_iced(self.style.palette.foreground, BELL_OPACITY);
             canvas.fill_rectangle(Point::ORIGIN, bounds.size(), flash);
@@ -67,6 +75,35 @@ impl<Message> TerminalView<'_, Message> {
         let active = hovered || state.scrollbar.dragging();
         let color = to_iced(self.style.palette.foreground, 1.0);
         scrollbar::draw(canvas, geometry, active, color);
+    }
+
+    /// Labels vi mode in the top-right corner, in the selection colours: `VI`, or the kind of
+    /// selection being made.
+    fn draw_vi_badge(&self, canvas: &mut canvas::Frame, bounds: Rectangle) {
+        if !self.terminal.vi_mode() {
+            return;
+        }
+        let label = vi_label(self.terminal.vi_selection());
+        let cell = self.style.cell;
+        #[allow(clippy::cast_precision_loss)]
+        let size = Size::new(
+            label.len() as f32 * cell.width + 2.0 * BADGE_PADDING_X,
+            cell.height + 2.0 * BADGE_PADDING_Y,
+        );
+        let top_left = Point::new(bounds.width - BADGE_RIGHT - size.width, BADGE_TOP);
+        let palette = &self.style.palette;
+        let colors = palette.selected(CellColors {
+            fg: palette.foreground,
+            bg: palette.background,
+        });
+        let badge = canvas::Path::rounded_rectangle(top_left, size, BADGE_RADIUS.into());
+        canvas.fill(&badge, to_iced(colors.bg, 1.0));
+        let text_origin = Point::new(top_left.x + BADGE_PADDING_X, top_left.y + BADGE_PADDING_Y);
+        let style = RunStyle {
+            bold: true,
+            ..RunStyle::default()
+        };
+        canvas.fill_text(self.text(label, text_origin, to_iced(colors.fg, 1.0), style));
     }
 
     fn origin(&self, row: usize, column: usize) -> Point {
@@ -216,6 +253,15 @@ impl<Message> TerminalView<'_, Message> {
     }
 }
 
+fn vi_label(selection: Option<ViSelection>) -> &'static str {
+    match selection {
+        None => "VI",
+        Some(ViSelection::Simple | ViSelection::Semantic) => "VISUAL",
+        Some(ViSelection::Line) => "V-LINE",
+        Some(ViSelection::Block) => "V-BLOCK",
+    }
+}
+
 /// The text under the cursor and its style: one character, or a whole emoji sequence.
 fn text_at(runs: &[Run], cursor: Cursor) -> Option<(String, RunStyle)> {
     let run = runs.iter().find(|run| {
@@ -237,6 +283,15 @@ fn text_at(runs: &[Run], cursor: Cursor) -> Option<(String, RunStyle)> {
 mod tests {
     use super::*;
     use crate::colors::Palette;
+
+    #[test]
+    fn vi_badge_names_the_selection() {
+        assert_eq!(vi_label(None), "VI");
+        assert_eq!(vi_label(Some(ViSelection::Simple)), "VISUAL");
+        assert_eq!(vi_label(Some(ViSelection::Semantic)), "VISUAL");
+        assert_eq!(vi_label(Some(ViSelection::Line)), "V-LINE");
+        assert_eq!(vi_label(Some(ViSelection::Block)), "V-BLOCK");
+    }
 
     #[test]
     fn cursor_character_is_found_inside_its_run() {

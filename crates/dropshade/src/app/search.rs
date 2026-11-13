@@ -15,11 +15,15 @@ pub(super) struct SearchBar {
     query: String,
     /// Whether the last search found something; `None` before the first search.
     found: Option<bool>,
+    /// Opened in vi mode: matches move the vi cursor, and Enter returns to it.
+    vi: bool,
 }
 
 #[derive(Debug, Clone)]
 pub enum SearchMessage {
     Input(String),
+    /// Enter in the query field.
+    Submit,
     Older,
     Newer,
     Close,
@@ -27,7 +31,18 @@ pub enum SearchMessage {
 
 impl App {
     pub(super) fn open_search(&mut self) -> Task<Message> {
-        self.search.get_or_insert_with(SearchBar::default);
+        let vi = self
+            .tabs
+            .active()
+            .is_some_and(|tab| tab.content.terminal.vi_mode());
+        let bar = self.search.get_or_insert_with(SearchBar::default);
+        if vi && !bar.vi {
+            *bar = SearchBar {
+                vi,
+                ..SearchBar::default()
+            };
+        }
+        bar.vi = vi;
         let input = Id::new(INPUT_ID);
         Task::batch([
             operation::focus(input.clone()),
@@ -43,7 +58,11 @@ impl App {
     }
 
     pub(super) fn search_message(&mut self, message: SearchMessage) -> Task<Message> {
-        if let SearchMessage::Close = message {
+        let vi = self.search.as_ref().is_some_and(|bar| bar.vi);
+        if matches!(message, SearchMessage::Close)
+            || (vi && matches!(message, SearchMessage::Submit))
+        {
+            // In vi mode the query stays, for `n` and `N`.
             self.close_search();
             return Task::none();
         }
@@ -58,7 +77,9 @@ impl App {
                 bar.query = query;
                 return Task::none();
             }
-            SearchMessage::Older => terminal.search_next(SearchDirection::Older),
+            SearchMessage::Older | SearchMessage::Submit => {
+                terminal.search_next(SearchDirection::Older)
+            }
             SearchMessage::Newer => terminal.search_next(SearchDirection::Newer),
             SearchMessage::Close => false,
         };
@@ -85,7 +106,7 @@ impl App {
             text_input("Find in scrollback", &bar.query)
                 .id(Id::new(INPUT_ID))
                 .on_input(|query| Message::Search(SearchMessage::Input(query)))
-                .on_submit(Message::Search(SearchMessage::Older))
+                .on_submit(Message::Search(SearchMessage::Submit))
                 .size(TEXT_SIZE)
                 .padding([4, 8])
                 .width(Length::Fixed(INPUT_WIDTH)),

@@ -33,13 +33,14 @@ slide animation.
 | Shift+PageUp/PageDown/Home/End | Scroll the scrollback |
 | Ctrl+click | Open a link |
 | Ctrl+Shift+F | Search the scrollback (Enter: older match) |
+| Ctrl+Shift+Space | [Select with the keyboard](#keyboard-selection) (vi mode) |
 | Ctrl+Shift+Up / Ctrl+Shift+Down | Jump to the previous / next prompt (needs [shell integration](#shell-integration)) |
 | Ctrl+Shift+A | Select the last command's output (needs [shell integration](#shell-integration)) |
 | Ctrl+= / Ctrl+- / Ctrl+0 | Zoom in / out / reset (all tabs, not saved) |
 | F11 | Fill the screen / back to the configured size (hiding ends it) |
 | Ctrl+, | Open Settings |
 
-Right-click the terminal for Copy, Paste, **Select Command Output** (of the command you clicked on), New Tab, Find, **Zoom** (in, out, normal size; for the
+Right-click the terminal for Copy, Paste, **Select Command Output** (of the command you clicked on), **Select with Keyboard**, New Tab, Find, **Zoom** (in, out, normal size; for the
 session only, the configured font size stays), **Toggle Maximize**, **Reset** (clears modes a crashed program left on,
 like mouse reporting or the alternate screen, and clears the screen; scroll up to see what was
 there), **Reset and Clean** (also clears the scrollback), **Settings** and **About**. Settings is a panel
@@ -49,6 +50,28 @@ saves straight into `config.toml`, keeping its comments.
 When a program uses the mouse itself (zellij, tmux, vim with `mouse=a`, ...), clicks go to it.
 Hold **Shift** to click, select and open the menu in Dropshade instead, right-click the empty
 part of the tab bar, or press Ctrl+, for Settings.
+
+### Keyboard selection
+
+Ctrl+Shift+Space starts vi mode: a block cursor moves through the output and scrollback, a badge in
+the top-right corner shows the mode, and keys no longer reach the shell.
+
+| Keys | Action |
+| ---- | ------ |
+| h j k l, arrows | Move |
+| w b e / W B E | Next word / previous word / end of word (W B E: words split only at spaces) |
+| 0 ^ $, Home End | Start of line / first character / end of line |
+| H M L | Top / middle / bottom of the view |
+| { } % | Previous / next paragraph, matching bracket |
+| gg / G | Oldest line of the scrollback / newest output |
+| Ctrl+U / Ctrl+D, Ctrl+B / Ctrl+F, PageUp / PageDown | Half a page / a page up or down |
+| v / V / Ctrl+V / Alt+V | Select by character / line / block / word (again: stop selecting) |
+| y | Copy the selection (clipboard and primary) and leave vi mode |
+| / ? then n N | Search newer / older output, then the next / previous match |
+| Esc, i, q, Ctrl+C | Leave vi mode (Esc first clears a selection) |
+
+In the search bar, Enter returns to the cursor at the match. Shortcuts such as Ctrl+Shift+C keep
+working, and new output does not move the view while vi mode is on.
 
 In tabs: middle-click closes, right-click opens a menu, and dragging reorders. Right-click the
 empty part of the tab bar for the terminal menu. Every shortcut can be
