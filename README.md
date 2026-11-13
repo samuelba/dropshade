@@ -9,6 +9,11 @@
 A drop-down terminal for Linux, written in Rust. Press a hotkey and it slides down over your
 windows; press it again and it is gone.
 
+<p align="center">
+  <img src="docs/screenshots/dropdown.webp" alt="Dropshade dropped down over the desktop, translucent, with a split tab and a tab bar on the left" width="49%">
+  <img src="docs/screenshots/settings.webp" alt="Dropshade Settings panel on the Appearance page: opacity, padding, tab bar, cursor and scrollbar" width="49%">
+</p>
+
 Dropshade is a native Wayland app built on [iced](https://iced.rs) and
 [`alacritty_terminal`](https://crates.io/crates/alacritty_terminal). Wayland leaves placement and
 staying on top to the compositor: on COSMIC, KDE Plasma, Sway, Hyprland and other compositors with
@@ -16,8 +21,28 @@ staying on top to the compositor: on COSMIC, KDE Plasma, Sway, Hyprland and othe
 itself. On GNOME, a small companion Shell extension handles them, plus the global hotkey and the
 slide animation.
 
-> **Status:** early development. Tabs, the terminal core and the drop-down on GNOME and COSMIC
-> work; the config file, session restore and packages are on the way.
+> **Status:** early development, but daily-drivable: tabs, splits, the config file, session
+> restore and packages all work.
+
+## Features
+
+- **One hotkey**: slides down over your windows and hides again; the first press starts Dropshade.
+- **Placement**: height, width, horizontal and vertical alignment, a slide, fade or no animation,
+  and an ordered list of screens so one config works at every desk.
+- **Tabs and splits**: split any tab into panes, resize and zoom them, and put the tab bar on any
+  side. Reorder, rename and close tabs with the mouse.
+- **Sessions and layouts**: tabs, splits and directories come back on the next start; save named
+  layouts, or write them by hand with a command per pane.
+- **Keyboard selection**: a vi mode to move through and select the scrollback, plus search.
+- **Shell integration**: jump between prompts, select a command's output and close idle tabs
+  without asking (bash and zsh).
+- **Notifications**: a dot on tabs that rang the bell or printed output, and a desktop
+  notification when a long command finishes.
+- **Themes and colors**: Dusk and Dawn built in, any Alacritty theme, follow the system's light or
+  dark setting, and single colors with a color picker.
+- **Settings and config file**: a Settings panel that saves into `config.toml`, keeping comments;
+  edits apply live and a broken file never takes effect.
+- **Translucent**: opacity, padding, cursor and scrollbar to taste; unfocused panes fade slightly.
 
 ## Shortcuts
 
