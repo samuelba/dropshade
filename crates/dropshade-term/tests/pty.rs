@@ -601,6 +601,7 @@ mod shell_integration {
         let terminal = spawn("printf 'plain'; sleep 2", SIZE);
         wait_for(&terminal, "plain");
         assert_eq!(terminal.command_running(), None);
+        assert!(!terminal.has_command_output(None));
         assert!(!terminal.select_command_output(None));
         assert!(!terminal.jump_to_prompt(SearchDirection::Older));
     }
@@ -609,6 +610,7 @@ mod shell_integration {
     fn the_output_of_the_last_command_can_be_selected() {
         let terminal = spawn(SESSION, SIZE);
         assert!(wait_until(|| terminal.command_running() == Some(false)));
+        assert!(terminal.has_command_output(None));
         assert!(terminal.select_command_output(None));
         assert_eq!(terminal.selection_text().as_deref(), Some("one\ntwo"));
     }
@@ -619,8 +621,8 @@ mod shell_integration {
         assert!(wait_until(|| terminal.command_running() == Some(false)));
         let output = CellPosition { column: 0, line: 2 };
         let prompt = CellPosition { column: 0, line: 0 };
-        assert!(terminal.has_command_output_at(output));
-        assert!(!terminal.has_command_output_at(prompt));
+        assert!(terminal.has_command_output(Some(output)));
+        assert!(!terminal.has_command_output(Some(prompt)));
         assert!(terminal.select_command_output(Some(output)));
         assert_eq!(terminal.selection_text().as_deref(), Some("one\ntwo"));
     }

@@ -5,10 +5,11 @@ use std::time::{Duration, Instant};
 
 use dropshade_term::mouse::CellPosition;
 use dropshade_term::{Interaction, Notice, SearchDirection, Shortcut, TermEvent, Terminal, links};
-use iced::Task;
 use iced::widget::{Id, operation};
+use iced::{Point, Task};
 
 use super::commands::{self, Finished};
+use super::view::bar_origin;
 use super::zoom::Zoom;
 use super::{
     AboutMessage, App, Menu, Message, PendingClose, Rename, SettingsMessage, TerminalMenu, session,
@@ -39,7 +40,7 @@ impl App {
         match message {
             Message::Term(id, event) => self.terminal_event(id, event),
             Message::Interaction(Interaction::ContextMenu { position, cell }) => {
-                self.terminal_menu = Some(TerminalMenu::at(position, cell));
+                self.terminal_menu = Some(TerminalMenu::at(position, Some(cell)));
                 Task::none()
             }
             Message::Interaction(Interaction::Shortcut(shortcut)) => self.shortcut(shortcut),
@@ -322,6 +323,14 @@ impl App {
                     id,
                     position: self.bar_pointer,
                 });
+            }
+            TabMessage::OpenBarMenu => {
+                self.renaming = None;
+                self.menu = None;
+                let origin = bar_origin(self.settings.bar, self.window_size);
+                let position =
+                    Point::new(origin.x + self.bar_pointer.x, origin.y + self.bar_pointer.y);
+                self.terminal_menu = Some(TerminalMenu::at(position, None));
             }
             TabMessage::CloseMenu => self.menu = None,
             TabMessage::MoveLeft(id) | TabMessage::MoveRight(id) => {

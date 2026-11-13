@@ -566,14 +566,19 @@ impl Terminal {
         true
     }
 
-    /// Whether the cell shows a command's output.
-    pub fn has_command_output_at(&self, at: CellPosition) -> bool {
+    /// Whether there is a command's output to select: the one shown at `at`, or else any.
+    pub fn has_command_output(&self, at: Option<CellPosition>) -> bool {
         let term = self.term.lock();
         let marks = lock(&self.marks);
-        let line = grid_point(term.grid().display_offset(), at).line;
-        marks
-            .output_at(line, term.grid().cursor.point, term.last_column())
-            .is_some()
+        let cursor = term.grid().cursor.point;
+        let last_column = term.last_column();
+        match at {
+            Some(at) => {
+                let line = grid_point(term.grid().display_offset(), at).line;
+                marks.output_at(line, cursor, last_column).is_some()
+            }
+            None => marks.last_output(cursor, last_column).is_some(),
+        }
     }
 
     /// Sends pasted text, using bracketed paste when the application asked for it.
