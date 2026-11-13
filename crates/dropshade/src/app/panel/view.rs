@@ -497,6 +497,11 @@ fn session(ctx: Ctx<'_>) -> Element<'static, Message> {
     column![
         switch(ctx, "Reopen tabs on start", Switch::Restore),
         hinted(
+            switch(ctx, "Restore scrollback", Switch::RestoreScrollback),
+            "Saved to disk on quit, secrets on screen included",
+            ctx.colors,
+        ),
+        hinted(
             setting(
                 "Start with layout",
                 pick_list(choices, Some(selected), |choice| settings(

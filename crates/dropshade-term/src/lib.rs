@@ -10,6 +10,7 @@ pub mod metrics;
 pub mod mouse;
 mod osc133;
 mod pty_loop;
+mod replay;
 mod reset;
 pub mod size;
 pub mod terminal;

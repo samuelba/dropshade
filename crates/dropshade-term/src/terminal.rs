@@ -17,7 +17,7 @@ use alacritty_terminal::term::{
 };
 use alacritty_terminal::tty;
 use alacritty_terminal::vi_mode::ViMotion;
-use alacritty_terminal::vte::ansi::{CursorShape, CursorStyle};
+use alacritty_terminal::vte::ansi::{CursorShape, CursorStyle, Processor, StdSyncHandler};
 use iced::futures::Stream;
 use iced::futures::channel::mpsc;
 
@@ -28,6 +28,7 @@ use crate::links;
 use crate::marks::PromptMarks;
 use crate::mouse::CellPosition;
 use crate::pty_loop::{self, Msg, PtySender};
+use crate::replay;
 use crate::reset;
 use crate::size::{CellSize, GridSize, Side};
 use crate::vi::{ViScroll, ViSelection};
@@ -67,6 +68,8 @@ pub struct SpawnOptions {
     pub cursor_style: CursorStyle,
     pub size: GridSize,
     pub cell: CellSize,
+    /// Output drawn before the shell starts, such as the text a pane showed before a restart.
+    pub replay: Option<Vec<u8>>,
 }
 
 impl Default for SpawnOptions {
@@ -86,6 +89,7 @@ impl Default for SpawnOptions {
                 width: 8.0,
                 height: 16.0,
             },
+            replay: None,
         }
     }
 }
@@ -205,11 +209,11 @@ impl Terminal {
             options.kitty_keyboard,
             options.cursor_style,
         );
-        let term = Arc::new(FairMutex::new(Term::new(
-            config,
-            &options.size,
-            proxy.clone(),
-        )));
+        let mut term = Term::new(config, &options.size, proxy.clone());
+        if let Some(bytes) = &options.replay {
+            Processor::<StdSyncHandler>::new().advance(&mut term, bytes);
+        }
+        let term = Arc::new(FairMutex::new(term));
 
         let pty_options = tty::Options {
             shell: options
@@ -424,6 +428,12 @@ impl Terminal {
     }
 
     /// The shell's current directory, so new tabs can open where the user is working.
+    /// The last `max_lines` lines of the main screen as bytes that draw them again; see
+    /// [`SpawnOptions::replay`]. Leaves the alternate screen, so call it only when quitting.
+    pub fn dump_scrollback(&self, max_lines: usize) -> Vec<u8> {
+        replay::dump_main_screen(&mut self.term.lock(), max_lines)
+    }
+
     pub fn working_directory(&self) -> Option<PathBuf> {
         std::fs::read_link(format!("/proc/{}/cwd", self.child_pid)).ok()
     }
@@ -891,6 +901,25 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         terminal
+    }
+
+    #[test]
+    fn replayed_output_sits_above_the_shells() {
+        let options = SpawnOptions {
+            command: Some(("sh".into(), vec!["-c".into(), "printf new; sleep 5".into()])),
+            replay: Some(b"old\r\n".to_vec()),
+            ..SpawnOptions::default()
+        };
+        let terminal = Terminal::spawn(options).expect("spawn sh").0;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while terminal.term.lock().grid()[Line(1)][Column(0)].c != 'n' {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the shell printed nothing"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(terminal.term.lock().grid()[Line(0)][Column(0)].c, 'o');
     }
 
     #[test]

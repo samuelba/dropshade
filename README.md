@@ -280,6 +280,12 @@ There is only ever one instance: running `dropshade` again hands the request to 
 Dropshade remembers your tabs: their order, names, splits and directories are saved as you work
 (and on logout) and reopened on the next start. Turn this off with `[session] restore = false`.
 
+With `[session] restore_scrollback = true`, each pane also comes back showing the last 2000 lines
+it had, above a `── restored ──` line and a fresh shell. The text is written to
+`~/.local/state/dropshade/scrollback` when Dropshade quits (readable only by you) and removed once
+it is restored. Whatever was on screen goes to disk, passwords and tokens included, so this is off
+by default. A crash keeps no scrollback.
+
 Layouts are named sets of tabs in `~/.config/dropshade/layouts/<name>.toml`:
 
 ```sh

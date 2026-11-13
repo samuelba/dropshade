@@ -304,6 +304,13 @@ mod tests {
     }
 
     #[test]
+    fn scrollback_restore_is_opt_in() {
+        assert!(!Config::default().session.restore_scrollback);
+        let config = parse_str("[session]\nrestore_scrollback = true\n").expect("valid");
+        assert!(config.session.restore_scrollback);
+    }
+
+    #[test]
     fn update_checks_are_on_by_default_and_can_be_turned_off() {
         assert!(Config::default().updates.check);
         let config = parse_str("[updates]\ncheck = false\n").expect("valid");
