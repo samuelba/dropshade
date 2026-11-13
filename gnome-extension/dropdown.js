@@ -16,8 +16,8 @@ function setListed(window, listed) {
 }
 
 /**
- * Places the Dropshade window at the top of a monitor, keeps it above other windows and out of
- * the window list, and slides it in and out.
+ * Places the Dropshade window on a monitor, keeps it above other windows and out of the window
+ * list, and slides it in and out over the top or bottom edge of the monitor, or fades it.
  */
 export class Dropdown {
     constructor(prefs) {
@@ -26,6 +26,7 @@ export class Dropdown {
         this._shown = false;
         this._maximized = false;
         this._signals = [];
+        this._clip = null;
         this._focusId = global.display.connect('notify::focus-window', () => this._onFocusChanged());
     }
 
@@ -80,7 +81,8 @@ export class Dropdown {
         if (!window)
             return;
         const actor = window.get_compositor_private();
-        const rect = this._targetRect();
+        const index = this._monitorIndex();
+        const rect = this._targetRect(index);
 
         if (window.minimized) {
             Main.wm.skipNextEffect(actor);
@@ -91,7 +93,8 @@ export class Dropdown {
         if (this._isShown())
             return;
         this._shown = true;
-        this._slide(actor, -rect.height, 0, () => {});
+        const monitor = Main.layoutManager.monitors[index];
+        this._animate(actor, monitor, this._hiddenState(rect, monitor), SHOWN, () => {});
     }
 
     /** Fills the work area, or returns to the configured size; hiding ends it. */
@@ -100,7 +103,7 @@ export class Dropdown {
         if (!this._isShown())
             return;
         this._maximized = !this._maximized;
-        const rect = this._targetRect();
+        const rect = this._targetRect(this._monitorIndex());
         window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
     }
 
@@ -111,15 +114,17 @@ export class Dropdown {
         this._shown = false;
         this._maximized = false;
         const actor = window.get_compositor_private();
-        const height = window.get_frame_rect().height;
-        this._slide(actor, 0, -height, () => {
+        const monitor = Main.layoutManager.monitors[window.get_monitor()];
+        const hidden = this._hiddenState(window.get_frame_rect(), monitor);
+        this._animate(actor, monitor, SHOWN, hidden, () => {
             Main.wm.skipNextEffect(actor);
             // Mutter refuses to minimize windows that are hidden from the window list, so list
             // the window just for the minimize; nothing repaints in between.
             setListed(window, true);
             window.minimize();
             setListed(window, false);
-            actor.translation_y = 0;
+            this._unclip();
+            resetActor(actor);
         });
     }
 
@@ -130,8 +135,9 @@ export class Dropdown {
             return;
         const actor = window.get_compositor_private();
         actor?.remove_all_transitions();
+        this._unclip();
         if (actor)
-            actor.translation_y = 0;
+            resetActor(actor);
         setListed(window, true);
         window.unmake_above();
         window.unstick();
@@ -172,27 +178,73 @@ export class Dropdown {
         }
     }
 
-    _targetRect() {
-        const area = Main.layoutManager.getWorkAreaForMonitor(this._monitorIndex());
+    _targetRect(index) {
+        const area = Main.layoutManager.getWorkAreaForMonitor(index);
         const width = this._maximized ? area.width : Math.round(area.width * this._prefs.width);
         const height = this._maximized ? area.height : Math.round(area.height * this._prefs.height);
         return {
             x: area.x + horizontalOffset(this._prefs.align, area.width - width),
-            y: area.y,
+            y: area.y + verticalOffset(this._prefs.verticalAlign, area.height - height),
             width,
             height,
         };
     }
 
-    _slide(actor, from, to, onComplete) {
+    /** The actor's state when a window at `rect` is hidden: beyond the monitor's edge, or faded. */
+    _hiddenState(rect, monitor) {
+        switch (this._prefs.animation) {
+        case 'slide-bottom':
+            return {...SHOWN, translation_y: monitor.y + monitor.height - rect.y};
+        case 'fade':
+            return {...SHOWN, opacity: 0, scale_x: FADE_SCALE, scale_y: FADE_SCALE};
+        case 'none':
+            return SHOWN;
+        default:
+            return {...SHOWN, translation_y: monitor.y - rect.y - rect.height};
+        }
+    }
+
+    _animate(actor, monitor, from, to, onComplete) {
         actor.remove_all_transitions();
-        actor.translation_y = from;
+        this._unclip();
+        actor.set_pivot_point(0.5, 0.5);
+        Object.assign(actor, from);
+        // A slide would otherwise show the window on the monitor above or below.
+        if (from.translation_y !== to.translation_y)
+            this._clipTo(actor, monitor);
         actor.ease({
-            translation_y: to,
-            duration: this._prefs.animationDuration,
+            ...to,
+            duration: this._prefs.animation === 'none' ? 0 : this._prefs.animationDuration,
             mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
-            onComplete,
+            onComplete: () => {
+                if (to === SHOWN)
+                    this._unclip();
+                onComplete();
+            },
         });
+    }
+
+    /** Keeps the part of `actor` outside `monitor` undrawn while it moves. */
+    _clipTo(actor, monitor) {
+        const update = () => {
+            const [x, y] = actor.get_position();
+            const top = monitor.y - y - actor.translation_y;
+            actor.set_clip(monitor.x - x, top, monitor.width, monitor.height);
+        };
+        const ids = ['notify::translation-y', 'notify::x', 'notify::y']
+            .map(signal => actor.connect(signal, update));
+        this._clip = {actor, ids};
+        update();
+    }
+
+    _unclip() {
+        if (!this._clip)
+            return;
+        const {actor, ids} = this._clip;
+        this._clip = null;
+        for (const id of ids)
+            actor.disconnect(id);
+        actor.remove_clip();
     }
 
     _connect(object, signal, handler) {
@@ -215,6 +267,34 @@ export class Dropdown {
         this._window = null;
         this._shown = false;
         this._maximized = false;
+    }
+}
+
+/** The actor's state when the window is fully shown. */
+const SHOWN = Object.freeze({
+    translation_x: 0,
+    translation_y: 0,
+    opacity: 255,
+    scale_x: 1,
+    scale_y: 1,
+});
+
+/** The scale a fading window grows from and shrinks to. */
+const FADE_SCALE = 0.9;
+
+function resetActor(actor) {
+    Object.assign(actor, SHOWN);
+}
+
+/** How far below the work area's top edge a window leaves `spare` pixels for `verticalAlign`. */
+function verticalOffset(verticalAlign, spare) {
+    switch (verticalAlign) {
+    case 'bottom':
+        return spare;
+    case 'center':
+        return Math.round(spare / 2);
+    default:
+        return 0;
     }
 }
 

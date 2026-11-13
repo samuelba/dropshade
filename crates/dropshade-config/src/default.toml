@@ -52,6 +52,10 @@ shell = ""
 shell_args = []
 # Lines kept for scrolling back, or "unlimited" (kept in memory, so it can grow large).
 scrollback = 10000
+# While scrolled up, jump back to the newest output when a program prints something...
+scroll_on_output = false
+# ...or when you type into the terminal (pasting always jumps back).
+scroll_on_keystroke = true
 # Directory for the first tab; empty means your home directory.
 working_directory = ""
 # Let bash and zsh report their prompts and commands (OSC 133), for jumping between prompts,
@@ -83,13 +87,18 @@ width = 1.0
 height = 0.5
 # Where a window narrower than the screen sits: "left", "center" or "right".
 align = "center"
+# Where a window shorter than the screen sits: "top", "center" or "bottom".
+vertical_align = "top"
 # The screen to drop down on: "pointer" (the one under the mouse), "primary", a model such as
 # "DELL U2413" or a connector such as "DP-1". A list is tried in order and the first connected
 # screen wins, e.g. ["LEN P27h-10", "DELL U2719DC", "eDP-1", "pointer"] for office, home and
 # laptop. Outside GNOME, "pointer" and "primary" both mean the screen the compositor picks,
 # usually the focused one.
 monitor = "pointer"
-# Slide animation in milliseconds; 0 turns it off.
+# How the terminal enters and leaves the screen: "slide-top" (down from above the screen),
+# "slide-bottom" (up from below it), "fade" or "none". Outside GNOME, "fade" appears at once.
+animation = "slide-top"
+# Animation length in milliseconds; 0 turns it off.
 animation_duration = 180
 # Hide the terminal when you click into another window.
 hide_on_unfocus = false
