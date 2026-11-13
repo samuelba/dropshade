@@ -11,6 +11,7 @@ pub enum Slider {
     FontSize,
     LineHeight,
     Opacity,
+    UnfocusedDim,
     Padding,
     Width,
     Height,
@@ -41,6 +42,14 @@ impl Slider {
                 0.3,
                 1.0,
                 0.01,
+            ),
+            Self::UnfocusedDim => (
+                "Dim unfocused panes",
+                "appearance",
+                "unfocused_pane_dim",
+                0.0,
+                0.8,
+                0.05,
             ),
             Self::Padding => ("Padding", "appearance", "padding", 0.0, 40.0, 1.0),
             Self::Width => ("Width", "window", "width", 0.2, 1.0, 0.05),
@@ -78,6 +87,7 @@ impl Slider {
             Self::FontSize => config.font.size,
             Self::LineHeight => config.font.line_height,
             Self::Opacity => config.appearance.background_opacity,
+            Self::UnfocusedDim => config.appearance.unfocused_pane_dim,
             Self::Padding => config.appearance.padding,
             Self::Width => config.window.width as f32,
             Self::Height => config.window.height as f32,
@@ -90,7 +100,10 @@ impl Slider {
         match self {
             Self::FontSize => format!("{value:.0}"),
             Self::LineHeight => format!("{value:.2}×"),
-            Self::Opacity | Self::Width | Self::Height => format!("{:.0}%", value * 100.0),
+            Self::UnfocusedDim if value < 0.005 => "off".into(),
+            Self::Opacity | Self::UnfocusedDim | Self::Width | Self::Height => {
+                format!("{:.0}%", value * 100.0)
+            }
             Self::Padding => format!("{value:.0} px"),
             Self::Animation if value < 1.0 => "off".into(),
             Self::Animation => format!("{value:.0} ms"),
@@ -411,6 +424,7 @@ mod tests {
             Slider::FontSize,
             Slider::LineHeight,
             Slider::Opacity,
+            Slider::UnfocusedDim,
             Slider::Padding,
             Slider::Width,
             Slider::Height,

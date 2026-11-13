@@ -33,7 +33,7 @@ pub struct Session {
 pub fn spawn(
     settings: &Settings,
     working_directory: Option<PathBuf>,
-) -> Result<(Session, impl Stream<Item = TermEvent> + Send + 'static), SpawnError> {
+) -> Result<(Session, impl Stream<Item = TermEvent> + Send + use<>), SpawnError> {
     let (command, working_directory) = if in_flatpak() {
         let wrapped = host_command(
             settings.shell.clone(),

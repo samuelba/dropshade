@@ -1,4 +1,4 @@
-//! The terminal's right-click menu, with a submenu for zoom.
+//! The terminal's right-click menu, with submenus for the panes and for zoom.
 
 use iced::widget::{Button, Space, button, column, container, mouse_area, pin, row, stack, text};
 use iced::{Element, Fill, Point, Size, Task};
@@ -17,12 +17,8 @@ const MENU_ITEM_HEIGHT: f32 = 30.0;
 const SEPARATOR_HEIGHT: f32 = 9.0;
 const CARD_PADDING: f32 = 4.0;
 const TEXT_SIZE: f32 = 13.0;
-/// Items before the one that opens the zoom submenu, and the separators between them.
-const ITEMS_BEFORE_ZOOM: f32 = 6.0;
-const SEPARATORS_BEFORE_ZOOM: f32 = 2.0;
-const ITEMS: f32 = 12.0;
+const ITEMS: f32 = 13.0;
 const SEPARATORS: f32 = 5.0;
-const SUBMENU_ITEMS: f32 = 3.0;
 
 #[derive(Debug, Clone, Copy)]
 pub enum MenuAction {
@@ -32,8 +28,12 @@ pub enum MenuAction {
     SelectWithKeyboard,
     NewTab,
     Find,
-    ShowZoomMenu,
-    HideZoomMenu,
+    ShowSubmenu(Submenu),
+    HideSubmenu,
+    SplitRight,
+    SplitDown,
+    TogglePaneZoom,
+    ClosePane,
     ZoomIn,
     ZoomOut,
     ZoomNormal,
@@ -45,13 +45,37 @@ pub enum MenuAction {
     Dismiss,
 }
 
+/// A menu entry that opens more entries beside it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Submenu {
+    Panes,
+    Zoom,
+}
+
+impl Submenu {
+    /// The entries above the one that opens it, the separators among them, and its own entries.
+    const fn placement(self) -> (f32, f32, f32) {
+        match self {
+            Self::Panes => (6.0, 1.0, 4.0),
+            Self::Zoom => (7.0, 2.0, 3.0),
+        }
+    }
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Panes => "Panes",
+            Self::Zoom => "Zoom",
+        }
+    }
+}
+
 /// The open context menu: where it is, the cell it was opened on (none when opened from the tab
-/// bar), and whether its zoom submenu is showing.
+/// bar), and which submenu is showing.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct TerminalMenu {
     pub position: Point,
     pub cell: Option<CellPosition>,
-    pub zoom_open: bool,
+    pub submenu: Option<Submenu>,
 }
 
 impl TerminalMenu {
@@ -59,16 +83,19 @@ impl TerminalMenu {
         Self {
             position,
             cell,
-            zoom_open: false,
+            submenu: None,
         }
     }
 }
 
 impl App {
     pub(super) fn menu_action(&mut self, action: MenuAction) -> Task<Message> {
-        if let MenuAction::ShowZoomMenu | MenuAction::HideZoomMenu = action {
+        if let MenuAction::ShowSubmenu(_) | MenuAction::HideSubmenu = action {
             if let Some(menu) = self.terminal_menu.as_mut() {
-                menu.zoom_open = matches!(action, MenuAction::ShowZoomMenu);
+                menu.submenu = match action {
+                    MenuAction::ShowSubmenu(submenu) => Some(submenu),
+                    _ => None,
+                };
             }
             return Task::none();
         }
@@ -82,6 +109,10 @@ impl App {
             MenuAction::Paste => dropshade_term::Shortcut::Paste,
             MenuAction::NewTab => dropshade_term::Shortcut::NewTab,
             MenuAction::Find => dropshade_term::Shortcut::Search,
+            MenuAction::SplitRight => dropshade_term::Shortcut::SplitRight,
+            MenuAction::SplitDown => dropshade_term::Shortcut::SplitDown,
+            MenuAction::TogglePaneZoom => dropshade_term::Shortcut::TogglePaneZoom,
+            MenuAction::ClosePane => dropshade_term::Shortcut::ClosePane,
             MenuAction::ToggleMaximize => dropshade_term::Shortcut::ToggleMaximize,
             MenuAction::ZoomIn => return self.set_zoom(self.zoom.zoom_in()),
             MenuAction::ZoomOut => return self.set_zoom(self.zoom.zoom_out()),
@@ -90,13 +121,11 @@ impl App {
             MenuAction::ResetAndClear => return self.reset_terminal(true),
             MenuAction::Settings => return self.open_settings(),
             MenuAction::About => return self.open_about(),
-            MenuAction::ShowZoomMenu | MenuAction::HideZoomMenu | MenuAction::Dismiss => {
+            MenuAction::ShowSubmenu(_) | MenuAction::HideSubmenu | MenuAction::Dismiss => {
                 return Task::none();
             }
         };
-        self.update(Message::Interaction(dropshade_term::Interaction::Shortcut(
-            shortcut,
-        )))
+        self.shortcut(shortcut)
     }
 
     pub(super) fn set_zoom(&mut self, zoom: Zoom) -> Task<Message> {
@@ -108,11 +137,11 @@ impl App {
     }
 
     fn reset_terminal(&mut self, clear: bool) -> Task<Message> {
-        if let Some(tab) = self.tabs.active_mut() {
+        if let Some(session) = self.focused_session_mut() {
             if clear {
-                tab.content.terminal.reset_and_clear();
+                session.terminal.reset_and_clear();
             } else {
-                tab.content.terminal.reset();
+                session.terminal.reset();
             }
         }
         Task::none()
@@ -120,13 +149,13 @@ impl App {
 
     pub(super) fn terminal_menu_layer(&self, menu: TerminalMenu) -> Element<'_, Message> {
         let colors = self.settings.colors;
-        let terminal = self.tabs.active().map(|tab| &tab.content.terminal);
+        let terminal = self.focused_session().map(|session| &session.terminal);
         let has_selection = terminal.is_some_and(|terminal| terminal.selection_text().is_some());
         let has_output = terminal.is_some_and(|terminal| terminal.has_command_output(menu.cell));
         let bindings = &self.settings.input.bindings;
         let item = |label: &'static str, action: Option<MenuAction>| {
             mouse_area(item_button(colors, label, action, None))
-                .on_enter(Message::Menu(MenuAction::HideZoomMenu))
+                .on_enter(Message::Menu(MenuAction::HideSubmenu))
         };
         let shortcut_item = |label: &'static str, action: MenuAction, shortcut: Shortcut| {
             let enabled = match action {
@@ -136,7 +165,7 @@ impl App {
             };
             let hint = shortcut_label(shortcut, bindings);
             mouse_area(item_button(colors, label, enabled.then_some(action), hint))
-                .on_enter(Message::Menu(MenuAction::HideZoomMenu))
+                .on_enter(Message::Menu(MenuAction::HideSubmenu))
         };
         let items = column![
             shortcut_item("Copy", MenuAction::Copy, Shortcut::Copy),
@@ -154,8 +183,9 @@ impl App {
             separator(colors),
             shortcut_item("New Tab", MenuAction::NewTab, Shortcut::NewTab),
             shortcut_item("Find…", MenuAction::Find, Shortcut::Search),
+            submenu_item(colors, Submenu::Panes, menu.submenu),
             separator(colors),
-            zoom_item(colors, menu.zoom_open),
+            submenu_item(colors, Submenu::Zoom, menu.submenu),
             separator(colors),
             shortcut_item(
                 "Toggle Maximize",
@@ -183,11 +213,58 @@ impl App {
             .on_press(Message::Menu(MenuAction::Dismiss))
             .on_right_press(Message::Menu(MenuAction::Dismiss));
         let mut layers = vec![dismiss.into(), pin(card).position(anchor).into()];
-        if menu.zoom_open {
-            let position = submenu_position(anchor, self.window_size);
-            layers.push(pin(self.zoom_submenu()).position(position).into());
+        if let Some(submenu) = menu.submenu {
+            let position = submenu_position(anchor, self.window_size, submenu);
+            let card = match submenu {
+                Submenu::Panes => self.panes_submenu(),
+                Submenu::Zoom => self.zoom_submenu(),
+            };
+            layers.push(pin(card).position(position).into());
         }
         stack(layers).into()
+    }
+
+    fn panes_submenu(&self) -> Element<'_, Message> {
+        let colors = self.settings.colors;
+        let bindings = &self.settings.input.bindings;
+        let panes = self.tabs.active().map(|tab| &tab.content);
+        let split = panes.is_some_and(crate::tabs::Panes::is_split);
+        let zoom_label = if panes.is_some_and(crate::tabs::Panes::zoomed) {
+            "Show All Panes"
+        } else {
+            "Zoom Pane"
+        };
+        let items = column![
+            item_button(
+                colors,
+                "Split Right",
+                Some(MenuAction::SplitRight),
+                shortcut_label(Shortcut::SplitRight, bindings),
+            ),
+            item_button(
+                colors,
+                "Split Down",
+                Some(MenuAction::SplitDown),
+                shortcut_label(Shortcut::SplitDown, bindings),
+            ),
+            item_button(
+                colors,
+                zoom_label,
+                split.then_some(MenuAction::TogglePaneZoom),
+                shortcut_label(Shortcut::TogglePaneZoom, bindings),
+            ),
+            item_button(
+                colors,
+                "Close Pane",
+                Some(MenuAction::ClosePane),
+                shortcut_label(Shortcut::ClosePane, bindings),
+            ),
+        ];
+        container(items)
+            .padding(CARD_PADDING)
+            .width(SUBMENU_WIDTH)
+            .style(move |_| colors.surface_style())
+            .into()
     }
 
     fn zoom_submenu(&self) -> Element<'_, Message> {
@@ -248,10 +325,15 @@ fn item_button(
         .on_press_maybe(action.map(Message::Menu))
 }
 
-/// The entry that opens the zoom submenu, highlighted while the submenu is open.
-fn zoom_item(colors: UiColors, open: bool) -> Element<'static, Message> {
+/// The entry that opens a submenu, highlighted while the submenu is open.
+fn submenu_item(
+    colors: UiColors,
+    submenu: Submenu,
+    open: Option<Submenu>,
+) -> Element<'static, Message> {
+    let open = open == Some(submenu);
     let label = row![
-        text("Zoom").size(TEXT_SIZE),
+        text(submenu.label()).size(TEXT_SIZE),
         Space::new().width(Fill),
         text("›").size(TEXT_SIZE),
     ];
@@ -267,9 +349,9 @@ fn zoom_item(colors: UiColors, open: bool) -> Element<'static, Message> {
             };
             colors.ghost_button(colors.text, status)
         })
-        .on_press(Message::Menu(MenuAction::ShowZoomMenu));
+        .on_press(Message::Menu(MenuAction::ShowSubmenu(submenu)));
     mouse_area(button)
-        .on_enter(Message::Menu(MenuAction::ShowZoomMenu))
+        .on_enter(Message::Menu(MenuAction::ShowSubmenu(submenu)))
         .into()
 }
 
@@ -294,14 +376,15 @@ fn menu_position(pointer: Point, window: Size) -> Point {
     )
 }
 
-/// Where the zoom submenu opens: beside the menu, level with the zoom item, on the left when
+/// Where a submenu opens: beside the menu, level with the entry that opens it, on the left when
 /// there is no room on the right.
-fn submenu_position(menu: Point, window: Size) -> Point {
-    let height = SUBMENU_ITEMS * MENU_ITEM_HEIGHT + 2.0 * CARD_PADDING;
+fn submenu_position(menu: Point, window: Size, submenu: Submenu) -> Point {
+    let (items_before, separators_before, items) = submenu.placement();
+    let height = items * MENU_ITEM_HEIGHT + 2.0 * CARD_PADDING;
     let level = menu.y
         + CARD_PADDING
-        + ITEMS_BEFORE_ZOOM * MENU_ITEM_HEIGHT
-        + SEPARATORS_BEFORE_ZOOM * SEPARATOR_HEIGHT;
+        + items_before * MENU_ITEM_HEIGHT
+        + separators_before * SEPARATOR_HEIGHT;
     let right = menu.x + MENU_WIDTH;
     let x = if right + SUBMENU_WIDTH <= window.width {
         right
@@ -340,27 +423,30 @@ mod tests {
     }
 
     #[test]
-    fn the_submenu_opens_to_the_right_level_with_the_zoom_item() {
-        let at = submenu_position(Point::new(100.0, 50.0), WINDOW);
-        let zoom_item = 50.0
-            + CARD_PADDING
-            + ITEMS_BEFORE_ZOOM * MENU_ITEM_HEIGHT
-            + SEPARATORS_BEFORE_ZOOM * SEPARATOR_HEIGHT;
+    fn submenus_open_to_the_right_level_with_their_item() {
+        let at = submenu_position(Point::new(100.0, 50.0), WINDOW, Submenu::Zoom);
+        let zoom_item = 50.0 + CARD_PADDING + 7.0 * MENU_ITEM_HEIGHT + 2.0 * SEPARATOR_HEIGHT;
         assert_eq!(at, Point::new(100.0 + MENU_WIDTH, zoom_item));
+        let at = submenu_position(Point::new(100.0, 50.0), WINDOW, Submenu::Panes);
+        let panes_item = 50.0 + CARD_PADDING + 6.0 * MENU_ITEM_HEIGHT + SEPARATOR_HEIGHT;
+        assert_eq!(at, Point::new(100.0 + MENU_WIDTH, panes_item));
     }
 
     #[test]
     fn the_submenu_flips_to_the_left_at_the_right_edge() {
         let menu = Point::new(WINDOW.width - MENU_WIDTH, 50.0);
-        let at = submenu_position(menu, WINDOW);
+        let at = submenu_position(menu, WINDOW, Submenu::Zoom);
         assert_eq!(at.x, menu.x - SUBMENU_WIDTH);
     }
 
     #[test]
     fn the_submenu_stays_inside_the_window_at_the_bottom() {
         let menu = menu_position(Point::new(100.0, 595.0), WINDOW);
-        let at = submenu_position(menu, WINDOW);
-        let height = SUBMENU_ITEMS * MENU_ITEM_HEIGHT + 2.0 * CARD_PADDING;
-        assert!(at.y + height <= WINDOW.height);
+        for submenu in [Submenu::Panes, Submenu::Zoom] {
+            let at = submenu_position(menu, WINDOW, submenu);
+            let (_, _, items) = submenu.placement();
+            let height = items * MENU_ITEM_HEIGHT + 2.0 * CARD_PADDING;
+            assert!(at.y + height <= WINDOW.height, "{submenu:?}");
+        }
     }
 }

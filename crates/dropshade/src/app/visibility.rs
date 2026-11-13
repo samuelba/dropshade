@@ -60,9 +60,8 @@ impl App {
             Command::Hide => self.visibility(Visibility::Hide),
             Command::NewTab(directory) => {
                 let directory = directory.or_else(|| {
-                    self.tabs
-                        .active()
-                        .and_then(|tab| tab.content.terminal.working_directory())
+                    self.focused_session()
+                        .and_then(|session| session.terminal.working_directory())
                 });
                 let tab = self.open_tab(directory);
                 Task::batch([tab, self.visibility(Visibility::Show)])

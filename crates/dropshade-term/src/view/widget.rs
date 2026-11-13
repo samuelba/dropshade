@@ -41,7 +41,7 @@ impl<'a, Message> TerminalWidget<'a, Message> {
         bounds: Rectangle,
         shell: &mut Shell<'_, Message>,
     ) {
-        if !state.focused || !self.view.input.ime || !self.view.accepts_input {
+        if !state.focused || !self.view.input.ime || !self.view.takes_keys() {
             return;
         }
         let Some(cursor) = self.view.ime_cursor(bounds) else {

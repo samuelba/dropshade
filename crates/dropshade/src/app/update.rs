@@ -11,15 +11,17 @@ use iced::widget::{Id, operation};
 use iced::{Point, Task};
 
 use super::commands::{self, Finished};
+use super::split::sync_title;
 use super::view::bar_origin;
 use super::zoom::Zoom;
 use super::{
-    AboutMessage, App, Menu, Message, PendingClose, Rename, SettingsMessage, TerminalMenu, session,
+    AboutMessage, App, CloseTarget, Menu, Message, PaneKey, PendingClose, Rename, SettingsMessage,
+    TerminalMenu, session,
 };
 use crate::clipboard::{Clipboard, Selection};
 use crate::ipc::client::Visibility;
 use crate::notifications::{self, DEFAULT_ACTION, Notification};
-use crate::tabs::{Attention, TabId, TabMessage, bar};
+use crate::tabs::{Attention, Panes, TabId, TabMessage, bar};
 
 impl App {
     fn set_drop_target(&mut self, target: Option<crate::dnd::DropTarget>) -> Task<Message> {
@@ -28,46 +30,47 @@ impl App {
     }
 
     fn paste_dropped_paths(&self, paths: &[std::path::PathBuf]) -> Task<Message> {
-        if let Some(tab) = self.tabs.active() {
+        if let Some(session) = self.focused_session() {
             let quoted: String = paths
                 .iter()
                 .map(|path| dropshade_term::input::shell_quoted_path(&path.to_string_lossy()))
                 .collect();
-            tab.content.terminal.paste(&quoted);
+            session.terminal.paste(&quoted);
         }
         Task::none()
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::Term(id, event) => self.terminal_event(id, event),
-            Message::Interaction(Interaction::ContextMenu { position, cell }) => {
+            Message::Term(key, event) => self.terminal_event(key, event),
+            Message::Interaction(key, Interaction::ContextMenu { position, cell }) => {
+                // The menu's actions act on the focused pane, so it becomes the clicked one.
+                self.focus_pane(key);
                 self.terminal_menu = Some(TerminalMenu::at(position, Some(cell)));
                 Task::none()
             }
-            Message::Interaction(Interaction::Shortcut(shortcut)) => self.shortcut(shortcut),
-            Message::Interaction(interaction) => self.interaction(interaction),
-            Message::Paste(text) => {
-                if let (Some(tab), Some(text)) = (self.tabs.active(), text) {
-                    tab.content.terminal.paste(&text);
+            Message::Interaction(_, Interaction::Shortcut(shortcut)) => self.shortcut(shortcut),
+            Message::Interaction(key, interaction) => self.interaction(key, interaction),
+            Message::Paste(key, text) => {
+                if let (Some(session), Some(text)) = (self.session(key), text) {
+                    session.terminal.paste(&text);
                 }
                 Task::none()
             }
             Message::FilesDropped(paths) => self.paste_dropped_paths(&paths),
             Message::DropTarget(target) => self.set_drop_target(target),
             Message::Blink => {
-                if let Some(tab) = self.tabs.active_mut() {
-                    tab.content.cursor_on = !tab.content.cursor_on;
+                if let Some(session) = self.focused_session_mut() {
+                    session.cursor_on = !session.cursor_on;
                 }
                 Task::none()
             }
             Message::BellOff => {
-                self.tabs
-                    .iter_mut()
-                    .for_each(|tab| tab.content.bell = false);
+                self.sessions_mut().for_each(|session| session.bell = false);
                 Task::none()
             }
             Message::Tab(message) => self.tab_message(message),
+            Message::Pane(tab, message) => self.pane_message(tab, message),
             Message::Search(message) => self.search_message(message),
             Message::Menu(action) => self.menu_action(action),
             Message::Settings(message) => self.settings_message(message),
@@ -129,7 +132,7 @@ impl App {
             Message::WindowFocused(focused) => self.window_focused(focused),
             Message::Slide => self.slide_step(),
             Message::PollCommands => self.poll_commands(),
-            Message::ShowTab(id) => self.show_tab(id),
+            Message::ShowPane(key) => self.show_pane(key),
             Message::SystemTheme(mode) => {
                 let prefers_light = mode == iced::theme::Mode::Light;
                 if prefers_light != self.prefers_light {
@@ -144,9 +147,12 @@ impl App {
     pub(super) fn open_tab(&mut self, working_directory: Option<PathBuf>) -> Task<Message> {
         match session::spawn(&self.settings, working_directory) {
             Ok((session, events)) => {
-                let id = self.tabs.insert(session);
+                let panes = Panes::new(session);
+                let pane = panes.focused();
+                let tab = self.tabs.insert(panes);
                 self.error = None;
-                Task::run(events, move |event| Message::Term(id, event))
+                let key = PaneKey { tab, pane };
+                Task::run(events, move |event| Message::Term(key, event))
             }
             Err(error) => {
                 tracing::error!(%error, "could not start a shell");
@@ -156,39 +162,43 @@ impl App {
         }
     }
 
-    fn terminal_event(&mut self, id: TabId, event: TermEvent) -> Task<Message> {
+    fn terminal_event(&mut self, key: PaneKey, event: TermEvent) -> Task<Message> {
         let palette = self.settings.style.palette;
-        let Some(tab) = self.tabs.get_mut(id) else {
+        let Some(tab) = self.tabs.get_mut(key.tab) else {
             return Task::none();
         };
-        match tab.content.terminal.handle_event(event, &palette) {
-            Some(Notice::Exited(_)) => self.close_tab(id),
+        let focused = tab.content.focused() == key.pane;
+        let Some(session) = tab.content.get_mut(key.pane) else {
+            return Task::none();
+        };
+        match session.terminal.handle_event(event, &palette) {
+            Some(Notice::Exited(_)) => self.close_pane(key),
             Some(Notice::TitleChanged) => {
-                tab.title = tab.content.terminal.title().map(str::to_owned);
+                if focused {
+                    sync_title(tab);
+                }
                 Task::none()
             }
             Some(Notice::Copy { text, primary }) => self.clipboard.write(selection(primary), text),
             Some(Notice::Bell) => {
-                tab.content.bell = self.config.notifications.visual_bell;
+                session.bell = self.config.notifications.visual_bell;
                 if self.config.notifications.bell_indicator {
-                    self.tabs.notice(id, Attention::Bell);
+                    self.tabs.notice(key.tab, Attention::Bell);
                 }
                 Task::none()
             }
             Some(Notice::Output) => {
                 // In vi mode the view stays on what is being selected.
-                if self.settings.scroll.on_output && !tab.content.terminal.vi_mode() {
-                    tab.content.terminal.scroll_to_bottom();
+                if self.settings.scroll.on_output && !session.terminal.vi_mode() {
+                    session.terminal.scroll_to_bottom();
                 }
-                if let Some(command) = tab.content.pending_command.take() {
-                    tab.content
-                        .terminal
-                        .write(format!("{command}\r").into_bytes());
+                if let Some(command) = session.pending_command.take() {
+                    session.terminal.write(format!("{command}\r").into_bytes());
                 }
                 if self.config.notifications.activity_indicator
-                    && Instant::now() >= tab.content.quiet_until
+                    && Instant::now() >= session.quiet_until
                 {
-                    self.tabs.notice(id, Attention::Activity);
+                    self.tabs.notice(key.tab, Attention::Activity);
                 }
                 Task::none()
             }
@@ -196,8 +206,8 @@ impl App {
         }
     }
 
-    fn show_tab(&mut self, id: TabId) -> Task<Message> {
-        self.tabs.activate(id);
+    fn show_pane(&mut self, key: PaneKey) -> Task<Message> {
+        self.focus_pane(key);
         self.visibility(Visibility::Show)
     }
 
@@ -209,48 +219,58 @@ impl App {
         let unattended = !self.focused;
         let mut announcements = Vec::new();
         for tab in self.tabs.iter_mut() {
-            let current = tab.content.terminal.foreground_process();
-            let (running, finished) = commands::step(tab.content.running.take(), current, now, min);
-            tab.content.running = running;
-            if let Some(finished) = finished.filter(|_| unattended) {
-                announcements.push(announce_finished(tab.id, tab.label().to_owned(), finished));
+            let label = tab.label().to_owned();
+            for (pane, session) in tab.content.iter_mut() {
+                let current = session.terminal.foreground_process();
+                let (running, finished) = commands::step(session.running.take(), current, now, min);
+                session.running = running;
+                if let Some(finished) = finished.filter(|_| unattended) {
+                    let key = PaneKey { tab: tab.id, pane };
+                    announcements.push(announce_finished(key, label.clone(), finished));
+                }
             }
         }
         Task::batch(announcements)
     }
 
-    fn interaction(&mut self, interaction: Interaction) -> Task<Message> {
+    fn interaction(&mut self, key: PaneKey, interaction: Interaction) -> Task<Message> {
         if let Interaction::Vi(action) = interaction {
-            return self.vi_action(action);
+            return self.vi_action(key, action);
         }
-        let Some(tab) = self.tabs.active_mut() else {
+        let (copy_on_select, on_keystroke) = (
+            self.settings.copy_on_select,
+            self.settings.scroll.on_keystroke,
+        );
+        let clipboard = self.clipboard;
+        let Some(session) = self.session_mut(key) else {
             return Task::none();
         };
         if matches!(interaction, Interaction::Input(_)) {
-            tab.content.cursor_on = true;
+            session.cursor_on = true;
         }
-        if matches!(interaction, Interaction::FinishSelection) && self.settings.copy_on_select {
-            let Some(text) = tab.content.terminal.selection_text() else {
+        if matches!(interaction, Interaction::FinishSelection) && copy_on_select {
+            let Some(text) = session.terminal.selection_text() else {
                 return Task::none();
             };
             return Task::batch([
-                self.clipboard.write(Selection::Primary, text.clone()),
-                self.clipboard.write(Selection::Clipboard, text),
+                clipboard.write(Selection::Primary, text.clone()),
+                clipboard.write(Selection::Clipboard, text),
             ]);
         }
-        if matches!(interaction, Interaction::Input(_)) && self.settings.scroll.on_keystroke {
-            tab.content.terminal.scroll_to_bottom();
+        if matches!(interaction, Interaction::Input(_)) && on_keystroke {
+            session.terminal.scroll_to_bottom();
         }
-        apply(&mut tab.content.terminal, self.clipboard, interaction)
+        apply(key, &mut session.terminal, clipboard, interaction)
     }
 
     /// A key pressed in vi mode.
-    fn vi_action(&mut self, action: ViAction) -> Task<Message> {
-        let Some(tab) = self.tabs.active_mut() else {
+    fn vi_action(&mut self, key: PaneKey, action: ViAction) -> Task<Message> {
+        let clipboard = self.clipboard;
+        let Some(session) = self.session_mut(key) else {
             return Task::none();
         };
-        tab.content.cursor_on = true;
-        let terminal = &mut tab.content.terminal;
+        session.cursor_on = true;
+        let terminal = &mut session.terminal;
         match action {
             ViAction::Motion(motion) => terminal.vi_motion(motion),
             ViAction::Select(kind) => terminal.vi_select(kind),
@@ -264,8 +284,8 @@ impl App {
                 terminal.toggle_vi_mode();
                 return text.map_or_else(Task::none, |text| {
                     Task::batch([
-                        self.clipboard.write(Selection::Primary, text.clone()),
-                        self.clipboard.write(Selection::Clipboard, text),
+                        clipboard.write(Selection::Primary, text.clone()),
+                        clipboard.write(Selection::Clipboard, text),
                     ])
                 });
             }
@@ -280,20 +300,19 @@ impl App {
         Task::none()
     }
 
-    fn shortcut(&mut self, shortcut: Shortcut) -> Task<Message> {
+    pub(super) fn shortcut(&mut self, shortcut: Shortcut) -> Task<Message> {
         match shortcut {
             Shortcut::NewTab => {
                 let directory = self
-                    .tabs
-                    .active()
-                    .and_then(|tab| tab.content.terminal.working_directory());
+                    .focused_session()
+                    .and_then(|session| session.terminal.working_directory());
                 return self.open_tab(directory);
             }
             Shortcut::CloseTab => {
                 return self
                     .tabs
                     .active_id()
-                    .map_or_else(Task::none, |id| self.request_close(id));
+                    .map_or_else(Task::none, |id| self.request_close(CloseTarget::Tab(id)));
             }
             Shortcut::RenameTab => {
                 return self
@@ -312,11 +331,17 @@ impl App {
             }
             Shortcut::OpenSettings => {}
             Shortcut::ToggleViMode => {
-                if let Some(tab) = self.tabs.active_mut() {
-                    tab.content.terminal.toggle_vi_mode();
-                    tab.content.cursor_on = true;
+                if let Some(session) = self.focused_session_mut() {
+                    session.terminal.toggle_vi_mode();
+                    session.cursor_on = true;
                 }
             }
+            Shortcut::SplitRight
+            | Shortcut::SplitDown
+            | Shortcut::ClosePane
+            | Shortcut::FocusPane(_)
+            | Shortcut::ResizePane(_)
+            | Shortcut::TogglePaneZoom => return self.pane_shortcut(shortcut),
             Shortcut::NextTab => self.tabs.cycle(1),
             Shortcut::PreviousTab => self.tabs.cycle(-1),
             Shortcut::MoveTabLeft => self.tabs.move_active(-1),
@@ -325,9 +350,12 @@ impl App {
                 self.tabs.activate_index(usize::from(index));
             }
             terminal_shortcut => {
-                if let Some(tab) = self.tabs.active() {
+                if let Some(key) = self.focused_key()
+                    && let Some(session) = self.session(key)
+                {
                     return run_terminal_shortcut(
-                        &tab.content.terminal,
+                        key,
+                        &session.terminal,
                         self.clipboard,
                         terminal_shortcut,
                     );
@@ -359,7 +387,7 @@ impl App {
                 }
             }
             TabMessage::Released => self.dragging = None,
-            TabMessage::RequestClose(id) => return self.request_close(id),
+            TabMessage::RequestClose(id) => return self.request_close(CloseTarget::Tab(id)),
             TabMessage::StartRename(id) => return self.start_rename(id),
             TabMessage::RenameInput(draft) => {
                 if let Some(rename) = self.renaming.as_mut() {
@@ -412,10 +440,10 @@ impl App {
     /// Selects a command's output (the one at `at`, or the newest) as the primary selection,
     /// and copies it too when copy-on-select is on.
     pub(super) fn select_command_output(&mut self, at: Option<CellPosition>) -> Task<Message> {
-        let Some(tab) = self.tabs.active() else {
+        let Some(session) = self.focused_session() else {
             return Task::none();
         };
-        let terminal = &tab.content.terminal;
+        let terminal = &session.terminal;
         if !terminal.select_command_output(at) {
             return Task::none();
         }
@@ -431,36 +459,81 @@ impl App {
         self.clipboard.write(Selection::Primary, text)
     }
 
-    fn request_close(&mut self, id: TabId) -> Task<Message> {
+    /// Closes a tab or pane, asking first when something runs in it.
+    pub(super) fn request_close(&mut self, target: CloseTarget) -> Task<Message> {
         self.menu = None;
-        let running = self
-            .tabs
-            .get(id)
-            .and_then(|tab| running_command(&tab.content.terminal));
-        match running {
-            Some(running) => {
-                self.tabs.activate(id);
-                self.pending_close = Some(PendingClose {
-                    id,
-                    process: running.name,
-                });
-                Task::none()
-            }
-            None => self.close_tab(id),
-        }
+        let Some(tab) = self.tabs.get(target.tab()) else {
+            return Task::none();
+        };
+        let running: Vec<RunningCommand> = tab
+            .content
+            .iter()
+            .filter(|(pane, _)| match target {
+                CloseTarget::Tab(_) => true,
+                CloseTarget::Pane(key) => *pane == key.pane,
+            })
+            .filter_map(|(_, session)| running_command(&session.terminal))
+            .collect();
+        let others = running.len().saturating_sub(1);
+        let Some(first) = running.into_iter().next() else {
+            return self.close(target);
+        };
+        self.tabs.activate(target.tab());
+        self.pending_close = Some(PendingClose {
+            target,
+            process: first.name,
+            others,
+        });
+        Task::none()
     }
 
     fn confirm_close(&mut self) -> Task<Message> {
         match self.pending_close.take() {
-            Some(pending) => self.close_tab(pending.id),
+            Some(pending) => self.close(pending.target),
             None => Task::none(),
         }
+    }
+
+    fn close(&mut self, target: CloseTarget) -> Task<Message> {
+        match target {
+            CloseTarget::Tab(id) => self.close_tab(id),
+            CloseTarget::Pane(key) => self.close_pane(key),
+        }
+    }
+
+    /// Closes a pane, or its tab when it is the last one.
+    pub(super) fn close_pane(&mut self, key: PaneKey) -> Task<Message> {
+        let Some(tab) = self.tabs.get_mut(key.tab) else {
+            return Task::none();
+        };
+        if !tab.content.is_split() {
+            return self.close_tab(key.tab);
+        }
+        let was_focused = tab.content.focused() == key.pane;
+        if tab.content.close(key.pane).is_some() && was_focused {
+            self.focus_changed(key.tab);
+        }
+        if self
+            .pending_close
+            .as_ref()
+            .is_some_and(|pending| pending.target == CloseTarget::Pane(key))
+        {
+            self.pending_close = None;
+        }
+        Task::none()
     }
 
     fn close_tab(&mut self, id: TabId) -> Task<Message> {
         self.tabs.close(id);
         if self.renaming.as_ref().is_some_and(|rename| rename.id == id) {
             self.renaming = None;
+        }
+        if self
+            .pending_close
+            .as_ref()
+            .is_some_and(|pending| pending.target.tab() == id)
+        {
+            self.pending_close = None;
         }
         if self.tabs.is_empty() && self.error.is_none() {
             self.save_session();
@@ -504,7 +577,12 @@ fn running_command(terminal: &Terminal) -> Option<RunningCommand> {
     }
 }
 
-fn apply(terminal: &mut Terminal, clipboard: Clipboard, interaction: Interaction) -> Task<Message> {
+fn apply(
+    key: PaneKey,
+    terminal: &mut Terminal,
+    clipboard: Clipboard,
+    interaction: Interaction,
+) -> Task<Message> {
     match interaction {
         Interaction::Input(bytes) => terminal.write(bytes),
         Interaction::Resize(size) => terminal.resize(size),
@@ -517,14 +595,14 @@ fn apply(terminal: &mut Terminal, clipboard: Clipboard, interaction: Interaction
                 .selection_text()
                 .map_or_else(Task::none, |text| clipboard.write(Selection::Primary, text));
         }
-        Interaction::PastePrimary => return paste(clipboard, Selection::Primary),
+        Interaction::PastePrimary => return paste(key, clipboard, Selection::Primary),
         Interaction::OpenLink(cell) => {
             if let Some(url) = terminal.link_at(cell) {
                 open_link(&url);
             }
         }
         Interaction::Shortcut(shortcut) => {
-            return run_terminal_shortcut(terminal, clipboard, shortcut);
+            return run_terminal_shortcut(key, terminal, clipboard, shortcut);
         }
         // Vi mode keys are handled before this, in `vi_action`.
         Interaction::ContextMenu { .. } | Interaction::Vi(_) => {}
@@ -533,6 +611,7 @@ fn apply(terminal: &mut Terminal, clipboard: Clipboard, interaction: Interaction
 }
 
 fn run_terminal_shortcut(
+    key: PaneKey,
     terminal: &Terminal,
     clipboard: Clipboard,
     shortcut: Shortcut,
@@ -543,8 +622,8 @@ fn run_terminal_shortcut(
                 clipboard.write(Selection::Clipboard, text)
             });
         }
-        Shortcut::Paste => return paste(clipboard, Selection::Clipboard),
-        Shortcut::PastePrimary => return paste(clipboard, Selection::Primary),
+        Shortcut::Paste => return paste(key, clipboard, Selection::Clipboard),
+        Shortcut::PastePrimary => return paste(key, clipboard, Selection::Primary),
         Shortcut::ScrollPageUp => terminal.scroll_page(true),
         Shortcut::ScrollPageDown => terminal.scroll_page(false),
         Shortcut::ScrollToTop => terminal.scroll_to_top(),
@@ -570,13 +649,19 @@ fn run_terminal_shortcut(
         | Shortcut::SelectCommandOutput
         | Shortcut::OpenSettings
         | Shortcut::ToggleViMode
-        | Shortcut::GoToTab(_) => {}
+        | Shortcut::GoToTab(_)
+        | Shortcut::SplitRight
+        | Shortcut::SplitDown
+        | Shortcut::ClosePane
+        | Shortcut::FocusPane(_)
+        | Shortcut::ResizePane(_)
+        | Shortcut::TogglePaneZoom => {}
     }
     Task::none()
 }
 
-/// A notification that `finished` ended in the tab labelled `label`; clicking it shows the tab.
-fn announce_finished(id: TabId, label: String, finished: Finished) -> Task<Message> {
+/// A notification that `finished` ended in the tab labelled `label`; clicking it shows the pane.
+fn announce_finished(key: PaneKey, label: String, finished: Finished) -> Task<Message> {
     Task::perform(
         async move {
             let summary = format!("{} finished", finished.name);
@@ -589,7 +674,7 @@ fn announce_finished(id: TabId, label: String, finished: Finished) -> Task<Messa
             notifications::show_and_wait(notification).await
         },
         move |result| match result {
-            Ok(Some(_)) => Message::ShowTab(id),
+            Ok(Some(_)) => Message::ShowPane(key),
             Ok(None) => Message::Done,
             Err(error) => {
                 tracing::warn!(%error, "cannot show the command notification");
@@ -609,8 +694,10 @@ pub(super) fn open_link(url: &str) {
     }
 }
 
-fn paste(clipboard: Clipboard, selection: Selection) -> Task<Message> {
-    clipboard.read(selection).map(Message::Paste)
+fn paste(key: PaneKey, clipboard: Clipboard, selection: Selection) -> Task<Message> {
+    clipboard
+        .read(selection)
+        .map(move |text| Message::Paste(key, text))
 }
 
 fn selection(primary: bool) -> Selection {

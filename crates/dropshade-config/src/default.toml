@@ -28,6 +28,8 @@ cursor_shape = "block"
 cursor_blink = false
 # Overlay scrollbar at the right edge, shown once there is scrollback.
 scrollbar = true
+# How much split panes without the keyboard fade, 0.0 (not at all) to 0.8.
+unfocused_pane_dim = 0.15
 
 # [colors]
 # Change single colors on top of the theme, in the same layout as an Alacritty theme. Only the
@@ -137,5 +139,6 @@ command_min_duration = 10
 # Actions: copy, paste, paste-primary, new-tab, close-tab, next-tab, previous-tab,
 # move-tab-left, move-tab-right, rename-tab, go-to-tab-1 … go-to-tab-9,
 # scroll-page-up, scroll-page-down, scroll-to-top, scroll-to-bottom, toggle-maximize,
-# open-settings, toggle-vi-mode,
+# open-settings, toggle-vi-mode, split-right, split-down, close-pane, toggle-pane-zoom,
+# focus-pane-left/right/up/down, resize-pane-left/right/up/down,
 # previous-prompt, next-prompt, select-command-output (these need shell integration)

@@ -33,6 +33,8 @@ pub struct Settings {
     pub shell_integration: bool,
     pub cursor_style: CursorStyle,
     pub copy_on_select: bool,
+    /// How much split panes without the keyboard fade.
+    pub unfocused_dim: f32,
     pub warnings: Vec<String>,
 }
 
@@ -90,6 +92,7 @@ pub fn build(config: &Config, prefers_light: bool, themes_dir: Option<&Path>) ->
             blinking: config.appearance.cursor_blink,
         },
         copy_on_select: config.input.copy_on_select,
+        unfocused_dim: config.appearance.unfocused_pane_dim,
         warnings,
     }
 }

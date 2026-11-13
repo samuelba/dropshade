@@ -8,6 +8,7 @@ mod panel;
 mod persist;
 mod search;
 mod session;
+mod split;
 mod update;
 mod view;
 mod visibility;
@@ -31,7 +32,7 @@ use crate::hotkey;
 use crate::ipc::{self, Command};
 use crate::screens::{self, Screen};
 use crate::settings::{self, Settings};
-use crate::tabs::{TabId, TabMessage, Tabs};
+use crate::tabs::{Panes, TabId, TabMessage, Tabs};
 pub use about::AboutMessage;
 pub use dropdown::NAMESPACE as LAYER_NAMESPACE;
 pub use menu::MenuAction;
@@ -40,6 +41,7 @@ pub use panel::SettingsMessage;
 pub use persist::Startup;
 pub use search::SearchMessage;
 use session::Session;
+pub use split::{PaneKey, PaneMessage};
 pub use visibility::APP_ID;
 use zoom::Zoom;
 
@@ -64,7 +66,7 @@ pub enum Host {
 
 #[derive(Debug)]
 pub struct App {
-    tabs: Tabs<Session>,
+    tabs: Tabs<Panes<Session>>,
     config: Config,
     config_path: Option<PathBuf>,
     /// Why the config file could not be used; the last good settings stay active meanwhile.
@@ -130,21 +132,40 @@ struct Menu {
 
 #[derive(Debug)]
 struct PendingClose {
-    id: TabId,
+    target: CloseTarget,
     /// The running program, when its name is known.
     process: Option<String>,
+    /// How many other panes of the tab also run something.
+    others: usize,
+}
+
+/// What a close asks to close.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CloseTarget {
+    Tab(TabId),
+    Pane(PaneKey),
+}
+
+impl CloseTarget {
+    fn tab(self) -> TabId {
+        match self {
+            Self::Tab(id) => id,
+            Self::Pane(key) => key.tab,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Term(TabId, TermEvent),
-    Interaction(Interaction),
-    Paste(Option<String>),
+    Term(PaneKey, TermEvent),
+    Interaction(PaneKey, Interaction),
+    Paste(PaneKey, Option<String>),
     FilesDropped(Vec<PathBuf>),
     DropTarget(Option<DropTarget>),
     Blink,
     BellOff,
     Tab(TabMessage),
+    Pane(TabId, PaneMessage),
     Search(SearchMessage),
     Menu(MenuAction),
     Settings(SettingsMessage),
@@ -172,8 +193,8 @@ pub enum Message {
     Slide,
     /// Time to look which commands finished.
     PollCommands,
-    /// Show the window on this tab, e.g. after its notification was clicked.
-    ShowTab(TabId),
+    /// Show the window on this pane, e.g. after its notification was clicked.
+    ShowPane(PaneKey),
     /// A request for the layer-shell runner; the plain window runner never sees one.
     Layer(LayerShellCustomActionWithId),
     Done,
@@ -255,13 +276,12 @@ impl App {
 
     pub fn subscription(&self) -> Subscription<Message> {
         let blink = self
-            .tabs
-            .active()
-            .filter(|tab| tab.content.terminal.cursor_blinks())
+            .focused_session()
+            .filter(|session| session.terminal.cursor_blinks())
             .map_or_else(Subscription::none, |_| {
                 time::every(BLINK_INTERVAL).map(|_| Message::Blink)
             });
-        let bell = if self.tabs.iter().any(|tab| tab.content.bell) {
+        let bell = if self.sessions().any(|session| session.bell) {
             time::every(BELL_DURATION).map(|_| Message::BellOff)
         } else {
             Subscription::none()
@@ -429,10 +449,15 @@ impl App {
         } else {
             settings.zoomed(self.zoom.scale(), self.config.font.line_height)
         };
-        for tab in self.tabs.iter_mut() {
-            let terminal = &mut tab.content.terminal;
-            terminal.update_options(self.settings.scrollback_lines, self.settings.cursor_style);
-            terminal.set_cell(self.settings.style.cell);
+        let (scrollback, cursor_style, cell) = (
+            self.settings.scrollback_lines,
+            self.settings.cursor_style,
+            self.settings.style.cell,
+        );
+        for session in self.sessions_mut() {
+            let terminal = &mut session.terminal;
+            terminal.update_options(scrollback, cursor_style);
+            terminal.set_cell(cell);
         }
     }
 }

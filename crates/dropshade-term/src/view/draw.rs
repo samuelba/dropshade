@@ -21,6 +21,7 @@ const BADGE_TOP: f32 = 4.0;
 const BADGE_PADDING_X: f32 = 6.0;
 const BADGE_PADDING_Y: f32 = 2.0;
 const BADGE_RADIUS: f32 = 4.0;
+const BADGE_GAP: f32 = 6.0;
 
 impl<Message> TerminalView<'_, Message> {
     pub(super) fn render(
@@ -44,16 +45,25 @@ impl<Message> TerminalView<'_, Message> {
             canvas.fill_text(self.text(&run.text, origin, fg, run.style));
         }
         if let Some(cursor) = snapshot.cursor {
-            self.draw_cursor(&mut canvas, cursor, state.focused, &snapshot.runs);
+            self.draw_cursor(
+                &mut canvas,
+                cursor,
+                state.focused && self.active,
+                &snapshot.runs,
+            );
             if let Some(preedit) = &state.preedit {
                 self.draw_preedit(&mut canvas, cursor, preedit);
             }
         }
         self.draw_scrollbar(&mut canvas, state, bounds, cursor);
-        self.draw_vi_badge(&mut canvas, bounds);
+        self.draw_badges(&mut canvas, bounds);
         if self.bell {
             let flash = to_iced(self.style.palette.foreground, BELL_OPACITY);
             canvas.fill_rectangle(Point::ORIGIN, bounds.size(), flash);
+        }
+        if self.dim > 0.0 {
+            let fade = to_iced(self.style.palette.background, self.dim.min(1.0));
+            canvas.fill_rectangle(Point::ORIGIN, bounds.size(), fade);
         }
         canvas.into_geometry()
     }
@@ -77,20 +87,28 @@ impl<Message> TerminalView<'_, Message> {
         scrollbar::draw(canvas, geometry, active, color);
     }
 
-    /// Labels vi mode in the top-right corner, in the selection colours: `VI`, or the kind of
-    /// selection being made.
-    fn draw_vi_badge(&self, canvas: &mut canvas::Frame, bounds: Rectangle) {
-        if !self.terminal.vi_mode() {
-            return;
+    /// Labels modes in the top-right corner, in the selection colours: vi mode (`VI`, or the
+    /// kind of selection being made) and a zoomed pane (`ZOOM`).
+    fn draw_badges(&self, canvas: &mut canvas::Frame, bounds: Rectangle) {
+        let mut right = bounds.width - BADGE_RIGHT;
+        if self.terminal.vi_mode() {
+            let label = vi_label(self.terminal.vi_selection());
+            right = self.draw_badge(canvas, right, label) - BADGE_GAP;
         }
-        let label = vi_label(self.terminal.vi_selection());
+        if self.zoomed {
+            self.draw_badge(canvas, right, "ZOOM");
+        }
+    }
+
+    /// Draws a badge that ends at `right`; returns where it starts.
+    fn draw_badge(&self, canvas: &mut canvas::Frame, right: f32, label: &str) -> f32 {
         let cell = self.style.cell;
         #[allow(clippy::cast_precision_loss)]
         let size = Size::new(
             label.len() as f32 * cell.width + 2.0 * BADGE_PADDING_X,
             cell.height + 2.0 * BADGE_PADDING_Y,
         );
-        let top_left = Point::new(bounds.width - BADGE_RIGHT - size.width, BADGE_TOP);
+        let top_left = Point::new(right - size.width, BADGE_TOP);
         let palette = &self.style.palette;
         let colors = palette.selected(CellColors {
             fg: palette.foreground,
@@ -104,6 +122,7 @@ impl<Message> TerminalView<'_, Message> {
             ..RunStyle::default()
         };
         canvas.fill_text(self.text(label, text_origin, to_iced(colors.fg, 1.0), style));
+        top_left.x
     }
 
     fn origin(&self, row: usize, column: usize) -> Point {

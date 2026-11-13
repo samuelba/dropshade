@@ -94,7 +94,10 @@ impl App {
             .iter()
             .map(|tab| TabSnapshot {
                 name: tab.custom_name.clone(),
-                cwd: tab.content.terminal.working_directory(),
+                cwd: tab
+                    .content
+                    .focused_content()
+                    .and_then(|session| session.terminal.working_directory()),
                 command: None,
             })
             .collect();
@@ -131,8 +134,12 @@ impl App {
             if let Some(name) = &saved.name {
                 self.tabs.rename(id, name);
             }
-            if let Some(tab) = self.tabs.get_mut(id) {
-                tab.content.pending_command.clone_from(&saved.command);
+            if let Some(session) = self
+                .tabs
+                .get_mut(id)
+                .and_then(|tab| tab.content.focused_content_mut())
+            {
+                session.pending_command.clone_from(&saved.command);
             }
         }
         task
