@@ -55,29 +55,3 @@ jobs:
           name: packages-${{ matrix.arch }}
           path: dist/*
           if-no-files-found: error
-
-  flatpak:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
-      options: --privileged
-    steps:
-      - uses: actions/checkout@v7
-      - name: Generate the offline Cargo sources
-        run: |
-          generator=9d86d336a39b9af38b86f114b6ce5820fe260f91
-          curl -fsSLo flatpak-cargo-generator.py \
-            "https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/$generator/cargo/flatpak-cargo-generator.py"
-          python3 -m pip install --break-system-packages aiohttp tomlkit
-          python3 flatpak-cargo-generator.py Cargo.lock -o packaging/flatpak/cargo-sources.json
-      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
-        with:
-          bundle: Dropshade-x86_64.flatpak
-          manifest-path: packaging/flatpak/dev.samuelba.Dropshade.yml
-          cache-key: flatpak-builder-${{ hashFiles('Cargo.lock') }}
-          upload-artifact: false
-      - uses: actions/upload-artifact@v7
-        with:
-          name: packages-flatpak
-          path: Dropshade-x86_64.flatpak
-          if-no-files-found: error

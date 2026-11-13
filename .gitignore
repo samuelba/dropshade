@@ -2,4 +2,3 @@
 /target
 /gnome-extension/schemas/gschemas.compiled
 /dist
-/packaging/flatpak/cargo-sources.json

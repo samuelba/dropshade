@@ -144,7 +144,6 @@ aarch64:
 | ------ | ----- |
 | `.rpm` / `.deb` | Includes the GNOME Shell extension system-wide; enable it in Extensions and log out once |
 | AppImage | Run `Dropshade-*.AppImage gnome-extension install` once |
-| Flatpak (x86_64) | Shells run on the host via `flatpak-spawn`; install the extension from the release zip |
 | `.tar.gz` | The binary plus desktop files; run `dropshade gnome-extension install` |
 
 On start, Dropshade asks GitHub for the latest release. When a newer one is out, it shows a
@@ -168,7 +167,7 @@ Dropshade sets this up by itself. It writes small scripts to `~/.local/share/dro
 then starts bash with `--rcfile` pointing at its script, which loads your `~/.bashrc` first. Zsh
 gets a `ZDOTDIR` whose `.zshenv` restores yours and loads your own files. Prompt themes such as
 starship keep working. Fish 4.0 and later sends the marks on its own. A shell configured with
-`shell_args` is started as given and is not set up, and neither is the shell in the Flatpak.
+`shell_args` is started as given and is not set up.
 
 Turn it off with `[terminal] shell_integration = false` (or under Settings → Terminal). Other shells
 and prompts can send the marks themselves: `ESC ] 133 ; A BEL` where the prompt starts,
@@ -182,8 +181,7 @@ background tab that rings the bell gets a dot in the accent color until you swit
 `[notifications] activity_indicator = true` a muted dot also marks background tabs that printed
 output. When a command that ran for at least `command_min_duration` seconds (10 by default)
 finishes while Dropshade is hidden or unfocused, a desktop notification says so; clicking it
-shows Dropshade on that tab. Change these under Settings → Notifications. In the Flatpak the
-shell runs outside the sandbox, so finished commands cannot be noticed there.
+shows Dropshade on that tab. Change these under Settings → Notifications.
 
 ## Getting started
 
