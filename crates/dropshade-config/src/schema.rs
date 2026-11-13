@@ -343,8 +343,12 @@ pub struct Window {
     pub height: f64,
     /// Where a window narrower than the work area sits.
     pub align: WindowAlign,
+    /// Where a window shorter than the work area sits.
+    pub vertical_align: WindowVerticalAlign,
     pub monitor: Monitors,
-    /// Slide animation length in milliseconds; 0 disables it.
+    /// How it enters and leaves the screen.
+    pub animation: WindowAnimation,
+    /// Animation length in milliseconds; 0 disables it.
     pub animation_duration: u32,
     /// Hide the terminal when another window gets the focus.
     pub hide_on_unfocus: bool,
@@ -357,7 +361,9 @@ impl Default for Window {
             width: 1.0,
             height: 0.5,
             align: WindowAlign::Center,
+            vertical_align: WindowVerticalAlign::Top,
             monitor: Monitors::default(),
+            animation: WindowAnimation::SlideTop,
             animation_duration: 180,
             hide_on_unfocus: false,
         }
@@ -380,6 +386,52 @@ impl WindowAlign {
             Self::Left => "left",
             Self::Center => "center",
             Self::Right => "right",
+        }
+    }
+}
+
+/// The vertical position of the drop-down on its screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WindowVerticalAlign {
+    #[default]
+    Top,
+    Center,
+    Bottom,
+}
+
+impl WindowVerticalAlign {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Top => "top",
+            Self::Center => "center",
+            Self::Bottom => "bottom",
+        }
+    }
+}
+
+/// How the drop-down enters and leaves the screen, wherever it sits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum WindowAnimation {
+    /// Slides down from above the top edge of the screen.
+    #[default]
+    SlideTop,
+    /// Slides up from below the bottom edge of the screen.
+    SlideBottom,
+    /// Fades (and, where the desktop allows, zooms) in place.
+    Fade,
+    /// Appears and disappears at once.
+    None,
+}
+
+impl WindowAnimation {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::SlideTop => "slide-top",
+            Self::SlideBottom => "slide-bottom",
+            Self::Fade => "fade",
+            Self::None => "none",
         }
     }
 }

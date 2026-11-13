@@ -9,7 +9,9 @@ const INTERFACE = `
     <property name="Width" type="d" access="read"/>
     <property name="Height" type="d" access="read"/>
     <property name="Align" type="s" access="read"/>
+    <property name="VerticalAlign" type="s" access="read"/>
     <property name="Monitor" type="s" access="read"/>
+    <property name="Animation" type="s" access="read"/>
     <property name="AnimationDuration" type="u" access="read"/>
     <property name="HideOnUnfocus" type="b" access="read"/>
     <method name="OpenSettings"/>
@@ -22,7 +24,9 @@ const DEFAULTS = {
     width: 1.0,
     height: 0.5,
     align: 'center',
+    verticalAlign: 'top',
     monitor: 'pointer',
+    animation: 'slide-top',
     animationDuration: 180,
     hideOnUnfocus: false,
 };
@@ -58,8 +62,16 @@ export class AppSettings {
         return this._values.align;
     }
 
+    get verticalAlign() {
+        return this._values.verticalAlign;
+    }
+
     get monitor() {
         return this._values.monitor;
+    }
+
+    get animation() {
+        return this._values.animation;
     }
 
     get animationDuration() {
@@ -122,7 +134,9 @@ export class AppSettings {
             width: read('Width', this._values.width),
             height: read('Height', this._values.height),
             align: read('Align', this._values.align),
+            verticalAlign: read('VerticalAlign', this._values.verticalAlign),
             monitor: read('Monitor', this._values.monitor),
+            animation: read('Animation', this._values.animation),
             animationDuration: read('AnimationDuration', this._values.animationDuration),
             hideOnUnfocus: read('HideOnUnfocus', this._values.hideOnUnfocus),
         };

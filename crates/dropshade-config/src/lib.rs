@@ -12,6 +12,7 @@ pub use schema::{
     AnsiColors, Appearance, Binding, ColorOverrides, Config, CursorColors, CursorShape, Font,
     Input, Monitor, Monitors, Notifications, PrimaryColors, Scrollback, SelectionColors, Session,
     TabBarPosition, TabWidth, Terminal, ThemeChoice, Unlimited, Updates, Window, WindowAlign,
+    WindowAnimation, WindowVerticalAlign,
 };
 
 /// The default configuration, documented; `dropshade config print-default` prints it.
@@ -159,6 +160,8 @@ mod tests {
 
             [window]
             align = "right"
+            vertical_align = "bottom"
+            animation = "slide-bottom"
 
             [keybindings]
             "ctrl+shift+t" = "new-tab"
@@ -174,6 +177,8 @@ mod tests {
         assert_eq!(config.appearance.tab_width, TabWidth::Fit);
         assert_eq!(config.terminal.scrollback.lines(), usize::MAX);
         assert_eq!(config.window.align, WindowAlign::Right);
+        assert_eq!(config.window.vertical_align, WindowVerticalAlign::Bottom);
+        assert_eq!(config.window.animation, WindowAnimation::SlideBottom);
         assert_eq!(
             config.keybindings["ctrl+shift+t"],
             Binding::Action("new-tab".into())

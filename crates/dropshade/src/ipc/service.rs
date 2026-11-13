@@ -83,8 +83,18 @@ impl Service {
     }
 
     #[zbus(property)]
+    fn vertical_align(&self) -> String {
+        self.window.vertical_align.clone()
+    }
+
+    #[zbus(property)]
     fn monitor(&self) -> String {
         self.window.monitor.clone()
+    }
+
+    #[zbus(property)]
+    fn animation(&self) -> String {
+        self.window.animation.clone()
     }
 
     #[zbus(property)]
@@ -131,8 +141,14 @@ pub async fn publish(connection: &Connection, window: WindowSettings) -> zbus::R
     if previous.align != window.align {
         service.align_changed(emitter).await?;
     }
+    if previous.vertical_align != window.vertical_align {
+        service.vertical_align_changed(emitter).await?;
+    }
     if previous.monitor != window.monitor {
         service.monitor_changed(emitter).await?;
+    }
+    if previous.animation != window.animation {
+        service.animation_changed(emitter).await?;
     }
     if previous.animation_duration != window.animation_duration {
         service.animation_duration_changed(emitter).await?;

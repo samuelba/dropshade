@@ -25,6 +25,8 @@ const HINT_SIZE: f32 = 11.5;
 const BAR_POSITIONS: [&str; 4] = ["top", "bottom", "left", "right"];
 const TAB_WIDTHS: [&str; 2] = ["fixed", "fit"];
 const ALIGNMENTS: [&str; 3] = ["left", "center", "right"];
+const VERTICAL_ALIGNMENTS: [&str; 3] = ["top", "center", "bottom"];
+const ANIMATIONS: [&str; 4] = ["slide-top", "slide-bottom", "fade", "none"];
 const CURSOR_SHAPES: [&str; 3] = ["block", "beam", "underline"];
 
 /// Everything a section needs to draw itself.
@@ -291,12 +293,32 @@ fn window(
         slider_row(ctx, Slider::Height),
         hinted(
             choice(
-                "Position",
+                "Horizontal position",
                 strings(&ALIGNMENTS),
                 ctx.config.window.align.as_str(),
                 Choice::Align
             ),
             "Where a window narrower than the screen sits.",
+            ctx.colors,
+        ),
+        hinted(
+            choice(
+                "Vertical position",
+                strings(&VERTICAL_ALIGNMENTS),
+                ctx.config.window.vertical_align.as_str(),
+                Choice::VerticalAlign
+            ),
+            "Where a window shorter than the screen sits.",
+            ctx.colors,
+        ),
+        hinted(
+            choice(
+                "Animation",
+                strings(&ANIMATIONS),
+                ctx.config.window.animation.as_str(),
+                Choice::Animation
+            ),
+            "How the terminal enters and leaves the screen. Outside GNOME, fade appears at once.",
             ctx.colors,
         ),
         slider_row(ctx, Slider::Animation),

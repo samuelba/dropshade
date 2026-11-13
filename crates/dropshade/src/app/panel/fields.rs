@@ -46,7 +46,7 @@ impl Slider {
             Self::Width => ("Width", "window", "width", 0.2, 1.0, 0.05),
             Self::Height => ("Height", "window", "height", 0.1, 1.0, 0.05),
             Self::Animation => (
-                "Slide animation",
+                "Animation length",
                 "window",
                 "animation_duration",
                 0.0,

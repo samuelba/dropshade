@@ -32,7 +32,11 @@ pub struct WindowSettings {
     pub height: f64,
     /// "left", "center" or "right".
     pub align: String,
+    /// "top", "center" or "bottom".
+    pub vertical_align: String,
     pub monitor: String,
+    /// "slide-top", "slide-bottom", "fade" or "none".
+    pub animation: String,
     pub animation_duration: u32,
     pub hide_on_unfocus: bool,
 }
@@ -46,9 +50,11 @@ impl WindowSettings {
             width: window.width,
             height: window.height,
             align: window.align.as_str().to_owned(),
+            vertical_align: window.vertical_align.as_str().to_owned(),
             monitor: screens::resolve(&window.monitor, screens)
                 .as_str()
                 .to_owned(),
+            animation: window.animation.as_str().to_owned(),
             animation_duration: window.animation_duration,
             hide_on_unfocus: window.hide_on_unfocus,
         }
@@ -72,6 +78,8 @@ mod tests {
         assert_eq!(settings.hotkey, "<Super>grave");
         assert_eq!(settings.monitor, "DP-1");
         assert_eq!(settings.align, "center");
+        assert_eq!(settings.vertical_align, "top");
+        assert_eq!(settings.animation, "slide-top");
         assert!((settings.height - 0.5).abs() < f64::EPSILON);
     }
 
