@@ -29,10 +29,18 @@ pub struct Settings {
     pub env: HashMap<String, String>,
     pub working_directory: Option<PathBuf>,
     pub scrollback_lines: usize,
+    pub scroll: ScrollJumps,
     pub shell_integration: bool,
     pub cursor_style: CursorStyle,
     pub copy_on_select: bool,
     pub warnings: Vec<String>,
+}
+
+/// When the viewport jumps back to the live end while scrolled up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScrollJumps {
+    pub on_output: bool,
+    pub on_keystroke: bool,
 }
 
 /// Builds runtime settings. `prefers_light` picks the light theme of a light/dark pair.
@@ -72,6 +80,10 @@ pub fn build(config: &Config, prefers_light: bool, themes_dir: Option<&Path>) ->
         env: terminal.env.clone().into_iter().collect(),
         working_directory: expand_home(&terminal.working_directory),
         scrollback_lines: terminal.scrollback.lines(),
+        scroll: ScrollJumps {
+            on_output: terminal.scroll_on_output,
+            on_keystroke: terminal.scroll_on_keystroke,
+        },
         shell_integration: terminal.shell_integration,
         cursor_style: CursorStyle {
             shape: cursor_shape(config.appearance.cursor_shape),
@@ -232,6 +244,16 @@ mod tests {
         assert_eq!(settings.shell, None);
         assert_eq!(settings.input.shift_enter.as_deref(), Some(&b"\x1b\r"[..]));
         assert_eq!(settings.scrollback_lines, 10_000);
+        assert!(!settings.scroll.on_output);
+        assert!(settings.scroll.on_keystroke);
+    }
+
+    #[test]
+    fn scroll_jumps_can_be_switched() {
+        let settings =
+            settings("[terminal]\nscroll_on_output = true\nscroll_on_keystroke = false\n");
+        assert!(settings.scroll.on_output);
+        assert!(!settings.scroll.on_keystroke);
     }
 
     #[test]

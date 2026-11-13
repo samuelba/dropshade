@@ -52,6 +52,10 @@ shell = ""
 shell_args = []
 # Lines kept for scrolling back, or "unlimited" (kept in memory, so it can grow large).
 scrollback = 10000
+# While scrolled up, jump back to the newest output when a program prints something...
+scroll_on_output = false
+# ...or when you type into the terminal (pasting always jumps back).
+scroll_on_keystroke = true
 # Directory for the first tab; empty means your home directory.
 working_directory = ""
 # Let bash and zsh report their prompts and commands (OSC 133), for jumping between prompts,

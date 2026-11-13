@@ -401,6 +401,16 @@ fn terminal(ctx: Ctx<'_>) -> Element<'static, Message> {
         ),
         scrollback,
         hinted(
+            switch(ctx, "Scroll on output", Switch::ScrollOnOutput),
+            "While scrolled up, jump back to the newest output when a program prints something.",
+            ctx.colors,
+        ),
+        hinted(
+            switch(ctx, "Scroll on keystroke", Switch::ScrollOnKeystroke),
+            "While scrolled up, jump back to the newest output when you type. Pasting always does.",
+            ctx.colors,
+        ),
+        hinted(
             switch(ctx, "Shell integration", Switch::ShellIntegration),
             "Lets bash and zsh mark prompts and commands, to jump between prompts, select a command's output and close idle tabs without asking. Applies to new tabs.",
             ctx.colors,

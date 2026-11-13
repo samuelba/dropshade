@@ -196,6 +196,8 @@ pub enum Switch {
     Scrollbar,
     HideOnUnfocus,
     UnlimitedScrollback,
+    ScrollOnOutput,
+    ScrollOnKeystroke,
     Ime,
     CopyOnSelect,
     ShellIntegration,
@@ -220,6 +222,8 @@ impl Switch {
             Self::UnlimitedScrollback => {
                 matches!(config.terminal.scrollback, Scrollback::Keyword(_))
             }
+            Self::ScrollOnOutput => config.terminal.scroll_on_output,
+            Self::ScrollOnKeystroke => config.terminal.scroll_on_keystroke,
             Self::Ime => config.input.ime,
             Self::CopyOnSelect => config.input.copy_on_select,
             Self::ShellIntegration => config.terminal.shell_integration,
@@ -238,6 +242,8 @@ impl Switch {
             Self::CursorBlink => ("appearance", "cursor_blink"),
             Self::Scrollbar => ("appearance", "scrollbar"),
             Self::HideOnUnfocus => ("window", "hide_on_unfocus"),
+            Self::ScrollOnOutput => ("terminal", "scroll_on_output"),
+            Self::ScrollOnKeystroke => ("terminal", "scroll_on_keystroke"),
             Self::Ime => ("input", "ime"),
             Self::CopyOnSelect => ("input", "copy_on_select"),
             Self::ShellIntegration => ("terminal", "shell_integration"),

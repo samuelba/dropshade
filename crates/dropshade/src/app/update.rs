@@ -174,6 +174,9 @@ impl App {
                 Task::none()
             }
             Some(Notice::Output) => {
+                if self.settings.scroll.on_output {
+                    tab.content.terminal.scroll_to_bottom();
+                }
                 if let Some(command) = tab.content.pending_command.take() {
                     tab.content
                         .terminal
@@ -228,6 +231,9 @@ impl App {
                 self.clipboard.write(Selection::Primary, text.clone()),
                 self.clipboard.write(Selection::Clipboard, text),
             ]);
+        }
+        if matches!(interaction, Interaction::Input(_)) && self.settings.scroll.on_keystroke {
+            tab.content.terminal.scroll_to_bottom();
         }
         apply(&mut tab.content.terminal, self.clipboard, interaction)
     }
@@ -452,10 +458,7 @@ fn running_command(terminal: &Terminal) -> Option<RunningCommand> {
 
 fn apply(terminal: &mut Terminal, clipboard: Clipboard, interaction: Interaction) -> Task<Message> {
     match interaction {
-        Interaction::Input(bytes) => {
-            terminal.scroll_to_bottom();
-            terminal.write(bytes);
-        }
+        Interaction::Input(bytes) => terminal.write(bytes),
         Interaction::Resize(size) => terminal.resize(size),
         Interaction::Scroll(lines) => terminal.scroll(lines),
         Interaction::ScrollTo(offset) => terminal.scroll_to(offset),

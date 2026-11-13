@@ -199,6 +199,10 @@ pub struct Terminal {
     pub shell: String,
     pub shell_args: Vec<String>,
     pub scrollback: Scrollback,
+    /// Jump back to the live end when new output arrives while scrolled up.
+    pub scroll_on_output: bool,
+    /// Jump back to the live end when a key is typed while scrolled up.
+    pub scroll_on_keystroke: bool,
     /// Directory for the first tab; empty means the home directory.
     pub working_directory: String,
     pub env: BTreeMap<String, String>,
@@ -212,6 +216,8 @@ impl Default for Terminal {
             shell: String::new(),
             shell_args: Vec::new(),
             scrollback: Scrollback::Lines(10_000),
+            scroll_on_output: false,
+            scroll_on_keystroke: true,
             working_directory: String::new(),
             env: BTreeMap::new(),
             shell_integration: true,
