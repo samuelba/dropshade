@@ -32,6 +32,22 @@ function spawnClient(launcher, argv) {
 }
 
 /**
+ * Points the app at the desktop's cursor theme. Mutter before GNOME 48 lacks the cursor-shape
+ * protocol, so the app draws its own pointer from XCURSOR_THEME, which GNOME never sets; without
+ * it the pointer falls back to the system "default" theme (often DMZ-White) instead of the one
+ * the rest of the desktop uses. Values the user set in the environment are kept.
+ */
+function setCursorTheme(launcher) {
+    const iface = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
+    const theme = iface.get_string('cursor-theme');
+    if (theme)
+        launcher.setenv('XCURSOR_THEME', theme, false);
+    const size = iface.get_int('cursor-size');
+    if (size > 0)
+        launcher.setenv('XCURSOR_SIZE', `${size}`, false);
+}
+
+/**
  * Starts Dropshade as a privileged Wayland client so its window can be identified reliably.
  */
 export class AppLauncher {
@@ -81,6 +97,7 @@ export class AppLauncher {
         }
         const launcher = new Gio.SubprocessLauncher({flags: Gio.SubprocessFlags.NONE});
         launcher.setenv('DROPSHADE_SHELL_LAUNCHED', '1', true);
+        setCursorTheme(launcher);
 
         let spawned;
         try {
