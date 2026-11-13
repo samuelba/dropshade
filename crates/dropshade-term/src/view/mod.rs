@@ -96,14 +96,22 @@ impl Default for ViewState {
     }
 }
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent options of one view, each set by its own builder method"
+)]
 pub struct TerminalView<'a, Message> {
     terminal: &'a Terminal,
     style: &'a ViewStyle,
     input: &'a InputConfig,
-    on_interaction: fn(Interaction) -> Message,
+    on_interaction: Box<dyn Fn(Interaction) -> Message + 'a>,
     cursor_visible: bool,
     bell: bool,
     accepts_input: bool,
+    active: bool,
+    split: bool,
+    dim: f32,
+    zoomed: bool,
 }
 
 impl<Message> std::fmt::Debug for TerminalView<'_, Message> {
@@ -119,17 +127,52 @@ impl<'a, Message> TerminalView<'a, Message> {
         terminal: &'a Terminal,
         style: &'a ViewStyle,
         input: &'a InputConfig,
-        on_interaction: fn(Interaction) -> Message,
+        on_interaction: impl Fn(Interaction) -> Message + 'a,
     ) -> Self {
         Self {
             terminal,
             style,
             input,
-            on_interaction,
+            on_interaction: Box::new(on_interaction),
             cursor_visible: true,
             bell: false,
             accepts_input: true,
+            active: true,
+            split: false,
+            dim: 0.0,
+            zoomed: false,
         }
+    }
+
+    /// Marks a pane that fills its tab while the others are hidden.
+    #[must_use]
+    pub fn zoomed(self, zoomed: bool) -> Self {
+        Self { zoomed, ..self }
+    }
+
+    /// Whether the tab has other panes. Without them, the pane shortcuts (moving the focus,
+    /// resizing, zooming) give their keys to the program instead.
+    #[must_use]
+    pub fn split(self, split: bool) -> Self {
+        Self { split, ..self }
+    }
+
+    /// Fades the terminal towards its background by this much (0 to 1), for unfocused panes.
+    #[must_use]
+    pub fn dim(self, dim: f32) -> Self {
+        Self { dim, ..self }
+    }
+
+    /// Whether this terminal has the keyboard among the panes of its tab. The others ignore
+    /// key presses and the input method, and show a hollow cursor; the mouse works in all.
+    #[must_use]
+    pub fn active(self, active: bool) -> Self {
+        Self { active, ..self }
+    }
+
+    /// Whether key presses and IME input reach this terminal.
+    fn takes_keys(&self) -> bool {
+        self.accepts_input && self.active
     }
 
     /// Stops keyboard and IME input from reaching the terminal, e.g. while a dialog is open.
@@ -245,7 +288,12 @@ impl<'a, Message> TerminalView<'a, Message> {
     }
 
     fn key_pressed(&self, state: &mut ViewState, press: KeyPress<'_>) -> Option<Interaction> {
-        let resolution = input::resolve(press.key, press.modifiers, &self.input.bindings);
+        let resolution = match input::resolve(press.key, press.modifiers, &self.input.bindings) {
+            Resolution::Shortcut(shortcut) if shortcut.needs_split() && !self.split => {
+                Resolution::Encode
+            }
+            resolution => resolution,
+        };
         if let Resolution::Shortcut(shortcut) = resolution {
             state.vi_pending = None;
             return Some(Interaction::Shortcut(shortcut));
@@ -298,7 +346,7 @@ impl<Message> TerminalView<'_, Message> {
     ) -> Option<Action<Message>> {
         match event {
             Event::Keyboard(keyboard::Event::KeyPressed { .. }) | Event::InputMethod(_)
-                if !self.accepts_input =>
+                if !self.takes_keys() =>
             {
                 None
             }

@@ -3,6 +3,15 @@
 use iced::keyboard::key::Named;
 use iced::keyboard::{Key, Modifiers};
 
+/// Which neighbouring pane, or which way a divider moves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaneDirection {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shortcut {
     Copy,
@@ -37,11 +46,23 @@ pub enum Shortcut {
     ToggleViMode,
     /// Activates the tab at this zero-based index.
     GoToTab(u8),
+    /// Splits the focused pane, putting a new terminal to its right.
+    SplitRight,
+    /// Splits the focused pane, putting a new terminal below it.
+    SplitDown,
+    /// Closes the focused pane, or the tab when it is the only one.
+    ClosePane,
+    /// Gives the neighbouring pane the keyboard.
+    FocusPane(PaneDirection),
+    /// Moves the focused pane's divider.
+    ResizePane(PaneDirection),
+    /// Fills the tab with the focused pane, or shows all panes again.
+    TogglePaneZoom,
 }
 
 impl Shortcut {
     /// Every action name a keybinding accepts, apart from `go-to-tab-1` to `go-to-tab-9`.
-    pub const NAMES: [&'static str; 24] = [
+    pub const NAMES: [&'static str; 36] = [
         "copy",
         "paste",
         "paste-primary",
@@ -66,7 +87,28 @@ impl Shortcut {
         "select-command-output",
         "open-settings",
         "toggle-vi-mode",
+        "split-right",
+        "split-down",
+        "close-pane",
+        "focus-pane-left",
+        "focus-pane-right",
+        "focus-pane-up",
+        "focus-pane-down",
+        "resize-pane-left",
+        "resize-pane-right",
+        "resize-pane-up",
+        "resize-pane-down",
+        "toggle-pane-zoom",
     ];
+
+    /// Shortcuts that only mean something in a split tab. Elsewhere their keys reach the
+    /// program, so a lone pane keeps Alt+Arrows for the shell.
+    pub fn needs_split(self) -> bool {
+        matches!(
+            self,
+            Self::FocusPane(_) | Self::ResizePane(_) | Self::TogglePaneZoom
+        )
+    }
 }
 
 impl std::str::FromStr for Shortcut {
@@ -110,6 +152,18 @@ impl std::str::FromStr for Shortcut {
             "select-command-output" => Self::SelectCommandOutput,
             "open-settings" => Self::OpenSettings,
             "toggle-vi-mode" => Self::ToggleViMode,
+            "split-right" => Self::SplitRight,
+            "split-down" => Self::SplitDown,
+            "close-pane" => Self::ClosePane,
+            "focus-pane-left" => Self::FocusPane(PaneDirection::Left),
+            "focus-pane-right" => Self::FocusPane(PaneDirection::Right),
+            "focus-pane-up" => Self::FocusPane(PaneDirection::Up),
+            "focus-pane-down" => Self::FocusPane(PaneDirection::Down),
+            "resize-pane-left" => Self::ResizePane(PaneDirection::Left),
+            "resize-pane-right" => Self::ResizePane(PaneDirection::Right),
+            "resize-pane-up" => Self::ResizePane(PaneDirection::Up),
+            "resize-pane-down" => Self::ResizePane(PaneDirection::Down),
+            "toggle-pane-zoom" => Self::TogglePaneZoom,
             _ => return Err(format!("unknown action \"{name}\"")),
         };
         Ok(shortcut)
@@ -125,8 +179,11 @@ pub fn shortcut(key: &Key, modifiers: Modifiers) -> Option<Shortcut> {
         Key::Character(c) if ctrl && !alt => ctrl_zoom(c),
         Key::Character(c) if alt && !ctrl && !shift => alt_digit(c),
         Key::Named(named) if ctrl && !alt => ctrl_named(*named, shift),
+        Key::Named(named) if alt && !ctrl && !shift => arrow(*named).map(Shortcut::FocusPane),
+        Key::Named(named) if ctrl && shift && alt => arrow(*named).map(Shortcut::ResizePane),
         Key::Named(named) if shift && !ctrl && !alt => shift_named(*named),
         Key::Named(Named::F11) if modifiers.is_empty() => Some(Shortcut::ToggleMaximize),
+        Key::Named(Named::F2) if modifiers.is_empty() => Some(Shortcut::RenameTab),
         _ => None,
     }
 }
@@ -136,11 +193,23 @@ fn ctrl_shift_character(c: &str) -> Option<Shortcut> {
         "c" => Some(Shortcut::Copy),
         "v" => Some(Shortcut::Paste),
         "t" => Some(Shortcut::NewTab),
-        "w" => Some(Shortcut::CloseTab),
-        "r" => Some(Shortcut::RenameTab),
+        "w" => Some(Shortcut::ClosePane),
+        "x" => Some(Shortcut::TogglePaneZoom),
+        "r" => Some(Shortcut::SplitRight),
+        "d" => Some(Shortcut::SplitDown),
         "f" => Some(Shortcut::Search),
         "a" => Some(Shortcut::SelectCommandOutput),
         _ => ctrl_zoom(c),
+    }
+}
+
+fn arrow(named: Named) -> Option<PaneDirection> {
+    match named {
+        Named::ArrowLeft => Some(PaneDirection::Left),
+        Named::ArrowRight => Some(PaneDirection::Right),
+        Named::ArrowUp => Some(PaneDirection::Up),
+        Named::ArrowDown => Some(PaneDirection::Down),
+        _ => None,
     }
 }
 
@@ -234,8 +303,13 @@ mod tests {
     fn tab_shortcuts() {
         let ctrl_shift = Modifiers::CTRL | Modifiers::SHIFT;
         assert_eq!(character("t", ctrl_shift), Some(Shortcut::NewTab));
-        assert_eq!(character("w", ctrl_shift), Some(Shortcut::CloseTab));
-        assert_eq!(character("r", ctrl_shift), Some(Shortcut::RenameTab));
+        assert_eq!(character("w", ctrl_shift), Some(Shortcut::ClosePane));
+        assert_eq!("close-tab".parse(), Ok(Shortcut::CloseTab));
+        assert_eq!(
+            named(Named::F2, Modifiers::empty()),
+            Some(Shortcut::RenameTab)
+        );
+        assert_eq!(named(Named::F2, Modifiers::SHIFT), None);
         assert_eq!(character("f", ctrl_shift), Some(Shortcut::Search));
         assert_eq!("search".parse(), Ok(Shortcut::Search));
         assert_eq!(
@@ -332,6 +406,46 @@ mod tests {
         assert_eq!(character("9", Modifiers::ALT), Some(Shortcut::GoToTab(8)));
         assert_eq!(character("0", Modifiers::ALT), None);
         assert_eq!(character("x", Modifiers::ALT), None);
+    }
+
+    #[test]
+    fn split_shortcuts() {
+        let ctrl_shift = Modifiers::CTRL | Modifiers::SHIFT;
+        let ctrl_shift_alt = ctrl_shift | Modifiers::ALT;
+        assert_eq!(character("r", ctrl_shift), Some(Shortcut::SplitRight));
+        assert_eq!(character("D", ctrl_shift), Some(Shortcut::SplitDown));
+        assert_eq!(
+            character("d", Modifiers::CTRL | Modifiers::ALT),
+            None,
+            "Ctrl+Alt+D is the desktop's"
+        );
+        assert_eq!(character("x", ctrl_shift), Some(Shortcut::TogglePaneZoom));
+        assert_eq!(
+            named(Named::ArrowLeft, Modifiers::ALT),
+            Some(Shortcut::FocusPane(PaneDirection::Left))
+        );
+        assert_eq!(
+            named(Named::ArrowDown, Modifiers::ALT),
+            Some(Shortcut::FocusPane(PaneDirection::Down))
+        );
+        assert_eq!(
+            named(Named::ArrowRight, ctrl_shift_alt),
+            Some(Shortcut::ResizePane(PaneDirection::Right))
+        );
+        assert_eq!(
+            named(Named::ArrowUp, ctrl_shift_alt),
+            Some(Shortcut::ResizePane(PaneDirection::Up))
+        );
+        assert_eq!(named(Named::Enter, Modifiers::ALT), None);
+        assert_eq!("split-right".parse(), Ok(Shortcut::SplitRight));
+        assert_eq!(
+            "resize-pane-down".parse(),
+            Ok(Shortcut::ResizePane(PaneDirection::Down))
+        );
+        assert!(Shortcut::FocusPane(PaneDirection::Up).needs_split());
+        assert!(Shortcut::TogglePaneZoom.needs_split());
+        assert!(!Shortcut::SplitRight.needs_split());
+        assert!(!Shortcut::ClosePane.needs_split());
     }
 
     #[test]

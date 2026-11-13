@@ -32,9 +32,8 @@ pub enum SearchMessage {
 impl App {
     pub(super) fn open_search(&mut self) -> Task<Message> {
         let vi = self
-            .tabs
-            .active()
-            .is_some_and(|tab| tab.content.terminal.vi_mode());
+            .focused_session()
+            .is_some_and(|session| session.terminal.vi_mode());
         let bar = self.search.get_or_insert_with(SearchBar::default);
         if vi && !bar.vi {
             *bar = SearchBar {
@@ -52,8 +51,8 @@ impl App {
 
     pub(super) fn close_search(&mut self) {
         self.search = None;
-        if let Some(tab) = self.tabs.active_mut() {
-            tab.content.terminal.clear_search();
+        if let Some(session) = self.focused_session_mut() {
+            session.terminal.clear_search();
         }
     }
 
@@ -66,10 +65,15 @@ impl App {
             self.close_search();
             return Task::none();
         }
-        let (Some(bar), Some(tab)) = (self.search.as_mut(), self.tabs.active_mut()) else {
+        // The tabs and the bar are borrowed apart, so not through `focused_session_mut`.
+        let session = self
+            .tabs
+            .active_mut()
+            .and_then(|tab| tab.content.focused_content_mut());
+        let (Some(bar), Some(session)) = (self.search.as_mut(), session) else {
             return Task::none();
         };
-        let terminal = &mut tab.content.terminal;
+        let terminal = &mut session.terminal;
         let found = match message {
             SearchMessage::Input(query) => {
                 let found = terminal.search(&query);

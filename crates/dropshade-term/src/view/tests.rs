@@ -354,3 +354,66 @@ fn shortcuts_still_work_in_vi_mode() {
         Some(Interaction::Shortcut(input::Shortcut::Copy))
     );
 }
+
+fn key_press(key: Key, modifiers: Modifiers) -> Event {
+    Event::Keyboard(keyboard::Event::KeyPressed {
+        modified_key: key.clone(),
+        key,
+        physical_key: Physical::Unidentified(NativeCode::Unidentified),
+        location: Location::Standard,
+        modifiers,
+        text: None,
+        repeat: false,
+    })
+}
+
+fn press_with(view: &TerminalView<'_, Interaction>, event: &Event) -> Option<Interaction> {
+    let bounds = bounds(660.0, 404.0);
+    let (message, _, _) = view
+        .update(
+            &mut ViewState::default(),
+            event,
+            bounds,
+            mouse::Cursor::Unavailable,
+        )?
+        .into_inner();
+    message
+}
+
+#[test]
+fn pane_keys_reach_the_program_in_a_tab_without_splits() {
+    let terminal = terminal();
+    let (style, input) = (style(), InputConfig::default());
+    let alt_left = key_press(Key::Named(keyboard::key::Named::ArrowLeft), Modifiers::ALT);
+    let lone = TerminalView::new(&terminal, &style, &input, |interaction| interaction);
+    assert!(
+        matches!(press_with(&lone, &alt_left), Some(Interaction::Input(_))),
+        "Alt+Left is encoded for the shell"
+    );
+    let split = TerminalView::new(&terminal, &style, &input, |interaction| interaction).split(true);
+    assert_eq!(
+        press_with(&split, &alt_left),
+        Some(Interaction::Shortcut(Shortcut::FocusPane(
+            input::PaneDirection::Left
+        )))
+    );
+    let split_right = key_press(
+        Key::Character("r".into()),
+        Modifiers::CTRL | Modifiers::SHIFT,
+    );
+    assert_eq!(
+        press_with(&lone, &split_right),
+        Some(Interaction::Shortcut(Shortcut::SplitRight)),
+        "splitting works in a lone pane"
+    );
+}
+
+#[test]
+fn panes_without_the_keyboard_ignore_keys() {
+    let terminal = terminal();
+    let (style, input) = (style(), InputConfig::default());
+    let view =
+        TerminalView::new(&terminal, &style, &input, |interaction| interaction).active(false);
+    let a = key_press(Key::Character("a".into()), Modifiers::empty());
+    assert_eq!(press_with(&view, &a), None);
+}

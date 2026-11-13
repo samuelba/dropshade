@@ -2,11 +2,15 @@
 
 use dropshade_term::colors::to_iced;
 use dropshade_term::{TerminalView, TerminalWidget};
+use iced::widget::canvas::{self, Canvas};
+use iced::widget::pane_grid::{self, PaneGrid};
 use iced::widget::{Space, button, column, container, mouse_area, opaque, pin, row, stack, text};
-use iced::{Element, Fill, Font, Point, Size, font, mouse};
+use iced::{Background, Border, Color, Element, Fill, Font, Point, Size, font, mouse};
 
-use super::{App, Host, Menu, Message, PendingClose};
+use super::session::Session;
+use super::{App, CloseTarget, Host, Menu, Message, PaneKey, PaneMessage, PendingClose};
 use crate::tabs::{BarPosition, BarState, TabMessage, bar};
+use crate::theme::UiColors;
 
 const MENU_WIDTH: f32 = 168.0;
 const MENU_ITEM_HEIGHT: f32 = 30.0;
@@ -14,6 +18,9 @@ const MENU_ITEMS: f32 = 4.0;
 const MENU_PADDING: f32 = 4.0;
 const DIALOG_WIDTH: f32 = 380.0;
 const TEXT_SIZE: f32 = 13.0;
+/// How far beside a divider it can still be grabbed.
+const DIVIDER_LEEWAY: f32 = 4.0;
+const DIVIDER_WIDTH: f32 = 2.0;
 
 impl App {
     /// Shows `content` over the terminal, keeping the pointer and clicks from reaching it.
@@ -79,17 +86,39 @@ impl App {
 
     fn terminal(&self) -> Element<'_, Message> {
         if let Some(tab) = self.tabs.active() {
-            let session = &tab.content;
-            let view = TerminalView::new(
-                &session.terminal,
-                &self.settings.style,
-                &self.settings.input,
-                Message::Interaction,
-            )
-            .cursor_visible(session.cursor_on || !session.terminal.cursor_blinks())
-            .bell(session.bell)
-            .accepts_input(!self.overlay_open());
-            return TerminalWidget::new(view).into();
+            let id = tab.id;
+            let focused = tab.content.focused();
+            let split = tab.content.is_split();
+            let colors = self.settings.colors;
+            let style = &self.settings.style;
+            let min_size = 3.0 * style.cell.height + 2.0 * style.padding;
+            let grid = PaneGrid::new(tab.content.grid(), move |pane, session, zoomed| {
+                let key = PaneKey { tab: id, pane };
+                let view = self
+                    .pane(key, session, pane == focused, split)
+                    .zoomed(zoomed);
+                pane_grid::Content::new(TerminalWidget::new(view))
+            })
+            .spacing(if split { DIVIDER_WIDTH } else { 0.0 })
+            .min_size(min_size)
+            .on_click(move |pane| Message::Pane(id, PaneMessage::Focus(pane)))
+            .on_resize(DIVIDER_LEEWAY, move |event| {
+                Message::Pane(id, PaneMessage::Resized(event))
+            })
+            .style(move |_| divider_style(colors));
+            if !split || tab.content.zoomed() {
+                return grid.into();
+            }
+            // Painted behind the panes, so only the gaps between them show it: a background
+            // under the whole grid would show through translucent terminals.
+            let dividers = Canvas::new(Dividers {
+                layout: tab.content.layout().clone(),
+                min_size,
+                color: colors.border,
+            })
+            .width(Fill)
+            .height(Fill);
+            return stack![dividers, grid].into();
         }
         let message = self.error.as_deref().map_or_else(String::new, |error| {
             format!("Dropshade could not start a shell.\n\n{error}")
@@ -97,6 +126,32 @@ impl App {
         container(text(message).color(self.settings.colors.text))
             .center(Fill)
             .into()
+    }
+
+    fn pane<'a>(
+        &'a self,
+        key: PaneKey,
+        session: &'a Session,
+        focused: bool,
+        split: bool,
+    ) -> TerminalView<'a, Message> {
+        let dim = if focused || !split {
+            0.0
+        } else {
+            self.settings.unfocused_dim
+        };
+        TerminalView::new(
+            &session.terminal,
+            &self.settings.style,
+            &self.settings.input,
+            move |interaction| Message::Interaction(key, interaction),
+        )
+        .cursor_visible(session.cursor_on || !session.terminal.cursor_blinks())
+        .bell(session.bell)
+        .accepts_input(!self.overlay_open())
+        .active(focused)
+        .split(split)
+        .dim(dim)
     }
 
     /// A strip above the terminal explaining configuration problems.
@@ -163,17 +218,40 @@ impl App {
             weight: font::Weight::Bold,
             ..Font::DEFAULT
         };
-        let label = self
-            .tabs
-            .get(pending.id)
-            .map_or("this tab", |tab| tab.label());
+        let pane = matches!(pending.target, CloseTarget::Pane(_));
+        let (noun, confirm) = if pane {
+            ("pane", "Close pane")
+        } else {
+            ("tab", "Close tab")
+        };
+        let title = if pane {
+            "Close this pane?".to_owned()
+        } else {
+            let label = self
+                .tabs
+                .get(pending.target.tab())
+                .map_or("this tab", |tab| tab.label());
+            format!("Close “{label}”?")
+        };
+        let others = match pending.others {
+            0 => String::new(),
+            1 => " and 1 more command are".to_owned(),
+            n => format!(" and {n} more commands are"),
+        };
+        let what = match (&pending.process, others.is_empty()) {
+            (Some(process), true) => format!("“{process}” is"),
+            (Some(process), false) => format!("“{process}”{others}"),
+            (None, true) => "A command is".to_owned(),
+            (None, false) => format!("A command{others}"),
+        };
+        let body = format!("{what} still running. Closing the {noun} stops it.");
         let actions = row![
             Space::new().width(Fill),
             button(text("Cancel").size(TEXT_SIZE))
                 .padding([7, 14])
                 .style(move |_, status| colors.ghost_button(colors.text, status))
                 .on_press(Message::Tab(TabMessage::CancelClose)),
-            button(text("Close tab").size(TEXT_SIZE))
+            button(text(confirm).size(TEXT_SIZE))
                 .padding([7, 14])
                 .style(move |_, status| colors.accent_button(status))
                 .on_press(Message::Tab(TabMessage::ConfirmClose)),
@@ -181,15 +259,8 @@ impl App {
         .spacing(8);
         let card = container(
             column![
-                text(format!("Close “{label}”?")).size(16).font(bold),
-                text(match &pending.process {
-                    Some(process) => {
-                        format!("“{process}” is still running. Closing the tab stops it.")
-                    }
-                    None => "A command is still running. Closing the tab stops it.".to_owned(),
-                })
-                .size(TEXT_SIZE)
-                .color(colors.muted),
+                text(title).size(16).font(bold),
+                text(body).size(TEXT_SIZE).color(colors.muted),
                 actions,
             ]
             .spacing(14),
@@ -202,6 +273,56 @@ impl App {
                 .center(Fill)
                 .style(move |_| colors.backdrop_style()),
         )
+    }
+}
+
+/// Draws the dividers of a split tab into the gaps between its panes.
+#[derive(Debug)]
+struct Dividers {
+    layout: pane_grid::Node,
+    min_size: f32,
+    color: Color,
+}
+
+impl canvas::Program<Message> for Dividers {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &(),
+        renderer: &iced::Renderer,
+        _theme: &iced::Theme,
+        bounds: iced::Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<canvas::Geometry> {
+        let mut frame = canvas::Frame::new(renderer, bounds.size());
+        let splits = self
+            .layout
+            .split_regions(DIVIDER_WIDTH, self.min_size, bounds.size());
+        for (axis, region, ratio) in splits.values() {
+            let line = axis.split_line_bounds(*region, *ratio, DIVIDER_WIDTH);
+            frame.fill_rectangle(line.position(), line.size(), self.color);
+        }
+        vec![frame.into_geometry()]
+    }
+}
+
+/// The dividers light up in the accent color while hovered or dragged.
+fn divider_style(colors: UiColors) -> pane_grid::Style {
+    let line = pane_grid::Line {
+        color: colors.accent,
+        width: DIVIDER_WIDTH,
+    };
+    pane_grid::Style {
+        hovered_region: pane_grid::Highlight {
+            background: Background::Color(Color {
+                a: 0.2,
+                ..colors.accent
+            }),
+            border: Border::default(),
+        },
+        picked_split: line,
+        hovered_split: line,
     }
 }
 

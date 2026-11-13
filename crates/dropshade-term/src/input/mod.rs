@@ -7,7 +7,7 @@ mod shortcut;
 
 pub use bindings::{Binding, BindingAction, Chord, Resolution, resolve, shortcut_label};
 pub use paste::{paste_bytes, shell_quoted_path};
-pub use shortcut::{Shortcut, shortcut};
+pub use shortcut::{PaneDirection, Shortcut, shortcut};
 
 use alacritty_terminal::term::TermMode;
 use iced::keyboard::key::Named;

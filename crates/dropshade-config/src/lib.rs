@@ -55,6 +55,12 @@ fn validate(config: &Config) -> Result<(), String> {
         1.0,
     )?;
     check_range("appearance.padding", config.appearance.padding, 0.0, 200.0)?;
+    check_range(
+        "appearance.unfocused_pane_dim",
+        config.appearance.unfocused_pane_dim,
+        0.0,
+        0.8,
+    )?;
     check_fraction("window.width", config.window.width, 0.2)?;
     check_fraction("window.height", config.window.height, 0.1)?;
     if config.window.animation_duration > 2000 {

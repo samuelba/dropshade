@@ -55,6 +55,8 @@ pub struct Appearance {
     pub cursor_shape: CursorShape,
     pub cursor_blink: bool,
     pub scrollbar: bool,
+    /// How much panes without the keyboard fade towards the background (0 = not at all).
+    pub unfocused_pane_dim: f32,
 }
 
 impl Default for Appearance {
@@ -68,6 +70,7 @@ impl Default for Appearance {
             cursor_shape: CursorShape::Block,
             cursor_blink: false,
             scrollbar: true,
+            unfocused_pane_dim: 0.15,
         }
     }
 }

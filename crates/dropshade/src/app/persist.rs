@@ -1,11 +1,17 @@
 //! Saving and restoring tabs: the automatic session and named layouts.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use dropshade_session::{self as sessions, Snapshot, TabSnapshot};
+use dropshade_session::{
+    self as sessions, PaneSnapshot, PaneTree, Snapshot, SplitDirection, TabSnapshot,
+};
 use iced::Task;
+use iced::widget::pane_grid::{Axis, Node};
 
-use super::{App, Message};
+use super::session::Session;
+use super::split::sync_title;
+use super::{App, Message, PaneKey};
+use crate::tabs::{self, Panes};
 
 /// What the first tabs of a new instance are.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -92,10 +98,20 @@ impl App {
         let tabs = self
             .tabs
             .iter()
-            .map(|tab| TabSnapshot {
-                name: tab.custom_name.clone(),
-                cwd: tab.content.terminal.working_directory(),
-                command: None,
+            .map(|tab| {
+                let mut saved = TabSnapshot {
+                    name: tab.custom_name.clone(),
+                    ..TabSnapshot::default()
+                };
+                if tab.content.is_split() {
+                    saved.panes = pane_list(&tab.content);
+                } else {
+                    saved.cwd = tab
+                        .content
+                        .focused_content()
+                        .and_then(|session| session.terminal.working_directory());
+                }
+                saved
             })
             .collect();
         Snapshot {
@@ -121,21 +137,82 @@ impl App {
     }
 
     fn open_saved_tab(&mut self, saved: &TabSnapshot) -> Task<Message> {
-        let directory = saved
-            .cwd
-            .as_deref()
-            .map(sessions::expand_home)
-            .filter(|dir| dir.is_dir());
-        let task = self.open_tab(directory);
-        if let Some(id) = self.tabs.active_id() {
-            if let Some(name) = &saved.name {
-                self.tabs.rename(id, name);
-            }
-            if let Some(tab) = self.tabs.get_mut(id) {
-                tab.content.pending_command.clone_from(&saved.command);
-            }
+        let first = saved.panes.first();
+        let directory = first
+            .and_then(|pane| pane.cwd.as_deref())
+            .or(saved.cwd.as_deref());
+        let command = first.map_or(&saved.command, |pane| &pane.command);
+        let count = self.tabs.len();
+        let task = self.open_tab(existing_directory(directory));
+        if self.tabs.len() == count {
+            return task;
         }
-        task
+        let Some(id) = self.tabs.active_id() else {
+            return task;
+        };
+        if let Some(name) = &saved.name {
+            self.tabs.rename(id, name);
+        }
+        if let Some(session) = self
+            .tabs
+            .get_mut(id)
+            .and_then(|tab| tab.content.focused_content_mut())
+        {
+            session.pending_command.clone_from(command);
+        }
+        let splits = self.open_saved_splits(id, saved);
+        Task::batch([task, splits])
+    }
+
+    /// Splits a restored tab's first pane into the rest of its saved panes.
+    fn open_saved_splits(&mut self, id: tabs::TabId, saved: &TabSnapshot) -> Task<Message> {
+        let Some(first) = self.tabs.get(id).map(|tab| tab.content.focused()) else {
+            return Task::none();
+        };
+        // The panes made so far, in list order.
+        let mut made = vec![first];
+        let mut tasks = Vec::new();
+        for (index, pane) in saved.panes.iter().enumerate().skip(1) {
+            let target = pane
+                .of
+                .unwrap_or(index)
+                .checked_sub(1)
+                .and_then(|of| made.get(of).copied());
+            let (Some(target), Some(direction)) = (target, pane.split) else {
+                break;
+            };
+            let directory = pane.cwd.as_deref().or(saved.cwd.as_deref());
+            let Some((mut session, events)) = self.spawn_pane(existing_directory(directory)) else {
+                break;
+            };
+            session.pending_command.clone_from(&pane.command);
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "a share between 0.05 and 0.95 fits an f32"
+            )]
+            let ratio = (1.0 - pane.size.unwrap_or(0.5)) as f32;
+            let Some(new) = self.tabs.get_mut(id).and_then(|tab| {
+                tab.content
+                    .split_pane(target, split_direction(direction), ratio, session)
+            }) else {
+                break;
+            };
+            made.push(new);
+            let key = PaneKey { tab: id, pane: new };
+            tasks.push(Task::run(events, move |event| Message::Term(key, event)));
+        }
+        let focused = saved
+            .panes
+            .iter()
+            .position(|pane| pane.focus)
+            .and_then(|index| made.get(index).copied());
+        if let Some(tab) = self.tabs.get_mut(id) {
+            if let Some(pane) = focused {
+                tab.content.focus(pane);
+            }
+            sync_title(tab);
+        }
+        Task::batch(tasks)
     }
 
     fn read_session(&self) -> Option<Snapshot> {
@@ -168,5 +245,53 @@ impl App {
                 None
             }
         }
+    }
+}
+
+/// A saved directory that still exists, with `~` expanded.
+fn existing_directory(directory: Option<&Path>) -> Option<PathBuf> {
+    directory
+        .map(sessions::expand_home)
+        .filter(|dir| dir.is_dir())
+}
+
+fn split_direction(direction: SplitDirection) -> tabs::SplitDirection {
+    match direction {
+        SplitDirection::Right => tabs::SplitDirection::Right,
+        SplitDirection::Down => tabs::SplitDirection::Down,
+    }
+}
+
+/// A split tab's panes as a saved list: each pane's directory, which one has the keyboard, and
+/// the splits that rebuild the layout.
+fn pane_list(panes: &Panes<Session>) -> Vec<PaneSnapshot> {
+    let mut leaves = Vec::new();
+    let tree = pane_tree(panes.layout(), panes, &mut leaves);
+    sessions::panes_from_tree(&tree, &leaves)
+}
+
+fn pane_tree(node: &Node, panes: &Panes<Session>, leaves: &mut Vec<PaneSnapshot>) -> PaneTree {
+    match node {
+        Node::Pane(pane) => {
+            leaves.push(PaneSnapshot {
+                cwd: panes
+                    .get(*pane)
+                    .and_then(|session| session.terminal.working_directory()),
+                focus: *pane == panes.focused(),
+                ..PaneSnapshot::default()
+            });
+            PaneTree::Pane(leaves.len() - 1)
+        }
+        Node::Split {
+            axis, ratio, a, b, ..
+        } => PaneTree::Split {
+            direction: match axis {
+                Axis::Vertical => SplitDirection::Right,
+                Axis::Horizontal => SplitDirection::Down,
+            },
+            ratio: *ratio,
+            first: Box::new(pane_tree(a, panes, leaves)),
+            second: Box::new(pane_tree(b, panes, leaves)),
+        },
     }
 }
