@@ -23,11 +23,16 @@ slide animation.
 
 | Keys | Action |
 | ---- | ------ |
-| Ctrl+Shift+T / Ctrl+Shift+W | New tab / close tab (asks first if a command is still running) |
+| Ctrl+Shift+T | New tab |
+| Ctrl+Shift+R / Ctrl+Shift+D | [Split](#splits) the pane: new terminal to the right / below |
+| Ctrl+Shift+W | Close the pane, or the tab with its last pane (asks first if a command is still running) |
+| Alt+Arrows | Move to the pane in that direction (in split tabs) |
+| Ctrl+Shift+Alt+Arrows | Move the pane's divider (in split tabs) |
+| Ctrl+Shift+X | Zoom the pane to fill the tab / show all panes again |
 | Ctrl+PageDown / Ctrl+PageUp, Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab |
 | Ctrl+Shift+PageUp / Ctrl+Shift+PageDown | Move tab left / right |
 | Alt+1 … Alt+9 | Go to tab 1–9 |
-| Ctrl+Shift+R | Rename tab (or double-click the tab) |
+| F2 | Rename tab (or double-click the tab) |
 | Ctrl+Shift+C / Ctrl+Shift+V | Copy / paste |
 | Shift+Insert, middle click | Paste the primary selection |
 | Shift+PageUp/PageDown/Home/End | Scroll the scrollback |
@@ -40,7 +45,7 @@ slide animation.
 | F11 | Fill the screen / back to the configured size (hiding ends it) |
 | Ctrl+, | Open Settings |
 
-Right-click the terminal for Copy, Paste, **Select Command Output** (of the command you clicked on), **Select with Keyboard**, New Tab, Find, **Zoom** (in, out, normal size; for the
+Right-click the terminal for Copy, Paste, **Select Command Output** (of the command you clicked on), **Select with Keyboard**, New Tab, Find, **Panes** (split right or down, zoom, close), **Zoom** (in, out, normal size; for the
 session only, the configured font size stays), **Toggle Maximize**, **Reset** (clears modes a crashed program left on,
 like mouse reporting or the alternate screen, and clears the screen; scroll up to see what was
 there), **Reset and Clean** (also clears the scrollback), **Settings** and **About**. Settings is a panel
@@ -50,6 +55,18 @@ saves straight into `config.toml`, keeping its comments.
 When a program uses the mouse itself (zellij, tmux, vim with `mouse=a`, ...), clicks go to it.
 Hold **Shift** to click, select and open the menu in Dropshade instead, right-click the empty
 part of the tab bar, or press Ctrl+, for Settings.
+
+### Splits
+
+Ctrl+Shift+R and Ctrl+Shift+D split the focused pane; the new shell starts in the same directory.
+Click a pane or use Alt+Arrows to move between panes, drag a divider or press
+Ctrl+Shift+Alt+Arrows to resize, and Ctrl+Shift+X to zoom one pane for a while (a `ZOOM` badge
+shows while the others are hidden). Panes without the keyboard fade slightly; set how much with
+`[appearance] unfocused_pane_dim` (0 turns it off) or in Settings.
+
+In a tab that is not split, Alt+Arrows and the other pane keys go to the program as usual. All
+of them can be rebound under `[keybindings]` (`split-right`, `split-down`, `close-pane`,
+`focus-pane-left` …, `resize-pane-left` …, `toggle-pane-zoom`); `close-tab` closes a whole tab.
 
 ### Keyboard selection
 
@@ -237,8 +254,8 @@ There is only ever one instance: running `dropshade` again hands the request to 
 
 ## Sessions and layouts
 
-Dropshade remembers your tabs: their order, names and directories are saved as you work (and on
-logout) and reopened on the next start. Turn this off with `[session] restore = false`.
+Dropshade remembers your tabs: their order, names, splits and directories are saved as you work
+(and on logout) and reopened on the next start. Turn this off with `[session] restore = false`.
 
 Layouts are named sets of tabs in `~/.config/dropshade/layouts/<name>.toml`:
 
@@ -261,6 +278,29 @@ command = "cargo watch -x run"
 [[tab]]
 name = "logs"
 cwd = "~/projects/api"
+```
+
+A split tab lists its panes instead. Each pane after the first splits an earlier one: `split` is
+`"right"` or `"down"`, `of` names the pane it splits (counting from 1, the previous pane when left
+out) and `size` is the new pane's share of it (half when left out). `focus = true` marks the pane
+that gets the keyboard; the tab's `cwd` is the default for panes without their own.
+
+```toml
+[[tab]]
+name = "dev"
+cwd = "~/projects/api"
+
+[[tab.pane]]
+command = "nvim"
+
+[[tab.pane]]
+split = "right"
+size = 0.35
+command = "cargo watch -x test"
+
+[[tab.pane]]
+split = "down"
+command = "tail -f log.txt"
 ```
 
 `[session] layout = "work"` starts every session with that layout instead of the last one.
