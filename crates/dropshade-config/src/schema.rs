@@ -277,6 +277,8 @@ impl Default for Input {
 pub struct Session {
     /// Reopen the tabs (names and directories) that were open when Dropshade last quit.
     pub restore: bool,
+    /// Also bring back what each pane showed, saved as plain files when Dropshade quits.
+    pub restore_scrollback: bool,
     /// Always start with this layout from ~/.config/dropshade/layouts instead; empty for none.
     pub layout: String,
 }
@@ -285,6 +287,7 @@ impl Default for Session {
     fn default() -> Self {
         Self {
             restore: true,
+            restore_scrollback: false,
             layout: String::new(),
         }
     }

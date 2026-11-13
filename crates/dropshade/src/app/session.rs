@@ -32,6 +32,7 @@ pub struct Session {
 pub fn spawn(
     settings: &Settings,
     working_directory: Option<PathBuf>,
+    replay: Option<Vec<u8>>,
 ) -> Result<(Session, impl Stream<Item = TermEvent> + Send + use<>), SpawnError> {
     let command = settings.shell.clone();
     let (command, env) = if settings.shell_integration
@@ -57,6 +58,7 @@ pub fn spawn(
         scrollback_lines: settings.scrollback_lines,
         cursor_style: settings.cursor_style,
         cell: settings.style.cell,
+        replay,
         ..SpawnOptions::default()
     };
     let (terminal, events) = Terminal::spawn(options)?;

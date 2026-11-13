@@ -11,6 +11,7 @@ use iced::widget::{Id, operation};
 use iced::{Point, Task};
 
 use super::commands::{self, Finished};
+use super::persist::clear_saved_scrollback;
 use super::split::sync_title;
 use super::view::bar_origin;
 use super::zoom::Zoom;
@@ -120,7 +121,7 @@ impl App {
                 Task::none()
             }
             Message::Terminate => {
-                self.save_session();
+                self.save_session_on_exit();
                 iced::exit()
             }
             Message::WindowOpened(id, size) => self.window_opened(id, size),
@@ -145,7 +146,16 @@ impl App {
     }
 
     pub(super) fn open_tab(&mut self, working_directory: Option<PathBuf>) -> Task<Message> {
-        match session::spawn(&self.settings, working_directory) {
+        self.open_tab_with(working_directory, None)
+    }
+
+    /// Opens a tab whose terminal first shows `replay`.
+    pub(super) fn open_tab_with(
+        &mut self,
+        working_directory: Option<PathBuf>,
+        replay: Option<Vec<u8>>,
+    ) -> Task<Message> {
+        match session::spawn(&self.settings, working_directory, replay) {
             Ok((session, events)) => {
                 let panes = Panes::new(session);
                 let pane = panes.focused();
@@ -537,6 +547,7 @@ impl App {
         }
         if self.tabs.is_empty() && self.error.is_none() {
             self.save_session();
+            clear_saved_scrollback();
             return iced::exit();
         }
         Task::none()

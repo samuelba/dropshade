@@ -5,6 +5,10 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+mod scrollback;
+
+pub use scrollback::{clear_scrollback, save_scrollback, scrollback_dir, with_scrollback};
+
 const FORMAT_VERSION: u32 = 1;
 
 /// One tab as saved: its custom name, directory and an optional command typed on start. A split
@@ -23,6 +27,9 @@ pub struct TabSnapshot {
     /// an earlier one.
     #[serde(rename = "pane", skip_serializing_if = "Vec::is_empty")]
     pub panes: Vec<PaneSnapshot>,
+    /// What an unsplit tab showed when Dropshade quit; kept in its own file, never in the TOML.
+    #[serde(skip)]
+    pub scrollback: Option<Vec<u8>>,
 }
 
 /// Where a new pane goes, next to the pane it splits.
@@ -54,6 +61,9 @@ pub struct PaneSnapshot {
     /// The pane that has the keyboard.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub focus: bool,
+    /// What the pane showed when Dropshade quit; kept in its own file, never in the TOML.
+    #[serde(skip)]
+    pub scrollback: Option<Vec<u8>>,
 }
 
 /// A tab's panes as a tree of splits; leaves are indexes into the tab's pane list.
@@ -496,6 +506,27 @@ mod tests {
             cwd: Some(cwd.into()),
             ..PaneSnapshot::default()
         }
+    }
+
+    #[test]
+    fn scrollback_follows_its_pane_into_the_list() {
+        let leaves = [
+            pane(None, "/a"),
+            PaneSnapshot {
+                scrollback: Some(b"b".to_vec()),
+                ..pane(None, "/b")
+            },
+        ];
+        let tree = PaneTree::Split {
+            direction: SplitDirection::Right,
+            ratio: 0.5,
+            first: Box::new(PaneTree::Pane(1)),
+            second: Box::new(PaneTree::Pane(0)),
+        };
+        let list = panes_from_tree(&tree, &leaves);
+        assert_eq!(list[0].cwd.as_deref(), Some(Path::new("/b")));
+        assert_eq!(list[0].scrollback.as_deref(), Some(&b"b"[..]));
+        assert_eq!(list[1].scrollback, None);
     }
 
     fn tab_with(panes: Vec<PaneSnapshot>) -> TabSnapshot {

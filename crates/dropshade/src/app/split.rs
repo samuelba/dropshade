@@ -98,8 +98,9 @@ impl App {
     pub(super) fn spawn_pane(
         &mut self,
         directory: Option<PathBuf>,
+        replay: Option<Vec<u8>>,
     ) -> Option<(Session, impl Stream<Item = TermEvent> + Send + use<>)> {
-        match session::spawn(&self.settings, directory) {
+        match session::spawn(&self.settings, directory, replay) {
             Ok(spawned) => Some(spawned),
             Err(error) => {
                 tracing::error!(%error, "could not start a shell");
@@ -119,7 +120,7 @@ impl App {
         let directory = self
             .focused_session()
             .and_then(|session| session.terminal.working_directory());
-        let Some((session, events)) = self.spawn_pane(directory) else {
+        let Some((session, events)) = self.spawn_pane(directory, None) else {
             return Task::none();
         };
         let Some(pane) = self

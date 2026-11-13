@@ -13,6 +13,9 @@ use super::split::sync_title;
 use super::{App, Message, PaneKey};
 use crate::tabs::{self, Panes};
 
+/// How many lines of each pane are kept for the next start.
+const RESTORE_LINES: usize = 2_000;
+
 /// What the first tabs of a new instance are.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Startup {
@@ -28,7 +31,10 @@ pub enum Startup {
 impl App {
     pub(super) fn startup_tabs(&mut self, startup: Startup) -> Task<Message> {
         let snapshot = match startup {
-            Startup::Directory(directory) => return self.open_tab(Some(directory)),
+            Startup::Directory(directory) => {
+                clear_saved_scrollback();
+                return self.open_tab(Some(directory));
+            }
             Startup::Layout(name) => self.read_layout(&name),
             Startup::Default => {
                 let layout = self.config.session.layout.trim().to_owned();
@@ -39,10 +45,11 @@ impl App {
                 }
             }
         };
+        clear_saved_scrollback();
         let restored = snapshot.filter(|snapshot| !snapshot.tabs.is_empty());
         match restored {
             Some(snapshot) => {
-                self.saved = Some(snapshot.clone());
+                self.saved = Some(snapshot.clone().without_scrollback());
                 self.open_snapshot(&snapshot)
             }
             None => self.open_tab(self.settings.working_directory.clone()),
@@ -57,7 +64,7 @@ impl App {
         let Some(path) = self.session_path.as_deref() else {
             return;
         };
-        let snapshot = self.snapshot();
+        let snapshot = self.snapshot(false);
         if self.saved.as_ref() == Some(&snapshot) {
             return;
         }
@@ -67,12 +74,26 @@ impl App {
         }
     }
 
+    /// Saves the session on quit, plus each pane's scrollback when that is turned on.
+    pub(super) fn save_session_on_exit(&mut self) {
+        let keep = self.config.session.restore && self.config.session.restore_scrollback;
+        match sessions::scrollback_dir() {
+            Some(dir) if keep => {
+                if let Err(error) = sessions::save_scrollback(&dir, &self.snapshot(true)) {
+                    tracing::warn!(%error, "could not save the scrollback");
+                }
+            }
+            _ => clear_saved_scrollback(),
+        }
+        self.save_session();
+    }
+
     pub(super) fn save_layout(&mut self, name: &str) {
         let result = sessions::layouts_dir()
             .ok_or_else(|| "no config directory (HOME is not set)".to_owned())
             .and_then(|dir| sessions::layout_path(&dir, name).map_err(|error| error.to_string()))
             .and_then(|path| {
-                sessions::save(&path, &self.snapshot()).map_err(|error| error.to_string())
+                sessions::save(&path, &self.snapshot(false)).map_err(|error| error.to_string())
             });
         if let Err(error) = result {
             tracing::warn!(%error, "could not save the layout");
@@ -89,7 +110,10 @@ impl App {
         }
     }
 
-    fn snapshot(&self) -> Snapshot {
+    fn snapshot(&self, with_scrollback: bool) -> Snapshot {
+        let dump = |session: &Session| {
+            with_scrollback.then(|| session.terminal.dump_scrollback(RESTORE_LINES))
+        };
         let active = self
             .tabs
             .active_id()
@@ -104,12 +128,10 @@ impl App {
                     ..TabSnapshot::default()
                 };
                 if tab.content.is_split() {
-                    saved.panes = pane_list(&tab.content);
-                } else {
-                    saved.cwd = tab
-                        .content
-                        .focused_content()
-                        .and_then(|session| session.terminal.working_directory());
+                    saved.panes = pane_list(&tab.content, &dump);
+                } else if let Some(session) = tab.content.focused_content() {
+                    saved.cwd = session.terminal.working_directory();
+                    saved.scrollback = dump(session);
                 }
                 saved
             })
@@ -142,8 +164,9 @@ impl App {
             .and_then(|pane| pane.cwd.as_deref())
             .or(saved.cwd.as_deref());
         let command = first.map_or(&saved.command, |pane| &pane.command);
+        let replay = first.map_or(&saved.scrollback, |pane| &pane.scrollback);
         let count = self.tabs.len();
-        let task = self.open_tab(existing_directory(directory));
+        let task = self.open_tab_with(existing_directory(directory), replay.clone());
         if self.tabs.len() == count {
             return task;
         }
@@ -182,7 +205,9 @@ impl App {
                 break;
             };
             let directory = pane.cwd.as_deref().or(saved.cwd.as_deref());
-            let Some((mut session, events)) = self.spawn_pane(existing_directory(directory)) else {
+            let Some((mut session, events)) =
+                self.spawn_pane(existing_directory(directory), pane.scrollback.clone())
+            else {
                 break;
             };
             session.pending_command.clone_from(&pane.command);
@@ -215,15 +240,22 @@ impl App {
         Task::batch(tasks)
     }
 
+    /// The saved session, with its scrollback when that is turned on.
     fn read_session(&self) -> Option<Snapshot> {
         if !self.config.session.restore {
             return None;
         }
         let path = self.session_path.as_deref()?;
-        sessions::load(path).unwrap_or_else(|error| {
+        let snapshot = sessions::load(path).unwrap_or_else(|error| {
             tracing::warn!(%error, "ignoring the saved session");
             None
-        })
+        })?;
+        match sessions::scrollback_dir() {
+            Some(dir) if self.config.session.restore_scrollback => {
+                Some(sessions::with_scrollback(&dir, snapshot))
+            }
+            _ => Some(snapshot),
+        }
     }
 
     fn read_layout(&mut self, name: &str) -> Option<Snapshot> {
@@ -248,6 +280,15 @@ impl App {
     }
 }
 
+/// Removes the scrollback saved for the next start, if any.
+pub(super) fn clear_saved_scrollback() {
+    if let Some(dir) = sessions::scrollback_dir()
+        && let Err(error) = sessions::clear_scrollback(&dir)
+    {
+        tracing::warn!(%error, "could not remove the saved scrollback");
+    }
+}
+
 /// A saved directory that still exists, with `~` expanded.
 fn existing_directory(directory: Option<&Path>) -> Option<PathBuf> {
     directory
@@ -264,20 +305,28 @@ fn split_direction(direction: SplitDirection) -> tabs::SplitDirection {
 
 /// A split tab's panes as a saved list: each pane's directory, which one has the keyboard, and
 /// the splits that rebuild the layout.
-fn pane_list(panes: &Panes<Session>) -> Vec<PaneSnapshot> {
+fn pane_list(
+    panes: &Panes<Session>,
+    dump: &impl Fn(&Session) -> Option<Vec<u8>>,
+) -> Vec<PaneSnapshot> {
     let mut leaves = Vec::new();
-    let tree = pane_tree(panes.layout(), panes, &mut leaves);
+    let tree = pane_tree(panes.layout(), panes, dump, &mut leaves);
     sessions::panes_from_tree(&tree, &leaves)
 }
 
-fn pane_tree(node: &Node, panes: &Panes<Session>, leaves: &mut Vec<PaneSnapshot>) -> PaneTree {
+fn pane_tree(
+    node: &Node,
+    panes: &Panes<Session>,
+    dump: &impl Fn(&Session) -> Option<Vec<u8>>,
+    leaves: &mut Vec<PaneSnapshot>,
+) -> PaneTree {
     match node {
         Node::Pane(pane) => {
+            let session = panes.get(*pane);
             leaves.push(PaneSnapshot {
-                cwd: panes
-                    .get(*pane)
-                    .and_then(|session| session.terminal.working_directory()),
+                cwd: session.and_then(|session| session.terminal.working_directory()),
                 focus: *pane == panes.focused(),
+                scrollback: session.and_then(dump),
                 ..PaneSnapshot::default()
             });
             PaneTree::Pane(leaves.len() - 1)
@@ -290,8 +339,8 @@ fn pane_tree(node: &Node, panes: &Panes<Session>, leaves: &mut Vec<PaneSnapshot>
                 Axis::Horizontal => SplitDirection::Down,
             },
             ratio: *ratio,
-            first: Box::new(pane_tree(a, panes, leaves)),
-            second: Box::new(pane_tree(b, panes, leaves)),
+            first: Box::new(pane_tree(a, panes, dump, leaves)),
+            second: Box::new(pane_tree(b, panes, dump, leaves)),
         },
     }
 }
