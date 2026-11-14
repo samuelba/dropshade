@@ -5,8 +5,7 @@
 
 ### Features
 
-* add Arch Linux packages ([d318b1d](https://github.com/samuelba/dropshade/commit/d318b1d8e0ac1456334e7b91d28629da5a218cca))
-* add Arch Linux packages ([e5310e4](https://github.com/samuelba/dropshade/commit/e5310e4a07bd166652ceb486ddc59e72bc9e9300))
+* add Arch Linux packages (@samuelba) ([e5310e4](https://github.com/samuelba/dropshade/commit/e5310e4a07bd166652ceb486ddc59e72bc9e9300))
 
 ## [0.9.0](https://github.com/samuelba/dropshade/compare/v0.8.0...v0.9.0) (2026-11-14)
 
