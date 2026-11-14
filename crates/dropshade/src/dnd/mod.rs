@@ -62,15 +62,24 @@ impl DropTarget {
         let RawDisplayHandle::Wayland(handle) = window.display_handle().ok()?.as_raw() else {
             return None;
         };
-        // SAFETY: the display belongs to winit's event loop, which outlives every window and runs
-        // until the app exits; a guest backend never closes it.
+        // SAFETY: the display belongs to winit's event loop and stays valid while it runs; a guest
+        // backend never closes it. The backend is never dropped (see `outlive_display`), so it
+        // cannot touch the display after winit disconnects it.
         let backend = unsafe {
             wayland_backend::sys::client::Backend::from_foreign_display(
                 handle.display.as_ptr().cast(),
             )
         };
-        Some(Self(Connection::from_backend(backend)))
+        Some(Self(outlive_display(Connection::from_backend(backend))))
     }
+}
+
+/// Keeps a guest connection alive for the rest of the process. Dropping its last handle destroys
+/// every proxy it made on the display, and when the compositor goes away (such as at logout)
+/// winit disconnects and frees that display first, so the destroy writes into freed memory.
+fn outlive_display(connection: Connection) -> Connection {
+    std::mem::forget(connection.clone());
+    connection
 }
 
 /// The files dropped onto the window, one list per drop.
