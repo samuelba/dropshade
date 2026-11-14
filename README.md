@@ -21,9 +21,6 @@ staying on top to the compositor: on COSMIC, KDE Plasma, Sway, Hyprland and othe
 itself. On GNOME, a small companion Shell extension handles them, plus the global hotkey and the
 slide animation.
 
-> **Status:** early development, but daily-drivable: tabs, splits, the config file, session
-> restore and packages all work.
-
 ## Install and set up
 
 Download the package for your machine from the
