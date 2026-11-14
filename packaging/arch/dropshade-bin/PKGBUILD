@@ -11,7 +11,7 @@ depends=('glibc' 'libgcc' 'libxkbcommon' 'wayland' 'hicolor-icon-theme')
 optdepends=(
     'vulkan-icd-loader: GPU rendering instead of the CPU fallback'
     'gnome-shell: drop down on GNOME through the bundled Shell extension'
-    'xdg-desktop-portal: global hotkey on KDE Plasma and Hyprland'
+    'xdg-desktop-portal: global hotkey on KDE Plasma'
     'libxcursor: X11 sessions'
     'libxi: X11 sessions'
     'libxrandr: X11 sessions'
