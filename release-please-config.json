@@ -15,7 +15,9 @@
         { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value=='dropshade-term')].version" },
         { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value=='dropshade-config')].version" },
         { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value=='dropshade-session')].version" },
-        { "type": "json", "path": "gnome-extension/metadata.json", "jsonpath": "$['version-name']" }
+        { "type": "json", "path": "gnome-extension/metadata.json", "jsonpath": "$['version-name']" },
+        { "type": "generic", "path": "packaging/arch/dropshade/PKGBUILD" },
+        { "type": "generic", "path": "packaging/arch/dropshade-bin/PKGBUILD" }
       ]
     }
   }

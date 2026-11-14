@@ -29,6 +29,7 @@ Download the package for your machine from the
 ```sh
 sudo dnf install ./dropshade-*.rpm   # Fedora
 sudo apt install ./dropshade_*.deb   # Debian, Ubuntu
+sudo pacman -U ./dropshade-bin-*.pkg.tar.zst   # Arch, CachyOS (x86_64)
 ```
 
 Then set up the hotkey once, depending on your desktop. From then on <kbd>F12</kbd> drops the
@@ -243,7 +244,7 @@ Running it needs a Wayland or X11 session, Vulkan or OpenGL drivers, and `libxkb
 Mutter, GNOME's compositor, does not let apps place themselves over other windows, so a small
 companion Shell extension shows and hides Dropshade. It supports GNOME 46 to 50.
 
-The `.rpm` and `.deb` install the extension for all users. For a build of your own:
+The `.rpm`, `.deb` and pacman packages install the extension for all users. For a build of your own:
 
 ```sh
 ./target/release/dropshade gnome-extension install   # once; then log out and back in
@@ -371,7 +372,9 @@ cargo build --release
 ```
 
 Building needs the `libxkbcommon` development files (`libxkbcommon-devel` on Fedora,
-`libxkbcommon-dev` on Debian and Ubuntu).
+`libxkbcommon-dev` on Debian and Ubuntu, `libxkbcommon` on Arch). The PKGBUILDs in
+[`packaging/arch/`](packaging/arch/) build from source (`dropshade`) or from the release
+tarball (`dropshade-bin`).
 
 ```sh
 cargo fmt --all
