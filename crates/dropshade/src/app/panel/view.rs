@@ -550,7 +550,19 @@ fn session(ctx: Ctx<'_>) -> Element<'static, Message> {
     } else {
         LayoutChoice::Named(current.clone())
     };
+    let autostart = ctx.panel.autostart.map(|on| {
+        hinted(
+            setting(
+                "Start when you log in",
+                toggler(on).on_toggle(|on| settings(SettingsMessage::Autostart(on))),
+            ),
+            "Starts hidden, so the hotkey works right away. Hyprland runs this only under UWSM; \
+             otherwise add exec-once = dropshade --hidden to its config.",
+            ctx.colors,
+        )
+    });
     column![
+        autostart,
         switch(ctx, "Reopen tabs on start", Switch::Restore),
         hinted(
             switch(ctx, "Restore scrollback", Switch::RestoreScrollback),

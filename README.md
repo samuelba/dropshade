@@ -47,8 +47,9 @@ terminal down and hides it again, and the first press starts Dropshade.
 
   The Extensions app works too. Dropshade shows an icon in the top bar while it runs.
 - **KDE Plasma, Hyprland**: open Dropshade once from the app launcher and confirm the shortcut
-  when the desktop asks. The desktop only passes <kbd>F12</kbd> to Dropshade while it runs, so add Dropshade
-  to the apps that start when you log in (Plasma: System Settings → Autostart).
+  when the desktop asks. The desktop only passes <kbd>F12</kbd> to Dropshade while it runs, so turn on
+  Settings → Session → **Start when you log in**, which starts it hidden. Hyprland only runs that
+  under UWSM; otherwise add `exec-once = dropshade --hidden` to its config.
 - **Sway, niri, X11 and other desktops**: add a keyboard shortcut in your desktop's settings that
   runs <kbd>F12</kbd> or `dropshade toggle`.
 
@@ -276,7 +277,8 @@ the desktop for the shortcut when it starts, suggesting `window.hotkey` (Plasma 
 confirm once). After that the desktop owns the keys: change them in its shortcut settings, where
 it lists "Show or hide Dropshade", or with Change… next to the Hotkey in Dropshade's Settings
 where the desktop supports that (Plasma does). This only works while Dropshade runs, so start it
-with your session.
+with your session: Settings → Session → Start when you log in writes
+`~/.config/autostart/dev.samuelba.Dropshade.desktop`, which runs `dropshade --hidden`.
 
 Elsewhere (Sway, niri, ...), add a custom shortcut in your desktop's keyboard settings that runs
 `dropshade toggle` (use the full path if the binary is not on your `PATH`). The first press starts
@@ -293,6 +295,7 @@ Bind `dropshade toggle` to a key to use it as a drop-down.
 | Command | What it does |
 | ------- | ------------ |
 | `dropshade` / `dropshade show` | Show the terminal, starting it if needed |
+| `dropshade --hidden` | Start in the background without showing it (does nothing if it runs) |
 | `dropshade toggle` / `hide` | Show or hide it |
 | `dropshade new-tab [--cwd DIR]` | Open a tab (in DIR or the current tab's directory) |
 | `dropshade gnome-extension install` | Install or update the GNOME Shell extension |

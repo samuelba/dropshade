@@ -15,6 +15,8 @@ const LAUNCH_POLL: Duration = Duration::from_millis(100);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Request {
     Visibility(Visibility),
+    /// Start without showing the window, unless Dropshade is already running or on call.
+    Background,
     NewTab(Option<PathBuf>),
     SaveLayout(String),
     LoadLayout(String),
@@ -26,6 +28,7 @@ pub enum Outcome {
     /// Nobody else can serve the request: start the app in this process.
     RunHere {
         startup: Startup,
+        show: bool,
     },
 }
 
@@ -48,6 +51,7 @@ fn decide(request: &Request, presence: Presence, launched_by_shell: bool) -> Pla
         return Plan::RunHere;
     }
     match request {
+        Request::Background if presence.shell || presence.app => Plan::Nothing,
         Request::Visibility(action) if presence.shell => Plan::Shell(*action),
         Request::Visibility(action) if presence.app => Plan::App(*action),
         Request::Visibility(Visibility::Hide) => Plan::Nothing,
@@ -56,7 +60,10 @@ fn decide(request: &Request, presence: Presence, launched_by_shell: bool) -> Pla
         }
         Request::SaveLayout(_) => Plan::NotRunning,
         Request::NewTab(_) | Request::LoadLayout(_) if presence.shell => Plan::LaunchThenFollowUp,
-        Request::Visibility(_) | Request::NewTab(_) | Request::LoadLayout(_) => Plan::RunHere,
+        Request::Visibility(_)
+        | Request::Background
+        | Request::NewTab(_)
+        | Request::LoadLayout(_) => Plan::RunHere,
     }
 }
 
@@ -66,10 +73,12 @@ pub fn hand_off(request: &Request, launched_by_shell: bool) -> Result<Outcome, S
         startup: match request {
             Request::NewTab(Some(directory)) => Startup::Directory(directory.clone()),
             Request::LoadLayout(name) => Startup::Layout(name.clone()),
-            Request::NewTab(None) | Request::Visibility(_) | Request::SaveLayout(_) => {
-                Startup::Default
-            }
+            Request::NewTab(None)
+            | Request::Visibility(_)
+            | Request::Background
+            | Request::SaveLayout(_) => Startup::Default,
         },
+        show: *request != Request::Background,
     };
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -123,6 +132,7 @@ async fn follow_up(connection: &Connection, request: &Request) -> zbus::Result<(
         Request::SaveLayout(name) => app.save_layout(name).await,
         Request::LoadLayout(name) => app.load_layout(name).await,
         Request::Visibility(action) => client::app(connection, *action).await,
+        Request::Background => Ok(()),
     }
 }
 
@@ -204,6 +214,14 @@ mod tests {
         assert_eq!(decide(&save, APP, false), Plan::AppFollowUp);
         assert_eq!(decide(&save, SHELL, false), Plan::NotRunning);
         assert_eq!(decide(&save, NOBODY, false), Plan::NotRunning);
+    }
+
+    #[test]
+    fn a_background_start_runs_only_when_nobody_else_can_show_the_terminal() {
+        assert_eq!(decide(&Request::Background, NOBODY, false), Plan::RunHere);
+        assert_eq!(decide(&Request::Background, APP, false), Plan::Nothing);
+        assert_eq!(decide(&Request::Background, SHELL, false), Plan::Nothing);
+        assert_eq!(decide(&Request::Background, BOTH, false), Plan::Nothing);
     }
 
     #[test]

@@ -127,6 +127,8 @@ pub enum SettingsMessage {
     Submit(Field),
     Choose(Choice, String),
     Toggle(Switch, bool),
+    /// Start hidden when the user logs in.
+    Autostart(bool),
     EditScreens(ScreenEdit),
     /// The connected screens arrived from the compositor (`None` if it could not be asked).
     ScreensListed(Option<Vec<Screen>>),
@@ -166,6 +168,9 @@ pub(super) struct SettingsPanel {
     /// Unknown until the compositor answers.
     screens: Option<Vec<Screen>>,
     layouts: Vec<String>,
+    /// Whether Dropshade starts when the user logs in; `None` where it need not run ahead of the
+    /// hotkey.
+    autostart: Option<bool>,
     /// The one color picker that is open.
     picker: Option<PickerState>,
     /// "Reset all colors" was clicked once and asks for a second click.
@@ -249,6 +254,8 @@ impl App {
                 .map(|dir| dropshade_session::list_layouts(&dir))
                 .unwrap_or_default(),
             binding_action: fields::action_names().remove(0),
+            autostart: (self.binds_through_portal() && !self.hotkey.portal_missing)
+                .then(crate::autostart::is_enabled),
             ..SettingsPanel::default()
         });
         if self.binds_in_cosmic() {
@@ -304,6 +311,11 @@ impl App {
     ) -> Result<bool, String> {
         match message {
             SettingsMessage::Section(section) => panel.section = section,
+            SettingsMessage::Autostart(on) => {
+                crate::autostart::set(on)
+                    .map_err(|error| format!("Could not change the autostart entry: {error}"))?;
+                panel.autostart = Some(on);
+            }
             SettingsMessage::Slide(slider, value) => {
                 panel.sliders.insert(slider, value);
             }
