@@ -24,8 +24,8 @@ export default class DropshadeExtension extends Extension {
         });
         this._launcher = new AppLauncher(this._settings, {
             downloadUrl: `${this.metadata.url}/releases/latest`,
-            onWindow: window => {
-                this._dropdown.attach(window);
+            onWindow: (window, client) => {
+                this._dropdown.attach(window, client);
                 this._indicator.running = true;
             },
             onExit: () => {
@@ -35,7 +35,7 @@ export default class DropshadeExtension extends Extension {
         });
         const window = this._launcher.findWindow();
         if (window) {
-            this._dropdown.adopt(window);
+            this._dropdown.adopt(window, this._launcher.client);
             this._indicator.running = true;
         }
         Main.wm.addKeybinding(

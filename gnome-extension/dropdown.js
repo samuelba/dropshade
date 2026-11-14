@@ -3,16 +3,21 @@ import Clutter from 'gi://Clutter';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 /**
- * Lists or unlists the window in Alt+Tab, the dash and the window list. Mutter before GNOME 47
- * cannot do this for Wayland clients, so there the window stays listed.
+ * Lists or unlists the window in Alt+Tab, the dash and the window list. Older Mutter, e.g.
+ * GNOME 46, only offers this on the Wayland client that spawned the window, not on the window.
  */
-function setListed(window, listed) {
-    if (typeof window.hide_from_window_list !== 'function')
-        return;
-    if (listed)
-        window.show_in_window_list();
-    else
-        window.hide_from_window_list();
+function setListed(window, client, listed) {
+    if (typeof window.hide_from_window_list === 'function') {
+        if (listed)
+            window.show_in_window_list();
+        else
+            window.hide_from_window_list();
+    } else if (typeof client?.hide_from_window_list === 'function') {
+        if (listed)
+            client.show_in_window_list(window);
+        else
+            client.hide_from_window_list(window);
+    }
 }
 
 /**
@@ -23,6 +28,7 @@ export class Dropdown {
     constructor(prefs) {
         this._prefs = prefs;
         this._window = null;
+        this._client = null;
         this._shown = false;
         this._maximized = false;
         this._signals = [];
@@ -34,10 +40,11 @@ export class Dropdown {
         return this._window !== null;
     }
 
-    attach(window) {
+    attach(window, client) {
         this.detach();
         this._window = window;
-        setListed(window, false);
+        this._client = client;
+        this._setListed(false);
         this._connect(window, 'unmanaged', () => this._forget());
 
         Main.wm.skipNextEffect(window.get_compositor_private());
@@ -55,10 +62,11 @@ export class Dropdown {
      * Takes over a window that is already on screen, e.g. after the extension was disabled and
      * enabled again, keeping it shown or hidden as it is.
      */
-    adopt(window) {
+    adopt(window, client) {
         this.detach();
         this._window = window;
-        setListed(window, false);
+        this._client = client;
+        this._setListed(false);
         this._connect(window, 'unmanaged', () => this._forget());
         window.make_above();
         window.stick();
@@ -120,9 +128,9 @@ export class Dropdown {
             Main.wm.skipNextEffect(actor);
             // Mutter refuses to minimize windows that are hidden from the window list, so list
             // the window just for the minimize; nothing repaints in between.
-            setListed(window, true);
+            this._setListed(true);
             window.minimize();
-            setListed(window, false);
+            this._setListed(false);
             this._unclip();
             resetActor(actor);
         });
@@ -138,7 +146,7 @@ export class Dropdown {
         this._unclip();
         if (actor)
             resetActor(actor);
-        setListed(window, true);
+        this._setListed(true);
         window.unmake_above();
         window.unstick();
         this._forget();
@@ -260,11 +268,16 @@ export class Dropdown {
         this._signals.push([object, id]);
     }
 
+    _setListed(listed) {
+        setListed(this._window, this._client, listed);
+    }
+
     _forget() {
         for (const [object, id] of this._signals)
             object.disconnect(id);
         this._signals = [];
         this._window = null;
+        this._client = null;
         this._shown = false;
         this._maximized = false;
     }
