@@ -1,11 +1,13 @@
-//! Inline images. An image is placed by writing kitty Unicode placeholder cells over the cells it
-//! covers, so it scrolls, is cleared and leaves the scrollback with the text around it.
+//! Inline images, sent with the kitty graphics protocol or as sixels. An image is placed by
+//! writing kitty Unicode placeholder cells over the cells it covers, so it scrolls, is cleared
+//! and leaves the scrollback with the text around it.
 //!
 //! Commands are decoded on the pty thread before the terminal is locked ([`Graphics::prepare_kitty`]),
 //! then applied where the emulator reached them ([`Graphics::apply`]).
 
 pub mod kitty;
 pub mod placeholder;
+pub mod sixel;
 pub mod table;
 
 use std::collections::{HashMap, HashSet};
@@ -31,6 +33,8 @@ pub enum CursorAfter {
     Right,
     /// Kitty with `C=1`: where it was.
     Stays,
+    /// Sixel: on the line below the image, in the column it started at.
+    Below,
 }
 
 /// A change to the screen, decided before the terminal is locked.
@@ -109,6 +113,31 @@ impl Graphics {
     pub fn set_cell(&mut self, width: u16, height: u16) {
         self.cell_width = u32::from(width.max(1));
         self.cell_height = u32::from(height.max(1));
+    }
+
+    /// Handles the data of a sixel image; returns what to do on screen.
+    pub fn prepare_sixel(&self, data: &[u8]) -> Prepared {
+        match sixel::decode(data) {
+            Ok(image) => {
+                let placement = self.placement(&Command::default(), image);
+                Prepared {
+                    op: Some(Op::Place {
+                        placement,
+                        image_id: 0,
+                        cursor: CursorAfter::Below,
+                    }),
+                    reply: None,
+                }
+            }
+            Err(error) => {
+                tracing::debug!(
+                    code = error.code,
+                    message = error.message,
+                    "dropped a sixel image"
+                );
+                Prepared::default()
+            }
+        }
     }
 
     /// Handles a kitty graphics command body; returns what to do on screen and what to answer.
@@ -410,6 +439,10 @@ fn write_placeholders<T>(
         CursorAfter::Right if start + columns < width => feed(term, &to_column(start + columns)),
         // Nothing fits right of the image, and text there would overwrite its last cell.
         CursorAfter::Right => feed(term, b"\n\r"),
+        CursorAfter::Below => {
+            feed(term, b"\n");
+            feed(term, &to_start);
+        }
         CursorAfter::Stays => {
             feed(term, &to_start);
             if rows > 1 {

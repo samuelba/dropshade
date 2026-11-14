@@ -212,7 +212,7 @@ pub struct Terminal {
     pub env: BTreeMap<String, String>,
     /// Sets up bash and zsh to report prompts and commands (OSC 133).
     pub shell_integration: bool,
-    /// Shows inline images (kitty graphics protocol).
+    /// Shows inline images (kitty graphics protocol and sixel).
     pub images: bool,
 }
 

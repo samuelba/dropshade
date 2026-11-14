@@ -333,7 +333,7 @@ impl PtyLoop {
                     }
                     prepared.op.map(Step::Image)
                 }
-                Found::Sixel { .. } => None,
+                Found::Sixel { data, .. } => self.graphics.prepare_sixel(&data).op.map(Step::Image),
             };
             steps.extend(step.map(|step| (end, step)));
         }

@@ -509,7 +509,7 @@ fn terminal(ctx: Ctx<'_>) -> Element<'static, Message> {
         ),
         hinted(
             switch(ctx, "Inline images", Switch::Images),
-            "Shows images that programs print with the kitty graphics protocol, such as kitten icat, yazi and timg. Applies to new tabs.",
+            "Shows images that programs print with the kitty graphics protocol or as sixels, such as kitten icat, yazi, timg and img2sixel. Applies to new tabs.",
             ctx.colors,
         ),
         subheading("Environment", ctx.colors),

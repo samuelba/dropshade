@@ -209,6 +209,31 @@ fn deleting_without_an_id_deletes_nothing() {
 }
 
 #[test]
+fn a_sixel_image_leaves_the_cursor_below_it_in_its_first_column() {
+    let mut screen = Screen::new();
+    screen.print(b"ab");
+    let data = b"#0;2;100;0;0!15~-!15~-!15~-!15~";
+    let prepared = screen.graphics.prepare_sixel(data);
+    assert!(prepared.reply.is_none());
+    let parser = &mut screen.parser;
+    screen
+        .graphics
+        .apply(&mut screen.term, prepared.op.unwrap(), |term, bytes| {
+            parser.advance(term, bytes);
+        });
+    assert_eq!(screen.tile(0, 2), Some((0, 0)));
+    assert_eq!(screen.tile(1, 3), Some((1, 1)));
+    assert_eq!(screen.tile(2, 2), None);
+    assert_eq!(screen.cursor(), Point::new(Line(2), Column(2)));
+}
+
+#[test]
+fn a_broken_sixel_image_is_dropped() {
+    let screen = Screen::new();
+    assert!(screen.graphics.prepare_sixel(b"").op.is_none());
+}
+
+#[test]
 fn a_stored_image_can_be_put_again_by_id() {
     let mut screen = Screen::new();
     assert_eq!(

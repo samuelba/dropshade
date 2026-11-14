@@ -78,8 +78,8 @@ notification once per version and a download link in About Dropshade. Turn this 
 - **Keyboard selection**: a vi mode to move through and select the scrollback, plus search.
 - **Shell integration**: jump between prompts, select a command's output and close idle tabs
   without asking (bash and zsh).
-- **Inline images**: pictures from `kitten icat`, yazi, timg, chafa and other tools that speak the
-  kitty graphics protocol.
+- **Inline images**: pictures from `kitten icat`, yazi, timg, chafa, img2sixel and other tools that
+  speak the kitty graphics protocol or sixel.
 - **Notifications**: a dot on tabs that rang the bell or printed output, and a desktop
   notification when a long command finishes.
 - **Themes and colors**: Dusk and Dawn built in, any Alacritty theme, follow the system's light or
@@ -241,10 +241,11 @@ when the command finished.
 ## Inline images
 
 Programs can show images with the [kitty graphics
-protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/): `kitten icat picture.png`, file
-previews in yazi, `timg -pk`, `chafa -f kitty` and editor plugins. An image takes the place of the
-text cells it covers, so it scrolls into the scrollback, is wiped by `clear` and is overwritten
-like text. Unicode placeholders (`kitten icat --unicode-placeholder`, used inside tmux) work too.
+protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/) (`kitten icat picture.png`, file
+previews in yazi, `timg -pk`, `chafa -f kitty`, editor plugins) or as sixels (`img2sixel`,
+`chafa -f sixels`, `lsix`). An image takes the place of the text cells it covers, so it scrolls
+into the scrollback, is wiped by `clear` and is overwritten like text. Unicode placeholders
+(`kitten icat --unicode-placeholder`, used inside tmux) work too.
 
 Images arrive inline in the program's output; the protocol's file, temporary file and shared
 memory transfers are not supported, so a program can never make Dropshade read a file. Images
