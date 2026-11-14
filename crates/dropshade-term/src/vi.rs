@@ -84,7 +84,7 @@ pub fn resolve(press: KeyPress<'_>, pending: &mut Option<char>) -> Option<ViActi
 }
 
 /// The character a key press types: its text, or else the key with Shift applied.
-fn typed_char(press: KeyPress<'_>) -> Option<char> {
+pub(crate) fn typed_char(press: KeyPress<'_>) -> Option<char> {
     if let Some(text) = press.text.filter(|text| !text.is_empty()) {
         return single_char(text);
     }

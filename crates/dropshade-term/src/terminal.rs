@@ -3,14 +3,16 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs::File;
+use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use alacritty_terminal::event::{Event, EventListener};
-use alacritty_terminal::grid::{Dimensions, Scroll};
+use alacritty_terminal::grid::{Dimensions, Row, Scroll};
 use alacritty_terminal::index::{Boundary, Column, Direction, Line, Point, Side as GridSide};
 use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::sync::FairMutex;
+use alacritty_terminal::term::cell::Cell;
 use alacritty_terminal::term::search::{Match, RegexSearch};
 use alacritty_terminal::term::{
     ClipboardType, Config, Term, TermMode, point_to_viewport, viewport_to_point,
@@ -23,6 +25,7 @@ use iced::futures::channel::mpsc;
 
 use crate::colors::Palette;
 use crate::frame::{self, Frame};
+use crate::hints::{HintOutcome, HintSession};
 use crate::input::paste_bytes;
 use crate::links;
 use crate::marks::PromptMarks;
@@ -121,6 +124,14 @@ pub struct ForegroundProcess {
     pub name: String,
 }
 
+/// A link on one viewport row: the cells it covers and where it goes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkSpan {
+    pub line: usize,
+    pub columns: Range<usize>,
+    pub uri: String,
+}
+
 /// Which way to look for the next search match.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchDirection {
@@ -181,6 +192,8 @@ pub struct Terminal {
     vi_direction: SearchDirection,
     /// Where the vi cursor was when the search bar opened; typing searches from there.
     search_origin: Option<Point>,
+    /// Quick select labels, valid while the view stays at this display offset.
+    hints: Option<(HintSession, usize)>,
 }
 
 impl std::fmt::Debug for Terminal {
@@ -244,6 +257,7 @@ impl Terminal {
             search_match: None,
             vi_direction: SearchDirection::Older,
             search_origin: None,
+            hints: None,
         };
         Ok((terminal, receiver))
     }
@@ -277,6 +291,7 @@ impl Terminal {
     }
 
     pub fn resize(&mut self, size: GridSize) {
+        self.hints = None;
         if size == self.size {
             return;
         }
@@ -458,18 +473,74 @@ impl Terminal {
 
     /// The link under a viewport cell: an OSC 8 hyperlink, or else a URL in the row's text.
     pub fn link_at(&self, at: CellPosition) -> Option<String> {
+        self.link_span_at(at).map(|span| span.uri)
+    }
+
+    /// The link under a viewport cell and the cells it covers on that row.
+    pub fn link_span_at(&self, at: CellPosition) -> Option<LinkSpan> {
         let term = self.term.lock();
-        let columns = term.columns();
-        if at.column >= columns || at.line >= term.screen_lines() {
+        if at.line >= term.screen_lines() {
             return None;
         }
         let point = grid_point(term.grid().display_offset(), at);
-        let row = &term.grid()[point.line];
-        if let Some(link) = row[point.column].hyperlink() {
-            return Some(link.uri().to_owned());
+        let (columns, uri) = link_in_row(&term.grid()[point.line], at.column)?;
+        Some(LinkSpan {
+            line: at.line,
+            columns,
+            uri,
+        })
+    }
+
+    /// Labels the URLs, paths and hashes in view for quick select, leaving vi mode. Returns
+    /// whether there was anything to label.
+    pub fn start_hints(&mut self) -> bool {
+        if self.vi_mode() {
+            self.toggle_vi_mode();
         }
-        let chars: Vec<char> = (0..columns).map(|column| row[Column(column)].c).collect();
-        links::url_at(&chars, at.column)
+        let term = self.term.lock();
+        let offset = term.grid().display_offset();
+        let rows: Vec<Vec<char>> = (0..term.screen_lines())
+            .map(|line| {
+                let row = &term.grid()[grid_point(offset, CellPosition { column: 0, line }).line];
+                (0..term.columns()).map(|c| row[Column(c)].c).collect()
+            })
+            .collect();
+        drop(term);
+        self.hints = HintSession::new(&rows).map(|session| (session, offset));
+        self.hints.is_some()
+    }
+
+    /// The quick select labels, unless the view has scrolled since they were made.
+    pub fn hints(&self) -> Option<&HintSession> {
+        let offset = self.term.lock().grid().display_offset();
+        self.hints
+            .as_ref()
+            .filter(|(_, shown_at)| *shown_at == offset)
+            .map(|(session, _)| session)
+    }
+
+    pub fn hints_active(&self) -> bool {
+        self.hints().is_some()
+    }
+
+    pub fn cancel_hints(&mut self) {
+        self.hints = None;
+    }
+
+    /// Types a label key; quick select ends unless more keys are needed.
+    pub fn hint_key(&mut self, c: char) -> HintOutcome {
+        if !self.hints_active() {
+            self.hints = None;
+            return HintOutcome::Cancelled;
+        }
+        let Some((session, _)) = self.hints.as_mut() else {
+            return HintOutcome::Cancelled;
+        };
+        let outcome = session.key(c);
+        if outcome != HintOutcome::Pending {
+            self.hints = None;
+        }
+        outcome
     }
 
     /// Searches the output and scrollback for `query` as plain text, newest match first. The match
@@ -578,6 +649,7 @@ impl Terminal {
     /// when that is scrolled away), or off. Either way the selection goes; leaving also ends the
     /// search.
     pub fn toggle_vi_mode(&mut self) {
+        self.hints = None;
         if self.vi_mode() {
             self.search = None;
             self.search_match = None;
@@ -757,7 +829,10 @@ impl Terminal {
     /// Applies an emulator event and tells the UI how to react.
     pub fn handle_event(&mut self, event: Event, palette: &Palette) -> Option<Notice> {
         match event {
-            Event::Wakeup => Some(Notice::Output),
+            Event::Wakeup => {
+                self.hints = None;
+                Some(Notice::Output)
+            }
             Event::CursorBlinkingChange | Event::MouseCursorDirty => Some(Notice::Redraw),
             Event::Title(title) => {
                 self.title = Some(title);
@@ -813,6 +888,33 @@ fn lock(marks: &Mutex<PromptMarks>) -> MutexGuard<'_, PromptMarks> {
 }
 
 #[allow(clippy::cast_possible_wrap)]
+/// The link covering `column` of a grid row and the columns it spans: the run of cells sharing
+/// its OSC 8 hyperlink, or else a URL found in the row's text.
+fn link_in_row(row: &Row<Cell>, column: usize) -> Option<(Range<usize>, String)> {
+    let columns = row.len();
+    if column >= columns {
+        return None;
+    }
+    if let Some(link) = row[Column(column)].hyperlink() {
+        let same = |c: usize| row[Column(c)].hyperlink().as_ref() == Some(&link);
+        let start = (0..column)
+            .rev()
+            .take_while(|&c| same(c))
+            .last()
+            .unwrap_or(column);
+        let end = (column + 1..columns)
+            .take_while(|&c| same(c))
+            .last()
+            .unwrap_or(column)
+            + 1;
+        return Some((start..end, link.uri().to_owned()));
+    }
+    let chars: Vec<char> = (0..columns).map(|c| row[Column(c)].c).collect();
+    let span = links::url_span_at(&chars, column)?;
+    let uri = chars[span.clone()].iter().collect();
+    Some((span, uri))
+}
+
 fn grid_point(display_offset: usize, at: CellPosition) -> Point {
     viewport_to_point(display_offset, Point::new(at.line, Column(at.column)))
 }
@@ -920,6 +1022,64 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert_eq!(terminal.term.lock().grid()[Line(0)][Column(0)].c, 'o');
+    }
+
+    fn first_row(bytes: &[u8]) -> Row<Cell> {
+        use alacritty_terminal::event::VoidListener;
+        let size = GridSize {
+            columns: 30,
+            lines: 2,
+        };
+        let mut term = Term::new(Config::default(), &size, VoidListener);
+        Processor::<StdSyncHandler>::new().advance(&mut term, bytes);
+        term.grid()[Line(0)].clone()
+    }
+
+    #[test]
+    fn osc8_links_cover_their_cells() {
+        let row = first_row(b"ab \x1b]8;;https://x.test\x1b\\link\x1b]8;;\x1b\\ cd");
+        let link = Some((3..7, "https://x.test".to_owned()));
+        assert_eq!(link_in_row(&row, 3), link);
+        assert_eq!(link_in_row(&row, 6), link);
+        assert_eq!(link_in_row(&row, 2), None);
+        assert_eq!(link_in_row(&row, 7), None);
+    }
+
+    #[test]
+    fn urls_in_the_text_are_links_too() {
+        let row = first_row(b"see https://x.test/a.");
+        assert_eq!(
+            link_in_row(&row, 8),
+            Some((4..20, "https://x.test/a".to_owned()))
+        );
+        assert_eq!(link_in_row(&row, 99), None);
+    }
+
+    #[test]
+    fn quick_select_picks_what_is_on_screen() {
+        let mut terminal = terminal_showing("see /tmp/x and 1a2b3c4");
+        terminal.toggle_vi_mode();
+        assert!(terminal.start_hints());
+        assert!(!terminal.vi_mode());
+        let labels: Vec<_> = terminal
+            .hints()
+            .expect("hints shown")
+            .hints()
+            .iter()
+            .map(|hint| (hint.label.clone(), hint.text.clone()))
+            .collect();
+        assert_eq!(
+            labels,
+            vec![
+                ("a".into(), "1a2b3c4".into()),
+                ("s".into(), "/tmp/x".into())
+            ]
+        );
+        assert!(matches!(
+            terminal.hint_key('S'),
+            HintOutcome::Picked(crate::hints::Pick { open: true, .. })
+        ));
+        assert!(!terminal.hints_active());
     }
 
     #[test]

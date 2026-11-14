@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use dropshade_term::hints::{self, HintInput, HintKind, HintOutcome, Pick};
 use dropshade_term::mouse::CellPosition;
 use dropshade_term::{
     Interaction, Notice, SearchDirection, Shortcut, TermEvent, Terminal, ViAction, links,
@@ -350,6 +351,15 @@ impl App {
                     session.cursor_on = true;
                 }
             }
+            Shortcut::QuickSelect => {
+                if let Some(session) = self.focused_session_mut() {
+                    if session.terminal.hints_active() {
+                        session.terminal.cancel_hints();
+                    } else {
+                        session.terminal.start_hints();
+                    }
+                }
+            }
             Shortcut::SplitRight
             | Shortcut::SplitDown
             | Shortcut::ClosePane
@@ -620,6 +630,12 @@ fn apply(
             return run_terminal_shortcut(key, terminal, clipboard, shortcut);
         }
         // Vi mode keys are handled before this, in `vi_action`.
+        Interaction::Hint(HintInput::Cancel) => terminal.cancel_hints(),
+        Interaction::Hint(HintInput::Key(c)) => {
+            if let HintOutcome::Picked(pick) = terminal.hint_key(c) {
+                return use_pick(terminal, clipboard, pick);
+            }
+        }
         Interaction::ContextMenu { .. } | Interaction::Vi(_) => {}
     }
     Task::none()
@@ -664,6 +680,7 @@ fn run_terminal_shortcut(
         | Shortcut::SelectCommandOutput
         | Shortcut::OpenSettings
         | Shortcut::ToggleViMode
+        | Shortcut::QuickSelect
         | Shortcut::GoToTab(_)
         | Shortcut::SplitRight
         | Shortcut::SplitDown
@@ -707,6 +724,36 @@ pub(super) fn open_link(url: &str) {
     if let Err(error) = open::that_detached(url) {
         tracing::error!(url, %error, "could not open link");
     }
+}
+
+/// Opens a quick select pick typed with Shift when it is a URL or an existing file; copies it
+/// otherwise.
+fn use_pick(terminal: &Terminal, clipboard: Clipboard, pick: Pick) -> Task<Message> {
+    if pick.open {
+        match pick.kind {
+            HintKind::Url => {
+                open_link(&pick.text);
+                return Task::none();
+            }
+            HintKind::Path => {
+                let cwd = terminal.working_directory();
+                let home = std::env::var_os("HOME").map(PathBuf::from);
+                if let Some(path) = hints::local_path(&pick.text, cwd.as_deref(), home.as_deref())
+                    .filter(|path| path.exists())
+                {
+                    if let Err(error) = open::that_detached(&path) {
+                        tracing::error!(path = %path.display(), %error, "could not open file");
+                    }
+                    return Task::none();
+                }
+            }
+            HintKind::Hash => {}
+        }
+    }
+    Task::batch([
+        clipboard.write(Selection::Primary, pick.text.clone()),
+        clipboard.write(Selection::Clipboard, pick.text),
+    ])
 }
 
 fn paste(key: PaneKey, clipboard: Clipboard, selection: Selection) -> Task<Message> {

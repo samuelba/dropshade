@@ -44,6 +44,8 @@ pub enum Shortcut {
     OpenSettings,
     /// Turns vi mode (keyboard selection) on or off.
     ToggleViMode,
+    /// Labels the URLs, paths and hashes in view to copy or open one by typing its label.
+    QuickSelect,
     /// Activates the tab at this zero-based index.
     GoToTab(u8),
     /// Splits the focused pane, putting a new terminal to its right.
@@ -62,7 +64,7 @@ pub enum Shortcut {
 
 impl Shortcut {
     /// Every action name a keybinding accepts, apart from `go-to-tab-1` to `go-to-tab-9`.
-    pub const NAMES: [&'static str; 36] = [
+    pub const NAMES: [&'static str; 37] = [
         "copy",
         "paste",
         "paste-primary",
@@ -87,6 +89,7 @@ impl Shortcut {
         "select-command-output",
         "open-settings",
         "toggle-vi-mode",
+        "quick-select",
         "split-right",
         "split-down",
         "close-pane",
@@ -152,6 +155,7 @@ impl std::str::FromStr for Shortcut {
             "select-command-output" => Self::SelectCommandOutput,
             "open-settings" => Self::OpenSettings,
             "toggle-vi-mode" => Self::ToggleViMode,
+            "quick-select" => Self::QuickSelect,
             "split-right" => Self::SplitRight,
             "split-down" => Self::SplitDown,
             "close-pane" => Self::ClosePane,
@@ -198,6 +202,7 @@ fn ctrl_shift_character(c: &str) -> Option<Shortcut> {
         "r" => Some(Shortcut::SplitRight),
         "d" => Some(Shortcut::SplitDown),
         "f" => Some(Shortcut::Search),
+        "e" => Some(Shortcut::QuickSelect),
         "a" => Some(Shortcut::SelectCommandOutput),
         _ => ctrl_zoom(c),
     }
@@ -398,6 +403,14 @@ mod tests {
         );
         assert_eq!(named(Named::Space, Modifiers::CTRL), None);
         assert_eq!("toggle-vi-mode".parse(), Ok(Shortcut::ToggleViMode));
+    }
+
+    #[test]
+    fn ctrl_shift_e_starts_quick_select() {
+        let ctrl_shift = Modifiers::CTRL | Modifiers::SHIFT;
+        assert_eq!(character("E", ctrl_shift), Some(Shortcut::QuickSelect));
+        assert_eq!(character("e", Modifiers::CTRL), None);
+        assert_eq!("quick-select".parse(), Ok(Shortcut::QuickSelect));
     }
 
     #[test]

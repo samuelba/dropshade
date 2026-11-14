@@ -3,6 +3,7 @@
 pub mod clicks;
 pub mod colors;
 pub mod frame;
+pub mod hints;
 pub mod input;
 pub mod links;
 mod marks;
@@ -25,7 +26,8 @@ pub use input::InputConfig;
 pub use input::Shortcut;
 pub use size::{CellSize, GridSize};
 pub use terminal::{
-    ForegroundProcess, Notice, SearchDirection, SelectionKind, SpawnError, SpawnOptions, Terminal,
+    ForegroundProcess, LinkSpan, Notice, SearchDirection, SelectionKind, SpawnError, SpawnOptions,
+    Terminal,
 };
 pub use vi::{ViAction, ViScroll, ViSelection};
 pub use view::{

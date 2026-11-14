@@ -1,22 +1,37 @@
 //! Finds URLs in terminal output and decides which links are safe to open.
 
+use std::ops::Range;
+
 const SCHEMES: [&str; 5] = ["https://", "http://", "file://", "ftp://", "mailto:"];
 
 /// The URL covering `column` in a row given as one char per cell.
 pub fn url_at(row: &[char], column: usize) -> Option<String> {
+    url_span_at(row, column).map(|span| row[span].iter().collect())
+}
+
+/// The cells of the URL covering `column`, in a row given as one char per cell.
+pub fn url_span_at(row: &[char], column: usize) -> Option<Range<usize>> {
+    url_spans(row).find(|span| span.contains(&column))
+}
+
+/// The cells of every URL in a row given as one char per cell, left to right.
+pub fn url_spans(row: &[char]) -> impl Iterator<Item = Range<usize>> + '_ {
     let mut start = 0;
-    while start < row.len() {
-        let Some(scheme_len) = scheme_at(&row[start..]) else {
-            start += 1;
-            continue;
-        };
-        let end = url_end(row, start, scheme_len);
-        if end > start + scheme_len && (start..end).contains(&column) {
-            return Some(row[start..end].iter().collect());
+    std::iter::from_fn(move || {
+        while start < row.len() {
+            let Some(scheme_len) = scheme_at(&row[start..]) else {
+                start += 1;
+                continue;
+            };
+            let end = url_end(row, start, scheme_len);
+            let span = start..end;
+            start = end.max(start + 1);
+            if span.end > span.start + scheme_len {
+                return Some(span);
+            }
         }
-        start = end.max(start + 1);
-    }
-    None
+        None
+    })
 }
 
 fn scheme_at(text: &[char]) -> Option<usize> {
@@ -118,6 +133,14 @@ mod tests {
         let row = chars("file:///tmp/a mailto:me@example.com");
         assert_eq!(url_at(&row, 2).as_deref(), Some("file:///tmp/a"));
         assert_eq!(url_at(&row, 20).as_deref(), Some("mailto:me@example.com"));
+    }
+
+    #[test]
+    fn spans_cover_the_url_cells() {
+        let row = chars("see https://a.test/x, file:///tmp/b");
+        assert_eq!(url_span_at(&row, 6), Some(4..20));
+        assert_eq!(url_span_at(&row, 20), None);
+        assert_eq!(url_spans(&row).collect::<Vec<_>>(), vec![4..20, 22..35]);
     }
 
     #[test]
