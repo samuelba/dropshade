@@ -247,6 +247,10 @@ impl App {
         if let Interaction::Vi(action) = interaction {
             return self.vi_action(key, action);
         }
+        if matches!(interaction, Interaction::PastePrimary) {
+            // The pane grid focuses on left clicks only; what follows the paste belongs here.
+            self.focus_pane(key);
+        }
         let (copy_on_select, on_keystroke) = (
             self.settings.copy_on_select,
             self.settings.scroll.on_keystroke,
