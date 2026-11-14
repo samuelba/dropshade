@@ -1,6 +1,7 @@
 //! Dropshade: a drop-down terminal for Linux.
 
 mod app;
+mod autostart;
 mod cli;
 mod clipboard;
 mod dnd;
@@ -36,6 +37,9 @@ struct Cli {
     /// Read this configuration file instead of ~/.config/dropshade/config.toml.
     #[arg(long, value_name = "PATH", global = true)]
     config: Option<PathBuf>,
+    /// Start in the background without showing the terminal, e.g. when logging in.
+    #[arg(long)]
+    hidden: bool,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -95,6 +99,10 @@ fn main() -> ExitCode {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
     let cli = Cli::parse();
+    if cli.hidden && cli.command.is_some() {
+        eprintln!("dropshade: --hidden only applies when no command is given");
+        return ExitCode::FAILURE;
+    }
     let config_path = cli.config.or_else(dropshade_config::default_path);
     let request = match cli.command {
         Some(Command::Config(command)) => return config_command(&command, config_path.as_deref()),
@@ -109,6 +117,7 @@ fn main() -> ExitCode {
             Err(code) => return code,
         },
         Some(Command::Toggle) => Request::Visibility(Visibility::Toggle),
+        None if cli.hidden => Request::Background,
         Some(Command::Show) | None => Request::Visibility(Visibility::Show),
         Some(Command::Hide) => Request::Visibility(Visibility::Hide),
         Some(Command::NewTab { cwd }) => match cwd.map(std::path::absolute).transpose() {
@@ -126,9 +135,9 @@ fn launch(request: &Request, config_path: Option<PathBuf>) -> ExitCode {
     let managed = is_shell_managed(std::env::var(SHELL_LAUNCHED_ENV).ok().as_deref());
     match cli::hand_off(request, managed) {
         Ok(Outcome::Handled) => ExitCode::SUCCESS,
-        Ok(Outcome::RunHere { startup }) => {
+        Ok(Outcome::RunHere { startup, show }) => {
             let (host, clipboard) = platform(managed);
-            run(config_path, host, clipboard, startup)
+            run(config_path, host, clipboard, startup, show)
         }
         Err(error) => {
             eprintln!("dropshade: {error}");
@@ -164,6 +173,7 @@ fn run(
     host: Host,
     clipboard: Clipboard,
     startup: Startup,
+    show: bool,
 ) -> ExitCode {
     dropshade_term::setup_env();
     tracing::debug!(?host, ?clipboard, "showing and hiding");
@@ -183,6 +193,7 @@ fn run(
             host,
             clipboard,
             startup.clone(),
+            show,
             drop_target.clone(),
         )
     };
@@ -330,6 +341,12 @@ mod tests {
         assert!(!is_shell_managed(Some("0")));
         assert!(!is_shell_managed(Some("")));
         assert!(!is_shell_managed(None));
+    }
+
+    #[test]
+    fn cli_parses_a_hidden_start() {
+        let cli = Cli::try_parse_from(["dropshade", "--hidden"]).expect("valid");
+        assert!(cli.hidden && cli.command.is_none());
     }
 
     #[test]

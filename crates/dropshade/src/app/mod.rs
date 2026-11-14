@@ -222,6 +222,7 @@ impl App {
         host: Host,
         clipboard: Clipboard,
         startup: Startup,
+        show: bool,
         drop_target: Option<DropTarget>,
     ) -> (Self, Task<Message>) {
         let (config, config_error) = load(config_path.as_deref());
@@ -265,7 +266,9 @@ impl App {
             app.hotkey.status = Some((hotkey::Binder::Cosmic, status));
         }
         let first_tab = app.startup_tabs(startup);
-        let open = if app.binds_through_portal() {
+        let open = if !show {
+            Task::none()
+        } else if app.binds_through_portal() {
             app.hotkey.first_show_held = true;
             Task::none()
         } else {
