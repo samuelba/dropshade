@@ -44,10 +44,11 @@ terminal down and hides it again, and the first press starts Dropshade.
   ```
 
   The Extensions app works too. Dropshade shows an icon in the top bar while it runs.
-- **KDE Plasma, Hyprland**: open Dropshade once from the app launcher and confirm the shortcut
-  when the desktop asks. The desktop only passes <kbd>F12</kbd> to Dropshade while it runs, so turn on
-  Settings → Session → **Start when you log in**, which starts it hidden. Hyprland only runs that
-  under UWSM; otherwise add `exec-once = dropshade --hidden` to its config.
+- **KDE Plasma**: open Dropshade once from the app launcher and confirm the shortcut when the
+  desktop asks. The desktop only passes <kbd>F12</kbd> to Dropshade while it runs, so turn on
+  Settings → Session → **Start when you log in**, which starts it hidden.
+- **Hyprland**: Hyprland never asks about shortcuts, so bind the key in its config, as shown
+  under [Hyprland](#hyprland).
 - **Sway, niri, X11 and other desktops**: add a keyboard shortcut in your desktop's settings that
   runs <kbd>F12</kbd> or `dropshade toggle`.
 
@@ -275,13 +276,37 @@ not add it back on later starts. It only touches its own shortcut, reads the fil
 does, leaves it alone if anything looks unexpected or the keys are taken, and keeps the previous
 file in `~/.local/state/dropshade/cosmic-shortcuts-custom.backup`.
 
-On KDE Plasma, Hyprland and other desktops whose portal offers global shortcuts, Dropshade asks
+On KDE Plasma and other desktops whose portal offers global shortcuts, Dropshade asks
 the desktop for the shortcut when it starts, suggesting `window.hotkey` (Plasma asks you to
 confirm once). After that the desktop owns the keys: change them in its shortcut settings, where
 it lists "Show or hide Dropshade", or with Change… next to the Hotkey in Dropshade's Settings
 where the desktop supports that (Plasma does). This only works while Dropshade runs, so start it
 with your session: Settings → Session → Start when you log in writes
 `~/.config/autostart/dev.samuelba.Dropshade.desktop`, which runs `dropshade --hidden`.
+
+#### Hyprland
+
+Hyprland's portal neither asks about shortcuts nor uses the keys Dropshade suggests, so bind the
+key in Hyprland's config. With `hyprland.conf`:
+
+```ini
+exec-once = dropshade --hidden
+bind = , F12, exec, dropshade toggle
+```
+
+With a Lua config (`hyprland.lua`, or a `binds.lua` and `autostart.lua` it loads):
+
+```lua
+hl.bind("F12", hl.dsp.exec_cmd("dropshade toggle"))
+
+hl.on("hyprland.start", function ()
+    hl.exec_cmd("dropshade --hidden")
+end)
+```
+
+Under UWSM, leave out the autostart line and turn on Settings → Session → Start when you log in
+instead, so Dropshade does not start twice. Run `hyprctl reload`, then `hyprctl configerrors` to
+check the config.
 
 Elsewhere (Sway, niri, ...), add a custom shortcut in your desktop's keyboard settings that runs
 `dropshade toggle` (use the full path if the binary is not on your `PATH`). The first press starts
