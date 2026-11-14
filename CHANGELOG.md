@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.9.0](https://github.com/samuelba/dropshade/compare/v0.8.0...v0.9.0) (2026-11-14)
+
+
+### Features
+
+* add a setting to start Dropshade hidden when the user logs in (@samuelba) ([2eb87f1](https://github.com/samuelba/dropshade/commit/2eb87f106946719d533d089feec52a35d077aae0))
+* open the desktop's shortcut editor for the portal hotkey (@samuelba) ([f1eac9b](https://github.com/samuelba/dropshade/commit/f1eac9b940f0b474fd11d9fb138fc616e7fdcafb))
+* show a tray icon on COSMIC and KDE Plasma (@samuelba) ([6024e3e](https://github.com/samuelba/dropshade/commit/6024e3ecf1a7e307faa1dcd08fa66fda748c3b54))
+
+
+### Bug Fixes
+
+* focus the pane that a middle click pastes into (@samuelba) ([3780b37](https://github.com/samuelba/dropshade/commit/3780b375b9df51da84cc92d907bb254be4a4ff9e))
+* **gnome:** hide the dropdown from Alt+Tab and the dash on GNOME 46 (@samuelba) ([ccd7949](https://github.com/samuelba/dropshade/commit/ccd794925de418b233b6cf45167b0bb965825670))
+
 ## [0.8.0](https://github.com/samuelba/dropshade/compare/v0.7.0...v0.8.0) (2026-11-14)
 
 
