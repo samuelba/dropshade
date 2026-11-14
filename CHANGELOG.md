@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.11.0](https://github.com/samuelba/dropshade/compare/v0.10.0...v0.11.0) (2026-11-14)
+
+
+### Features
+
+* quick-select hints for URLs, paths and hashes (@samuelba) ([6269703](https://github.com/samuelba/dropshade/commit/6269703fa9f2d70184d890dd590a1e9313184ce1))
+* show images sent with the kitty graphics protocol (@samuelba) ([7fd0eda](https://github.com/samuelba/dropshade/commit/7fd0edad54c9abcc5bf69ff2e475abbc5be3f2f9))
+* show sixel images (@samuelba) ([7e1b311](https://github.com/samuelba/dropshade/commit/7e1b311043b9fa6a954206d3fca2311b53ff371c))
+* underline the link under the pointer while Ctrl is held (@samuelba) ([60107d0](https://github.com/samuelba/dropshade/commit/60107d00c9e70a561e7e670c1aa83a477fae20f5))
+
+
+### Bug Fixes
+
+* **gnome-extension:** notify when the app fails before its window opens (@samuelba) ([c4bb5be](https://github.com/samuelba/dropshade/commit/c4bb5bed5f9510868e7fa9855aef46a64bbffe1c))
+* keep the drop target's Wayland connection alive past the display (@samuelba) ([921aeb4](https://github.com/samuelba/dropshade/commit/921aeb44c85480cd41a1cc396d8d6af5b72615a5))
+
 ## [0.10.0](https://github.com/samuelba/dropshade/compare/v0.9.0...v0.10.0) (2026-11-14)
 
 
