@@ -69,6 +69,8 @@ mod fake {
         pub bind_response: u32,
         /// The shortcuts Dropshade asked for: id, description and preferred trigger.
         pub asked: Arc<Mutex<Vec<(String, String, String)>>>,
+        /// The sessions whose shortcuts Dropshade asked the desktop to show for editing.
+        pub configured: Arc<Mutex<Vec<String>>>,
     }
 
     fn text(options: &std::collections::HashMap<String, OwnedVariant>, key: &str) -> String {
@@ -115,9 +117,9 @@ mod fake {
         reason = "the portal's D-Bus methods, as the interface macro wants them"
     )]
     impl Portal {
-        #[zbus(property)]
+        #[zbus(property, name = "version")]
         fn version(&self) -> u32 {
-            1
+            2
         }
 
         fn create_session(
@@ -200,6 +202,19 @@ mod fake {
             }
             OwnedObjectPath::try_from(request).expect("path")
         }
+
+        fn configure_shortcuts(
+            &self,
+            session_handle: OwnedObjectPath,
+            parent_window: String,
+            options: std::collections::HashMap<String, OwnedVariant>,
+        ) {
+            let _ = (parent_window, options);
+            self.configured
+                .lock()
+                .expect("lock")
+                .push(session_handle.to_string());
+        }
     }
 
     /// Gives up the portal's name for the next fake.
@@ -241,9 +256,11 @@ async fn the_fake_portal_binds_reports_presses_and_declines() {
 
 async fn binding_and_pressing() {
     let asked = std::sync::Arc::default();
+    let configured = std::sync::Arc::default();
     let portal = fake::serve(fake::Portal {
         bind_response: 0,
         asked: std::sync::Arc::clone(&asked),
+        configured: std::sync::Arc::clone(&configured),
     })
     .await;
     let (mut output, mut events) = mpsc::channel(8);
@@ -255,7 +272,17 @@ async fn binding_and_pressing() {
             .expect("open stream")
     };
     assert!(matches!(next().await, Event::Status(Status::Bound(keys)) if keys == fake::KEYS));
+    let Event::Configurable(configure) = next().await else {
+        panic!("a version 2 portal can show its shortcut editor");
+    };
     assert!(matches!(next().await, Event::Toggle));
+    configure.open();
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let configured = configured.lock().expect("lock").clone();
+    assert!(
+        matches!(configured.as_slice(), [session] if session.contains("/dropshade_session_")),
+        "{configured:?}"
+    );
     assert_eq!(
         *asked.lock().expect("lock"),
         [(
@@ -277,6 +304,7 @@ async fn declining() {
     let portal = fake::serve(fake::Portal {
         bind_response: CANCELLED,
         asked: std::sync::Arc::default(),
+        configured: std::sync::Arc::default(),
     })
     .await;
     let (mut output, _events) = mpsc::channel(8);

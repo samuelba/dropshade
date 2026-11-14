@@ -85,8 +85,8 @@ copy_on_select = false
 # "dropshade toggle" to a key in the desktop's keyboard settings.
 hotkey = "F12"
 # Size as a fraction of the monitor's work area (the screen minus the top bar).
-width = 1.0
-height = 0.5
+width = 0.8
+height = 0.8
 # Where a window narrower than the screen sits: "left", "center" or "right".
 align = "center"
 # Where a window shorter than the screen sits: "top", "center" or "bottom".

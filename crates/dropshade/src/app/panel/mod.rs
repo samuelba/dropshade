@@ -149,6 +149,8 @@ pub enum SettingsMessage {
     ResetColor(ColorSlot),
     ResetAllColors,
     OpenFile,
+    /// Opens the desktop's editor for the hotkey, where the portal owns it.
+    ConfigureHotkey,
     Close,
 }
 
@@ -276,6 +278,9 @@ impl App {
     }
 
     pub(super) fn settings_message(&mut self, message: SettingsMessage) -> Task<Message> {
+        if matches!(message, SettingsMessage::ConfigureHotkey) {
+            return self.configure_hotkey();
+        }
         let Some(mut panel) = self.settings_panel.take() else {
             return Task::none();
         };
@@ -348,6 +353,7 @@ impl App {
             | SettingsMessage::ResetColor(_)
             | SettingsMessage::ResetAllColors) => self.edit_color(panel, message)?,
             SettingsMessage::OpenFile => self.open_config_file()?,
+            SettingsMessage::ConfigureHotkey => {}
             SettingsMessage::Close => {
                 self.save_unsaved(panel)?;
                 self.save_picker(panel)?;

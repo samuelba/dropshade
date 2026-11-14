@@ -32,6 +32,7 @@ pub fn window_settings(managed: bool) -> window::Settings {
 
 impl App {
     pub(super) fn open_window(&mut self) -> Task<Message> {
+        self.hotkey.first_show_held = false;
         if self.host == Host::Layer {
             // Screens come and go between shows, so the list is resolved again each time.
             self.screens = crate::wayland::screens();
