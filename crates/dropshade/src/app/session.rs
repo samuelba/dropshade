@@ -59,6 +59,7 @@ pub fn spawn(
         cursor_style: settings.cursor_style,
         cell: settings.style.cell,
         replay,
+        images: settings.images,
         ..SpawnOptions::default()
     };
     let (terminal, events) = Terminal::spawn(options)?;

@@ -6,6 +6,8 @@ use alacritty_terminal::term::cell::{Cell, Flags};
 use alacritty_terminal::term::{Term, TermMode};
 use alacritty_terminal::vte::ansi::{Color, NamedColor};
 
+use crate::graphics::placeholder::PLACEHOLDER;
+
 /// Ends the replayed text, above the new shell's first prompt.
 const MARKER: &str = "\x1b[0;2m── restored ──\x1b[0m\r\n";
 
@@ -54,10 +56,20 @@ fn dump<T>(term: &Term<T>, max_lines: usize) -> Vec<u8> {
             {
                 continue;
             }
-            let next = Style::of(cell);
+            // The image data is not kept, so an image comes back as blank cells.
+            let image = cell.c == PLACEHOLDER;
+            let next = if image {
+                Style::default()
+            } else {
+                Style::of(cell)
+            };
             if next != style {
                 next.write_sgr(&mut out);
                 style = next;
+            }
+            if image {
+                out.push(' ');
+                continue;
             }
             out.push(cell.c);
             out.extend(cell.zerowidth().into_iter().flatten());
@@ -83,7 +95,7 @@ fn content_end(row: &Row<Cell>, columns: usize) -> usize {
         .rev()
         .find(|&column| {
             let cell = &row[Column(column)];
-            cell.c != ' '
+            (cell.c != ' ' && cell.c != PLACEHOLDER)
                 || cell.bg != Color::Named(NamedColor::Background)
                 || cell
                     .flags
@@ -251,6 +263,20 @@ mod tests {
         feed(&mut source, "日本 e\u{301}\r\n".as_bytes());
         let target = replayed(&mut source, 20, 100);
         assert_eq!(text(&target)[0], "日本 e\u{301}");
+    }
+
+    #[test]
+    fn images_come_back_as_blank_cells() {
+        let mut source = term(20, 5);
+        feed(
+            &mut source,
+            "a\x1b[38;5;7m\u{10EEEE}\u{305}\u{305}\u{10EEEE}\x1b[0mb\r\n\x1b[38;5;7m\u{10EEEE}\r\n"
+                .as_bytes(),
+        );
+        let target = replayed(&mut source, 20, 100);
+        let lines = text(&target);
+        assert_eq!(lines[0], "a  b");
+        assert!(lines.iter().all(|line| !line.contains(PLACEHOLDER)));
     }
 
     #[test]

@@ -1,7 +1,8 @@
 //! The pty I/O thread: parses the shell's output into the emulator, writes input, resizes.
 //!
 //! It stands in for `alacritty_terminal`'s event loop so the output can be split at OSC 133
-//! marks, and each mark recorded where the cursor is when the emulator reaches it.
+//! marks and inline images, and each one applied where the cursor is when the emulator reaches
+//! it.
 
 use std::borrow::Cow;
 use std::collections::VecDeque;
@@ -23,14 +24,20 @@ use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 use nix::sys::wait::{Id, WaitPidFlag, waitid};
 use nix::unistd::Pid;
 
+use crate::graphics::table::PlacementTable;
+use crate::graphics::{Graphics, Op};
 use crate::marks::PromptMarks;
-use crate::osc133::{MarkKind, Osc133Scanner};
+use crate::osc133::MarkKind;
+use crate::sequences::{Found, SequenceScanner};
 use crate::terminal::EventProxy;
 
 /// Bytes read, and parsed under one hold of the terminal lock, at a time.
 const READ_BUFFER: usize = 0x1_0000;
 /// Most bytes parsed before the loop looks at its messages again.
 const MAX_READ: usize = 0x10_0000;
+/// Most input and replies waiting for the pty before further replies to images are dropped,
+/// for a program that prints image queries but never reads its input.
+const MAX_REPLY_BACKLOG: usize = 0x10_0000;
 /// How soon to look again for the exit status of a child that has exited.
 const EXIT_RETRY: Duration = Duration::from_millis(10);
 
@@ -65,13 +72,28 @@ fn wake(stream: &UnixStream) -> io::Result<()> {
     }
 }
 
-/// Starts the pty thread, plus one that notices when the shell exits.
+/// What the pty thread shares with the terminal.
+pub(crate) struct Shared {
+    pub term: Arc<FairMutex<Term<EventProxy>>>,
+    pub marks: Arc<Mutex<PromptMarks>>,
+    pub images: Arc<Mutex<PlacementTable>>,
+    pub proxy: EventProxy,
+}
+
+/// Starts the pty thread, plus one that notices when the shell exits. `size` is the size the
+/// pty was opened with; `images` turns inline images on.
 pub(crate) fn spawn(
     pty: Pty,
-    term: Arc<FairMutex<Term<EventProxy>>>,
-    marks: Arc<Mutex<PromptMarks>>,
-    proxy: EventProxy,
+    shared: Shared,
+    size: WindowSize,
+    images: bool,
 ) -> io::Result<PtySender> {
+    let Shared {
+        term,
+        marks,
+        images: table,
+        proxy,
+    } = shared;
     let (wake_sender, wake_receiver) = UnixStream::pair()?;
     wake_sender.set_nonblocking(true)?;
     wake_receiver.set_nonblocking(true)?;
@@ -103,7 +125,8 @@ pub(crate) fn spawn(
         wake: wake_receiver,
         exited,
         parser: Processor::default(),
-        scanner: Osc133Scanner::default(),
+        scanner: SequenceScanner::new(images),
+        graphics: Graphics::new(table, size.cell_width, size.cell_height),
         buffer: vec![0; READ_BUFFER],
         queue: VecDeque::new(),
         written: 0,
@@ -135,7 +158,8 @@ struct PtyLoop {
     wake: UnixStream,
     exited: Arc<AtomicBool>,
     parser: Processor<StdSyncHandler>,
-    scanner: Osc133Scanner,
+    scanner: SequenceScanner,
+    graphics: Graphics,
     buffer: Vec<u8>,
     /// Input waiting for the pty to accept it; `written` bytes of the first entry are out.
     queue: VecDeque<Cow<'static, [u8]>>,
@@ -224,7 +248,10 @@ impl PtyLoop {
                         self.queue.push_back(bytes);
                     }
                 }
-                Ok(Msg::Resize(size)) => self.pty.on_resize(size),
+                Ok(Msg::Resize(size)) => {
+                    self.graphics.set_cell(size.cell_width, size.cell_height);
+                    self.pty.on_resize(size);
+                }
                 Ok(Msg::Shutdown) | Err(TryRecvError::Disconnected) => return false,
                 Err(TryRecvError::Empty) => break,
             }
@@ -285,25 +312,53 @@ impl PtyLoop {
         Ok(processed)
     }
 
-    /// Feeds the first `len` bytes of the buffer to the emulator, recording each mark in it.
+    /// Feeds the first `len` bytes of the buffer to the emulator, applying each mark and image
+    /// in it. Images are decoded first, so the terminal stays locked only to place them.
     fn parse(&mut self, len: usize) {
         let bytes = &self.buffer[..len];
-        let mut found: Vec<(usize, MarkKind)> = Vec::new();
+        let mut found: Vec<(usize, Found)> = Vec::new();
         self.scanner
-            .scan(bytes, |end, kind| found.push((end, kind)));
+            .scan(bytes, |end, what| found.push((end, what)));
+        let mut steps: Vec<(usize, Step)> = Vec::with_capacity(found.len());
+        for (end, what) in found {
+            let step = match what {
+                Found::Mark(kind) => Some(Step::Mark(kind)),
+                Found::Kitty(body) => {
+                    let prepared = self.graphics.prepare_kitty(&body);
+                    if let Some(reply) = prepared.reply {
+                        let backlog: usize = self.queue.iter().map(|queued| queued.len()).sum();
+                        if backlog < MAX_REPLY_BACKLOG {
+                            self.queue.push_back(Cow::Owned(reply));
+                        }
+                    }
+                    prepared.op.map(Step::Image)
+                }
+                Found::Sixel { .. } => None,
+            };
+            steps.extend(step.map(|step| (end, step)));
+        }
 
         let mut term = self.term.lock();
         let mut marks = self.marks.lock().unwrap_or_else(PoisonError::into_inner);
         let mut start = 0;
-        for (end, kind) in found {
+        for (end, step) in steps {
             advance(&mut self.parser, &mut term, &mut marks, &bytes[start..end]);
             if self.parser.sync_timeout().sync_timeout().is_some() {
-                // The mark's place is only known once the buffered update is applied.
+                // The step's place is only known once the buffered update is applied.
                 let probe = PromptMarks::begin(&mut term);
                 self.parser.stop_sync(&mut *term);
                 marks.finish(&mut term, probe);
             }
-            marks.record(&term, kind);
+            match step {
+                Step::Mark(kind) => marks.record(&term, kind),
+                Step::Image(op) => {
+                    let probe = PromptMarks::begin(&mut term);
+                    let parser = &mut self.parser;
+                    self.graphics
+                        .apply(&mut term, op, |term, bytes| parser.advance(term, bytes));
+                    marks.finish(&mut term, probe);
+                }
+            }
             start = end;
         }
         advance(&mut self.parser, &mut term, &mut marks, &bytes[start..]);
@@ -333,6 +388,12 @@ impl PtyLoop {
         self.proxy.send_event(Event::Wakeup);
         true
     }
+}
+
+/// Something to apply at a place in the output.
+enum Step {
+    Mark(MarkKind),
+    Image(Op),
 }
 
 fn advance(

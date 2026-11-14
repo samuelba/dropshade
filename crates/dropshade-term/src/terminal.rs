@@ -25,6 +25,7 @@ use iced::futures::channel::mpsc;
 
 use crate::colors::Palette;
 use crate::frame::{self, Frame};
+use crate::graphics::{self, placeholder, table::PlacementTable};
 use crate::hints::{HintOutcome, HintSession};
 use crate::input::paste_bytes;
 use crate::links;
@@ -73,6 +74,8 @@ pub struct SpawnOptions {
     pub cell: CellSize,
     /// Output drawn before the shell starts, such as the text a pane showed before a restart.
     pub replay: Option<Vec<u8>>,
+    /// Shows images sent with the kitty graphics protocol.
+    pub images: bool,
 }
 
 impl Default for SpawnOptions {
@@ -93,6 +96,7 @@ impl Default for SpawnOptions {
                 height: 16.0,
             },
             replay: None,
+            images: true,
         }
     }
 }
@@ -180,6 +184,8 @@ pub struct Terminal {
     sender: PtySender,
     /// Where the prompts and command output are, from the shell's OSC 133 marks.
     marks: Arc<Mutex<PromptMarks>>,
+    /// The inline images on screen and in the scrollback.
+    images: Arc<Mutex<PlacementTable>>,
     size: GridSize,
     cell: CellSize,
     title: Option<String>,
@@ -241,13 +247,21 @@ impl Terminal {
         let child_pid = pty.child().id();
         let pty_handle = pty.file().try_clone().map_err(SpawnError::Pty)?;
         let marks = Arc::new(Mutex::new(PromptMarks::new(options.scrollback_lines)));
-        let loop_sender = pty_loop::spawn(pty, Arc::clone(&term), Arc::clone(&marks), proxy)
+        let images = Arc::new(Mutex::new(PlacementTable::default()));
+        let shared = pty_loop::Shared {
+            term: Arc::clone(&term),
+            marks: Arc::clone(&marks),
+            images: Arc::clone(&images),
+            proxy,
+        };
+        let loop_sender = pty_loop::spawn(pty, shared, window_size, options.images)
             .map_err(SpawnError::EventLoop)?;
 
         let terminal = Self {
             term,
             sender: loop_sender,
             marks,
+            images,
             size: options.size,
             cell: options.cell,
             title: None,
@@ -283,7 +297,8 @@ impl Terminal {
     }
 
     pub fn frame(&self, palette: &Palette) -> Frame {
-        frame::build(&self.term.lock(), palette)
+        let term = self.term.lock();
+        frame::build(&term, palette, &graphics::lock(&self.images))
     }
 
     pub fn write(&self, bytes: impl Into<Cow<'static, [u8]>>) {
@@ -334,6 +349,7 @@ impl Terminal {
         self.clear_search();
         reset::full(&mut self.term.lock());
         lock(&self.marks).clear();
+        graphics::lock(&self.images).clear();
         self.redraw_prompt();
     }
 
@@ -429,6 +445,7 @@ impl Terminal {
         self.term
             .lock()
             .selection_to_string()
+            .map(|text| placeholder::strip(&text))
             .filter(|text| !text.is_empty())
     }
 

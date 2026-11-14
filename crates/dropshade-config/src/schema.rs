@@ -195,6 +195,7 @@ pub enum CursorShape {
     Underline,
 }
 
+#[allow(clippy::struct_excessive_bools)] // independent on/off settings
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Terminal {
@@ -211,6 +212,8 @@ pub struct Terminal {
     pub env: BTreeMap<String, String>,
     /// Sets up bash and zsh to report prompts and commands (OSC 133).
     pub shell_integration: bool,
+    /// Shows inline images (kitty graphics protocol).
+    pub images: bool,
 }
 
 impl Default for Terminal {
@@ -224,6 +227,7 @@ impl Default for Terminal {
             working_directory: String::new(),
             env: BTreeMap::new(),
             shell_integration: true,
+            images: true,
         }
     }
 }
