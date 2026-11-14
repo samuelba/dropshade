@@ -59,14 +59,19 @@ export class AppLauncher {
         this._onExit = onExit;
         this._client = null;
         this._subprocess = null;
+        this._program = null;
+        this._windowSeen = false;
         this._cancellable = new Gio.Cancellable();
         this._windowCreatedId = global.display.connect('window-created', (_display, window) => {
-            if (this._client?.owns_window(window))
+            if (this._client?.owns_window(window)) {
+                this._windowSeen = true;
                 this._onWindow(window, this._client);
+            }
         });
         if (parked) {
             GLib.source_remove(parked.stopId);
-            this._track(parked.client, parked.subprocess);
+            const {client, subprocess, program, windowSeen} = parked;
+            this._track(client, subprocess, {program, windowSeen});
             parked = null;
         }
     }
@@ -111,13 +116,25 @@ export class AppLauncher {
             Main.notifyError('Dropshade could not start', `${argv[0]}: ${error.message}`);
             return;
         }
-        this._track(spawned.client, spawned.subprocess);
+        this._track(spawned.client, spawned.subprocess, {program: argv[0], windowSeen: false});
     }
 
-    _track(client, subprocess) {
+    _track(client, subprocess, {program, windowSeen}) {
         this._client = client;
         this._subprocess = subprocess;
+        this._program = program;
+        this._windowSeen = windowSeen;
         this._watchExit(client, subprocess);
+    }
+
+    _notifyFailed(proc, program) {
+        const detail = proc.get_if_signaled()
+            ? `was stopped by signal ${proc.get_term_sig()}`
+            : `exited with status ${proc.get_exit_status()}`;
+        console.error(`Dropshade: ${program} ${detail} before opening its window`);
+        Main.notifyError('Dropshade quit before opening its window',
+            `${program} ${detail}. Run “${program}” in a terminal or check the journal ` +
+            '(journalctl --user -b) to see why.');
     }
 
     _notifyMissing(program) {
@@ -147,8 +164,9 @@ export class AppLauncher {
 
     _watchExit(client, subprocess) {
         subprocess.wait_async(this._cancellable, (proc, result) => {
+            let finished = false;
             try {
-                proc.wait_finish(result);
+                finished = proc.wait_finish(result);
             } catch (error) {
                 if (error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
                     return;
@@ -156,8 +174,12 @@ export class AppLauncher {
             }
             if (this._client !== client)
                 return;
+            if (finished && !this._windowSeen && !proc.get_successful())
+                this._notifyFailed(proc, this._program);
             this._client = null;
             this._subprocess = null;
+            this._program = null;
+            this._windowSeen = false;
             this._onExit();
         });
     }
@@ -169,6 +191,8 @@ export class AppLauncher {
         this._missingNotification?.destroy();
         const client = this._client;
         const subprocess = this._subprocess;
+        const program = this._program;
+        const windowSeen = this._windowSeen;
         this._client = null;
         this._subprocess = null;
         if (!subprocess)
@@ -180,6 +204,6 @@ export class AppLauncher {
             subprocess.send_signal(SIGTERM);
             return GLib.SOURCE_REMOVE;
         });
-        parked = {client, subprocess, stopId};
+        parked = {client, subprocess, program, windowSeen, stopId};
     }
 }
