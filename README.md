@@ -24,6 +24,48 @@ slide animation.
 > **Status:** early development, but daily-drivable: tabs, splits, the config file, session
 > restore and packages all work.
 
+## Install and set up
+
+Download the package for your machine from the
+[latest release](https://github.com/samuelba/dropshade/releases/latest) and install it:
+
+```sh
+sudo dnf install ./dropshade-*.rpm   # Fedora
+sudo apt install ./dropshade_*.deb   # Debian, Ubuntu
+```
+
+Then set up the hotkey once, depending on your desktop. From then on <kbd>F12</kbd> drops the
+terminal down and hides it again, and the first press starts Dropshade.
+
+- **COSMIC**: open Dropshade once from the app launcher. It adds <kbd>F12</kbd> to COSMIC's custom keyboard
+  shortcuts, so the key keeps working after you log out.
+- **GNOME**: turn on the Dropshade extension, then log out and back in:
+
+  ```sh
+  gnome-extensions enable dropshade@samuelba.dev
+  ```
+
+  The Extensions app works too. Dropshade shows an icon in the top bar while it runs.
+- **KDE Plasma, Hyprland**: open Dropshade once from the app launcher and confirm the shortcut
+  when the desktop asks. The desktop only passes <kbd>F12</kbd> to Dropshade while it runs, so add Dropshade
+  to the apps that start when you log in (Plasma: System Settings → Autostart).
+- **Sway, niri, X11 and other desktops**: add a keyboard shortcut in your desktop's settings that
+  runs <kbd>F12</kbd> or `dropshade toggle`.
+
+To use a different key, change Settings → Window → Hotkey (right-click the terminal, then
+Settings), or `window.hotkey` in the [config file](#configuration). The details for each desktop
+are under [How it drops down](#how-it-drops-down).
+
+Each [release](https://github.com/samuelba/dropshade/releases) also has an AppImage and a
+`.tar.gz` with the binary, for x86_64 and aarch64. Neither installs the GNOME extension: run
+`Dropshade-*.AppImage gnome-extension install` or `dropshade gnome-extension install` once, then
+log out and back in. On other desktops, set them up as above, starting the binary instead of the
+launcher entry.
+
+On start, Dropshade asks GitHub for the latest release. When a newer one is out, it shows a
+notification once per version and a download link in About Dropshade. Turn this off with
+`[updates] check = false`, or under Settings → Session.
+
 ## Features
 
 - **One hotkey**: slides down over your windows and hides again; the first press starts Dropshade.
@@ -160,21 +202,6 @@ Each entry is a model (as Settings lists it), a connector such as `DP-1`, `"poin
 under the mouse pointer) or `"primary"`. Models are the safer choice because docks often number
 the connectors differently; use connectors for two screens of the same model.
 
-## Install
-
-Each [release](https://github.com/samuelba/dropshade/releases) has packages for x86_64 and
-aarch64:
-
-| Format | Notes |
-| ------ | ----- |
-| `.rpm` / `.deb` | Includes the GNOME Shell extension system-wide; enable it in Extensions and log out once |
-| AppImage | Run `Dropshade-*.AppImage gnome-extension install` once |
-| `.tar.gz` | The binary plus desktop files; run `dropshade gnome-extension install` |
-
-On start, Dropshade asks GitHub for the latest release. When a newer one is out, it shows a
-notification once per version and a download link in About Dropshade. Turn this off with
-`[updates] check = false`, or under Settings → Session.
-
 ## Shell integration
 
 Bash and zsh tell Dropshade where each prompt, command and command output is (with OSC 133
@@ -208,17 +235,10 @@ output. When a command that ran for at least `command_min_duration` seconds (10 
 finishes while Dropshade is hidden or unfocused, a desktop notification says so; clicking it
 shows Dropshade on that tab. Change these under Settings → Notifications.
 
-## Getting started
-
-```sh
-cargo build --release
-```
-
-Building needs the `libxkbcommon` development files (`libxkbcommon-devel` on Fedora,
-`libxkbcommon-dev` on Debian and Ubuntu). Running needs a Wayland or X11 session, Vulkan or OpenGL
-drivers, and `libxkbcommon`.
+## How it drops down
 
 How the terminal drops down depends on the desktop. Dropshade picks the right way on its own.
+Running it needs a Wayland or X11 session, Vulkan or OpenGL drivers, and `libxkbcommon`.
 
 ### GNOME
 
@@ -226,15 +246,17 @@ Mutter, GNOME's compositor, does not let apps place themselves over other window
 companion Shell extension shows and hides Dropshade. It supports GNOME 46 to 50. GNOME 46 (Ubuntu
 24.04) cannot hide a window from Alt+Tab and the dash, so there the terminal is listed while shown.
 
+The `.rpm` and `.deb` install the extension for all users. For a build of your own:
+
 ```sh
 ./target/release/dropshade gnome-extension install   # once; then log out and back in
 # Upgrading from a build before the dev.samuelba.Dropshade rename:
 # gnome-extensions uninstall dropshade@samuelba.github.io
 ```
 
-Press <kbd>F12</kbd> (configurable as `window.hotkey`) and the terminal slides down; press it again
-to hide it. The extension starts Dropshade on the first press. While it runs, an icon in the top
-bar does the same on a click; right-click it to open the settings or the About dialog.
+The extension binds `window.hotkey` and starts Dropshade on the first press. While Dropshade
+runs, an icon in the top bar shows and hides it on a click; right-click the icon to open the
+settings or the About dialog.
 
 ### COSMIC, KDE Plasma, Sway, Hyprland and other layer-shell desktops
 
@@ -242,11 +264,13 @@ These compositors support [layer shell](https://wayland.app/protocols/wlr-layer-
 so no extension is needed: Dropshade slides down over your windows by itself, on the screen in
 `window.monitor`, sized and animated by the `[window]` settings.
 
-On COSMIC, Dropshade puts `window.hotkey` into COSMIC's custom shortcuts whenever you change it
-(press Enter in the Hotkey field of Settings, or edit the config file), so the first press starts
-Dropshade. It only touches the shortcut named "Dropshade", reads the file the way COSMIC does,
-leaves it alone if anything looks unexpected or the keys are taken, and keeps the previous file in
-`~/.local/state/dropshade/cosmic-shortcuts-custom.backup`.
+On COSMIC, Dropshade adds a shortcut named "Dropshade" for `window.hotkey` to COSMIC's custom
+shortcuts the first time it starts, and updates it whenever you change the hotkey (press Enter in
+the Hotkey field of Settings, or edit the config file). COSMIC then runs `dropshade toggle`, so
+the first press starts Dropshade. If you delete the shortcut in COSMIC's settings, Dropshade does
+not add it back on later starts. It only touches its own shortcut, reads the file the way COSMIC
+does, leaves it alone if anything looks unexpected or the keys are taken, and keeps the previous
+file in `~/.local/state/dropshade/cosmic-shortcuts-custom.backup`.
 
 On KDE Plasma, Hyprland and other desktops whose portal offers global shortcuts, Dropshade asks
 the desktop for `window.hotkey` when it starts (Plasma asks you to confirm once). The desktop has
@@ -335,6 +359,13 @@ command = "tail -f log.txt"
 `[session] layout = "work"` starts every session with that layout instead of the last one.
 
 ## Development
+
+```sh
+cargo build --release
+```
+
+Building needs the `libxkbcommon` development files (`libxkbcommon-devel` on Fedora,
+`libxkbcommon-dev` on Debian and Ubuntu).
 
 ```sh
 cargo fmt --all
