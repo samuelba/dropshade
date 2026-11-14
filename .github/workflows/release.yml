@@ -41,3 +41,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ needs.release-please.outputs.tag_name }}" dist/* --clobber --repo "${{ github.repository }}"
+
+  aur:
+    needs: upload
+    uses: ./.github/workflows/aur.yml
+    secrets: inherit
