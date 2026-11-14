@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.9.0](https://github.com/samuelba/dropshade/compare/v0.8.0...v0.9.0) (2026-11-14)
+
+
+### Features
+
+* add a setting to start Dropshade hidden when the user logs in ([292afc9](https://github.com/samuelba/dropshade/commit/292afc9aee72f34cca32d71411b27c61937a8483))
+* add a setting to start Dropshade hidden when the user logs in ([2eb87f1](https://github.com/samuelba/dropshade/commit/2eb87f106946719d533d089feec52a35d077aae0))
+* open the desktop's shortcut editor for the portal hotkey ([c88d92d](https://github.com/samuelba/dropshade/commit/c88d92d02ee27c585871eff4049dfa1b8fb32ace))
+* open the desktop's shortcut editor for the portal hotkey ([f1eac9b](https://github.com/samuelba/dropshade/commit/f1eac9b940f0b474fd11d9fb138fc616e7fdcafb))
+* show a tray icon on COSMIC and KDE Plasma ([98c6def](https://github.com/samuelba/dropshade/commit/98c6def5b0008760f17002d079d4b409d71987c1))
+* show a tray icon on COSMIC and KDE Plasma ([6024e3e](https://github.com/samuelba/dropshade/commit/6024e3ecf1a7e307faa1dcd08fa66fda748c3b54))
+
+
+### Bug Fixes
+
+* focus the pane that a middle click pastes into ([f5a4faf](https://github.com/samuelba/dropshade/commit/f5a4faf0d1b0964a2336683265dc9d944498596a))
+* focus the pane that a middle click pastes into ([3780b37](https://github.com/samuelba/dropshade/commit/3780b375b9df51da84cc92d907bb254be4a4ff9e))
+* **gnome:** hide the dropdown from Alt+Tab and the dash on GNOME 46 ([190967b](https://github.com/samuelba/dropshade/commit/190967bcde8e2305f43995a595cbc94130dd2986))
+* **gnome:** hide the dropdown from Alt+Tab and the dash on GNOME 46 ([ccd7949](https://github.com/samuelba/dropshade/commit/ccd794925de418b233b6cf45167b0bb965825670))
+
 ## [0.8.0](https://github.com/samuelba/dropshade/compare/v0.7.0...v0.8.0) (2026-11-14)
 
 
