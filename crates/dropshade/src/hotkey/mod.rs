@@ -7,7 +7,7 @@ mod cosmic;
 mod portal;
 
 pub use accelerator::Accelerator;
-pub use portal::{Event as PortalEvent, events as portal_events};
+pub use portal::{Configure as PortalConfigure, Event as PortalEvent, events as portal_events};
 
 /// Who runs `dropshade toggle` on the hotkey.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

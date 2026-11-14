@@ -79,8 +79,14 @@ impl App {
             }
             Section::Font => font_section(ctx),
             Section::Window => {
-                let hotkey = if self.hotkey_settable() {
-                    HotkeyField::Shown(self.hotkey.status.as_ref())
+                let status = self.hotkey.status.as_ref().map(|(_, status)| status);
+                let hotkey = if self.binds_in_cosmic() {
+                    HotkeyField::Cosmic(status)
+                } else if self.hotkey_settable() {
+                    HotkeyField::Portal {
+                        status,
+                        configurable: self.hotkey.portal_configure.is_some(),
+                    }
                 } else {
                     HotkeyField::Hidden
                 };
@@ -232,10 +238,16 @@ fn font_section(ctx: Ctx<'_>) -> Element<'static, Message> {
     .into()
 }
 
-/// On layer-shell desktops, whether the hotkey can be set, with its binding once known.
+/// On layer-shell desktops, who binds the hotkey, with its binding once known.
 enum HotkeyField<'a> {
     Hidden,
-    Shown(Option<&'a (hotkey::Binder, hotkey::Status)>),
+    /// Dropshade writes it into COSMIC's shortcuts.
+    Cosmic(Option<&'a hotkey::Status>),
+    /// The portal took the configured keys once; after that the desktop's editor changes them.
+    Portal {
+        status: Option<&'a hotkey::Status>,
+        configurable: bool,
+    },
 }
 
 fn window(
@@ -255,10 +267,20 @@ fn window(
     let (note, hotkey): (Element<'static, Message>, Element<'static, Message>) =
         match (host, hotkey) {
             (Host::Shell, _) => (Space::new().into(), field()),
-            (Host::Layer, HotkeyField::Shown(bound)) => {
-                let status = bound.map_or_else(
+            (
+                Host::Layer,
+                HotkeyField::Portal {
+                    status,
+                    configurable,
+                },
+            ) => (
+                hint(applies, ctx.colors),
+                portal_hotkey(status, configurable, ctx.colors, danger),
+            ),
+            (Host::Layer, HotkeyField::Cosmic(status)) => {
+                let status = status.map_or_else(
                     || Space::new().into(),
-                    |(binder, status)| binding_status(*binder, status, ctx.colors, danger),
+                    |status| cosmic_status(status, ctx.colors, danger),
                 );
                 (
                     hint(applies, ctx.colors),
@@ -329,51 +351,85 @@ fn window(
     .into()
 }
 
-/// Which keys the desktop runs Dropshade on, and why not if they could not be set.
-fn binding_status(
-    binder: hotkey::Binder,
+/// Which keys COSMIC runs Dropshade on, and why not if they could not be set.
+fn cosmic_status(
     status: &hotkey::Status,
     colors: UiColors,
     danger: Color,
 ) -> Element<'static, Message> {
-    use hotkey::{Binder, Status};
-    let (message, color) = match (binder, status) {
-        (Binder::Cosmic, Status::Bound(keys)) => (
+    use hotkey::Status;
+    let (message, color) = match status {
+        Status::Bound(keys) => (
             format!("COSMIC runs Dropshade on {keys}. Press Enter in the field to change it."),
             colors.muted,
         ),
-        (Binder::Cosmic, Status::Unbound) => (
+        Status::Unbound => (
             "Not in COSMIC's shortcuts yet: press Enter in the field to add it.".to_owned(),
             colors.accent,
         ),
-        (Binder::Cosmic, Status::Failed(error)) => (
+        Status::Failed(error) => (
             format!("COSMIC's shortcuts were left alone: {error}"),
-            danger,
-        ),
-        (Binder::Portal, Status::Bound(keys)) if keys.is_empty() => (
-            "Registered with the desktop as \"Show or hide Dropshade\"; assign it a key in the \
-             desktop's shortcut settings."
-                .to_owned(),
-            colors.muted,
-        ),
-        (Binder::Portal, Status::Bound(keys)) => (
-            format!(
-                "The desktop toggles Dropshade on {keys} while it runs. The desktop has the final \
-                 say: if it keeps another key, change it in its shortcut settings."
-            ),
-            colors.muted,
-        ),
-        (Binder::Portal, Status::Unbound) => (
-            "The desktop did not add the shortcut. Press Enter in the field to ask again."
-                .to_owned(),
-            colors.accent,
-        ),
-        (Binder::Portal, Status::Failed(error)) => (
-            format!("The desktop's shortcut portal failed: {error}"),
             danger,
         ),
     };
     text(message).size(HINT_SIZE).color(color).into()
+}
+
+/// The keys the desktop toggles Dropshade on, and the way to its editor for them.
+fn portal_hotkey(
+    status: Option<&hotkey::Status>,
+    configurable: bool,
+    colors: UiColors,
+    danger: Color,
+) -> Element<'static, Message> {
+    use hotkey::Status;
+    let keys = match status {
+        Some(Status::Bound(keys)) if !keys.is_empty() => keys.clone(),
+        Some(Status::Bound(_) | Status::Unbound) => "None".to_owned(),
+        Some(Status::Failed(_)) | None => "Unknown".to_owned(),
+    };
+    let keys = text(keys).size(TEXT_SIZE).width(Fill);
+    let control: Element<'static, Message> = if configurable {
+        row![
+            keys,
+            button(text("Change…").size(TEXT_SIZE))
+                .padding([6, 14])
+                .style(move |_, status| colors.ghost_button(colors.text, status))
+                .on_press(settings(SettingsMessage::ConfigureHotkey)),
+        ]
+        .spacing(8)
+        .align_y(iced::Center)
+        .into()
+    } else {
+        keys.into()
+    };
+    let (note, color) = match status {
+        Some(Status::Failed(error)) => (
+            format!("The desktop's shortcut portal failed: {error}"),
+            danger,
+        ),
+        _ if configurable => (
+            "The desktop owns the keys of \"Show or hide Dropshade\" and toggles it on them \
+             while Dropshade runs."
+                .to_owned(),
+            colors.muted,
+        ),
+        _ => (
+            "The desktop owns the keys of \"Show or hide Dropshade\": change them in its \
+             shortcut settings. They work while Dropshade runs."
+                .to_owned(),
+            colors.muted,
+        ),
+    };
+    column![
+        setting("Hotkey", control),
+        row![
+            Space::new().width(LABEL_WIDTH + 10.0),
+            text(note).size(HINT_SIZE).color(color)
+        ],
+    ]
+    .spacing(4)
+    .into()
 }
 
 fn terminal(ctx: Ctx<'_>) -> Element<'static, Message> {

@@ -37,6 +37,14 @@ trait GlobalShortcuts {
         options: HashMap<&str, Variant<'_>>,
     ) -> zbus::Result<OwnedObjectPath>;
 
+    /// Since version 2.
+    fn configure_shortcuts(
+        &self,
+        session_handle: &ObjectPath<'_>,
+        parent_window: &str,
+        options: HashMap<&str, Variant<'_>>,
+    ) -> zbus::Result<()>;
+
     #[zbus(signal)]
     fn activated(
         &self,
@@ -53,7 +61,7 @@ trait GlobalShortcuts {
         shortcuts: Shortcuts,
     ) -> zbus::Result<()>;
 
-    #[zbus(property)]
+    #[zbus(property, name = "version")]
     fn version(&self) -> zbus::Result<u32>;
 }
 
@@ -85,6 +93,19 @@ pub enum Event {
     Toggle,
     /// This desktop's portal has no global shortcuts.
     Unavailable,
+    /// The desktop can show its own editor for the shortcut's keys.
+    Configurable(Configure),
+}
+
+/// Asks the desktop to show its editor for the shortcut, which is where its keys are changed:
+/// the portal only takes the preferred keys when the shortcut is first registered.
+#[derive(Debug, Clone)]
+pub struct Configure(mpsc::UnboundedSender<()>);
+
+impl Configure {
+    pub fn open(&self) {
+        let _ = self.0.unbounded_send(());
+    }
 }
 
 #[derive(Debug)]
@@ -148,8 +169,17 @@ async fn run(hotkey: &str, output: &mut mpsc::Sender<Event>) -> Result<(), Error
     let session = create_session(&connection, &portal).await?;
     let keys = bind(&connection, &portal, &session, &trigger).await?;
     send(output, Event::Status(Status::Bound(keys))).await?;
+    let (configure, mut configure_requests) = mpsc::unbounded();
+    if version >= 2 {
+        send(output, Event::Configurable(Configure(configure.clone()))).await?;
+    }
     loop {
         tokio::select! {
+            Some(()) = configure_requests.next() => {
+                if let Err(error) = portal.configure_shortcuts(&session, "", HashMap::new()).await {
+                    tracing::warn!(%error, "the desktop cannot show its shortcut settings");
+                }
+            }
             signal = activated.next() => {
                 let Some(signal) = signal else { return Ok(()) };
                 let args = signal.args()?;

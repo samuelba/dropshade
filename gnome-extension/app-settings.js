@@ -21,8 +21,8 @@ const INTERFACE = `
 
 const DEFAULTS = {
     hotkey: 'F12',
-    width: 1.0,
-    height: 0.5,
+    width: 0.8,
+    height: 0.8,
     align: 'center',
     verticalAlign: 'top',
     monitor: 'pointer',

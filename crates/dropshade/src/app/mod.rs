@@ -116,6 +116,11 @@ struct HotkeyBinding {
     portal_requests: u32,
     /// The desktop portal turned out to have no global shortcuts.
     portal_missing: bool,
+    /// The first show waits for the portal's answer, so the desktop's dialog for the shortcut is
+    /// not covered by the drop-down, which also takes the keyboard.
+    first_show_held: bool,
+    /// Opens the desktop's editor for the shortcut, where the portal offers one.
+    portal_configure: Option<hotkey::PortalConfigure>,
 }
 
 #[derive(Debug)]
@@ -260,7 +265,12 @@ impl App {
             app.hotkey.status = Some((hotkey::Binder::Cosmic, status));
         }
         let first_tab = app.startup_tabs(startup);
-        let open = app.open_window();
+        let open = if app.binds_through_portal() {
+            app.hotkey.first_show_held = true;
+            Task::none()
+        } else {
+            app.open_window()
+        };
         let service = app.start_service();
         let theme = system::theme().map(Message::SystemTheme);
         let release = app.check_release();
@@ -442,8 +452,24 @@ impl App {
                 self.hotkey.status = Some((hotkey::Binder::Portal, status));
             }
             hotkey::PortalEvent::Unavailable => self.hotkey.portal_missing = true,
+            hotkey::PortalEvent::Configurable(configure) => {
+                self.hotkey.portal_configure = Some(configure);
+                return Task::none();
+            }
+        }
+        if self.hotkey.first_show_held {
+            return self.open_window();
         }
         Task::none()
+    }
+
+    /// Hands the shortcut's keys to the desktop's editor, which the drop-down would cover.
+    fn configure_hotkey(&mut self) -> Task<Message> {
+        let Some(configure) = &self.hotkey.portal_configure else {
+            return Task::none();
+        };
+        configure.open();
+        self.command(Command::Hide)
     }
 
     fn apply_settings(&mut self) {

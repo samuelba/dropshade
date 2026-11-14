@@ -364,8 +364,8 @@ impl Default for Window {
     fn default() -> Self {
         Self {
             hotkey: "F12".into(),
-            width: 1.0,
-            height: 0.5,
+            width: 0.8,
+            height: 0.8,
             align: WindowAlign::Center,
             vertical_align: WindowVerticalAlign::Top,
             monitor: Monitors::default(),

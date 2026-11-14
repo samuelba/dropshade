@@ -80,7 +80,7 @@ mod tests {
         assert_eq!(settings.align, "center");
         assert_eq!(settings.vertical_align, "top");
         assert_eq!(settings.animation, "slide-top");
-        assert!((settings.height - 0.5).abs() < f64::EPSILON);
+        assert!((settings.height - 0.8).abs() < f64::EPSILON);
     }
 
     #[test]
