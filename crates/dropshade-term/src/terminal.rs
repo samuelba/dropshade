@@ -25,6 +25,7 @@ use iced::futures::channel::mpsc;
 
 use crate::colors::Palette;
 use crate::frame::{self, Frame};
+use crate::graphics::{self, placeholder, table::PlacementTable};
 use crate::hints::{HintOutcome, HintSession};
 use crate::input::paste_bytes;
 use crate::links;
@@ -73,6 +74,8 @@ pub struct SpawnOptions {
     pub cell: CellSize,
     /// Output drawn before the shell starts, such as the text a pane showed before a restart.
     pub replay: Option<Vec<u8>>,
+    /// Shows images sent with the kitty graphics protocol or as sixels.
+    pub images: bool,
 }
 
 impl Default for SpawnOptions {
@@ -93,6 +96,7 @@ impl Default for SpawnOptions {
                 height: 16.0,
             },
             replay: None,
+            images: true,
         }
     }
 }
@@ -180,6 +184,10 @@ pub struct Terminal {
     sender: PtySender,
     /// Where the prompts and command output are, from the shell's OSC 133 marks.
     marks: Arc<Mutex<PromptMarks>>,
+    /// The inline images on screen and in the scrollback.
+    images: Arc<Mutex<PlacementTable>>,
+    /// Whether inline images are shown, so the terminal reports sixel support.
+    images_enabled: bool,
     size: GridSize,
     cell: CellSize,
     title: Option<String>,
@@ -241,13 +249,22 @@ impl Terminal {
         let child_pid = pty.child().id();
         let pty_handle = pty.file().try_clone().map_err(SpawnError::Pty)?;
         let marks = Arc::new(Mutex::new(PromptMarks::new(options.scrollback_lines)));
-        let loop_sender = pty_loop::spawn(pty, Arc::clone(&term), Arc::clone(&marks), proxy)
+        let images = Arc::new(Mutex::new(PlacementTable::default()));
+        let shared = pty_loop::Shared {
+            term: Arc::clone(&term),
+            marks: Arc::clone(&marks),
+            images: Arc::clone(&images),
+            proxy,
+        };
+        let loop_sender = pty_loop::spawn(pty, shared, window_size, options.images)
             .map_err(SpawnError::EventLoop)?;
 
         let terminal = Self {
             term,
             sender: loop_sender,
             marks,
+            images,
+            images_enabled: options.images,
             size: options.size,
             cell: options.cell,
             title: None,
@@ -283,7 +300,8 @@ impl Terminal {
     }
 
     pub fn frame(&self, palette: &Palette) -> Frame {
-        frame::build(&self.term.lock(), palette)
+        let term = self.term.lock();
+        frame::build(&term, palette, &graphics::lock(&self.images))
     }
 
     pub fn write(&self, bytes: impl Into<Cow<'static, [u8]>>) {
@@ -334,6 +352,7 @@ impl Terminal {
         self.clear_search();
         reset::full(&mut self.term.lock());
         lock(&self.marks).clear();
+        graphics::lock(&self.images).clear();
         self.redraw_prompt();
     }
 
@@ -429,6 +448,7 @@ impl Terminal {
         self.term
             .lock()
             .selection_to_string()
+            .map(|text| placeholder::strip(&text))
             .filter(|text| !text.is_empty())
     }
 
@@ -843,7 +863,7 @@ impl Terminal {
                 Some(Notice::TitleChanged)
             }
             Event::PtyWrite(text) => {
-                self.write(text.into_bytes());
+                self.write(device_attributes(text, self.images_enabled).into_bytes());
                 None
             }
             Event::TextAreaSizeRequest(format) => {
@@ -915,6 +935,16 @@ fn link_in_row(row: &Row<Cell>, column: usize) -> Option<(Range<usize>, String)>
     Some((span, uri))
 }
 
+/// The emulator's reply to a primary device attributes request (DA1) says "VT102"; with images
+/// on it also tells programs that look for sixel support (`4`) that they have it.
+fn device_attributes(reply: String, images: bool) -> String {
+    if images && reply == "\x1b[?6c" {
+        "\x1b[?62;4c".to_owned()
+    } else {
+        reply
+    }
+}
+
 fn grid_point(display_offset: usize, at: CellPosition) -> Point {
     viewport_to_point(display_offset, Point::new(at.line, Column(at.column)))
 }
@@ -966,6 +996,16 @@ fn escape_regex(query: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn device_attributes_announce_sixel_while_images_are_on() {
+        assert_eq!(device_attributes("\x1b[?6c".into(), true), "\x1b[?62;4c");
+        assert_eq!(device_attributes("\x1b[?6c".into(), false), "\x1b[?6c");
+        assert_eq!(
+            device_attributes("\x1b[>0;2600;1c".into(), true),
+            "\x1b[>0;2600;1c"
+        );
+    }
 
     #[test]
     fn the_shell_sees_a_widely_known_terminal_type() {

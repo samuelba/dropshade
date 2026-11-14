@@ -341,14 +341,14 @@ mod tests {
     use alacritty_terminal::vte::ansi::{Processor, StdSyncHandler};
 
     use super::*;
-    use crate::osc133::Osc133Scanner;
+    use crate::sequences::{Found, SequenceScanner};
     use crate::size::GridSize;
 
     /// A terminal plus the same scan-parse-record steps the pty loop takes.
     struct Harness {
         term: Term<VoidListener>,
         parser: Processor<StdSyncHandler>,
-        scanner: Osc133Scanner,
+        scanner: SequenceScanner,
         marks: PromptMarks,
     }
 
@@ -362,15 +362,18 @@ mod tests {
             Self {
                 term: Term::new(config, &size, VoidListener),
                 parser: Processor::default(),
-                scanner: Osc133Scanner::default(),
+                scanner: SequenceScanner::default(),
                 marks: PromptMarks::new(history),
             }
         }
 
         fn feed(&mut self, bytes: &[u8]) {
             let mut found = Vec::new();
-            self.scanner
-                .scan(bytes, |end, kind| found.push((end, kind)));
+            self.scanner.scan(bytes, |end, what| {
+                if let Found::Mark(kind) = what {
+                    found.push((end, kind));
+                }
+            });
             let mut start = 0;
             for (end, kind) in found {
                 self.parse(&bytes[start..end]);

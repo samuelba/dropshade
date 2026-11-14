@@ -31,6 +31,7 @@ pub struct Settings {
     pub scrollback_lines: usize,
     pub scroll: ScrollJumps,
     pub shell_integration: bool,
+    pub images: bool,
     pub cursor_style: CursorStyle,
     pub copy_on_select: bool,
     /// How much split panes without the keyboard fade.
@@ -87,6 +88,7 @@ pub fn build(config: &Config, prefers_light: bool, themes_dir: Option<&Path>) ->
             on_keystroke: terminal.scroll_on_keystroke,
         },
         shell_integration: terminal.shell_integration,
+        images: terminal.images,
         cursor_style: CursorStyle {
             shape: cursor_shape(config.appearance.cursor_shape),
             blinking: config.appearance.cursor_blink,

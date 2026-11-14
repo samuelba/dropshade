@@ -63,6 +63,9 @@ working_directory = ""
 # Let bash and zsh report their prompts and commands (OSC 133), for jumping between prompts,
 # selecting a command's output, and closing idle tabs without asking. Fish does this itself.
 shell_integration = true
+# Show images that programs print with the kitty graphics protocol or as sixels (kitten icat,
+# yazi, timg, chafa, img2sixel). Applies to new tabs.
+images = true
 
 [terminal.env]
 # Extra environment variables, e.g. EDITOR = "nvim"

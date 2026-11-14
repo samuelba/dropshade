@@ -710,3 +710,77 @@ mod bash_integration {
         std::fs::remove_dir_all(home).unwrap();
     }
 }
+
+mod images {
+    use super::*;
+
+    const SIZE: GridSize = GridSize {
+        columns: 40,
+        lines: 5,
+    };
+
+    #[test]
+    fn a_kitty_image_is_shown() {
+        let terminal = spawn(
+            r"printf '\033_Ga=T,f=24,s=2,v=1;AAAAAAAA\033\\done'; sleep 2",
+            SIZE,
+        );
+        let text = wait_for(&terminal, "done");
+        assert_eq!(text, "done");
+        let frame = terminal.frame(&Palette::default());
+        assert_eq!(frame.images.len(), 1, "frame: {frame:?}");
+        assert_eq!(frame.images[0].placement.image.width, 2);
+    }
+
+    #[test]
+    fn a_kitty_query_is_answered() {
+        let terminal = spawn(
+            r"stty raw -echo; printf '\033_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\033\\'; head -c 12 | tr '\033' E; sleep 2",
+            SIZE,
+        );
+        let text = wait_for(&terminal, "Gi=31;OK");
+        assert!(text.contains("E_Gi=31;OKE"), "screen was: {text:?}");
+    }
+
+    #[test]
+    fn a_sixel_image_is_shown() {
+        let terminal = spawn(r"printf '\033Pq#0;2;100;0;0!20~\033\\done'; sleep 2", SIZE);
+        let text = wait_for(&terminal, "done");
+        assert_eq!(text, "done");
+        let frame = terminal.frame(&Palette::default());
+        assert_eq!(frame.images.len(), 1, "frame: {frame:?}");
+        assert_eq!(frame.images[0].placement.image.width, 20);
+    }
+
+    #[test]
+    fn device_attributes_announce_sixel() {
+        let mut terminal = spawn(
+            r"stty raw -echo; printf ready; head -c 8 | tr '\033' E; sleep 2",
+            SIZE,
+        );
+        wait_for(&terminal, "ready");
+        let reply = dropshade_term::TermEvent::PtyWrite("\x1b[?6c".into());
+        assert_eq!(terminal.handle_event(reply, &Palette::default()), None);
+        let text = wait_for(&terminal, "?62;4c");
+        assert!(text.contains("readyE[?62;4c"), "screen was: {text:?}");
+    }
+
+    #[test]
+    fn images_can_be_turned_off() {
+        let options = SpawnOptions {
+            command: Some((
+                "sh".into(),
+                vec![
+                    "-c".into(),
+                    r"printf '\033_Ga=T,f=24,s=2,v=1;AAAAAAAA\033\\done'; sleep 2".into(),
+                ],
+            )),
+            size: SIZE,
+            images: false,
+            ..SpawnOptions::default()
+        };
+        let (terminal, _events) = Terminal::spawn(options).expect("spawn sh");
+        wait_for(&terminal, "done");
+        assert_eq!(terminal.frame(&Palette::default()).images, []);
+    }
+}

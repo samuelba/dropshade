@@ -78,6 +78,8 @@ notification once per version and a download link in About Dropshade. Turn this 
 - **Keyboard selection**: a vi mode to move through and select the scrollback, plus search.
 - **Shell integration**: jump between prompts, select a command's output and close idle tabs
   without asking (bash and zsh).
+- **Inline images**: pictures from `kitten icat`, yazi, timg, chafa, img2sixel and other tools that
+  speak the kitty graphics protocol or sixel.
 - **Notifications**: a dot on tabs that rang the bell or printed output, and a desktop
   notification when a long command finishes.
 - **Themes and colors**: Dusk and Dawn built in, any Alacritty theme, follow the system's light or
@@ -235,6 +237,20 @@ Turn it off with `[terminal] shell_integration = false` (or under Settings → T
 and prompts can send the marks themselves: `ESC ] 133 ; A BEL` where the prompt starts,
 `133;B` where the command line starts, `133;C` where the output starts and `133;D;<exit status>`
 when the command finished.
+
+## Inline images
+
+Programs can show images with the [kitty graphics
+protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/) (`kitten icat picture.png`, file
+previews in yazi, `timg -pk`, `chafa -f kitty`, editor plugins) or as sixels (`img2sixel`,
+`chafa -f sixels`, `lsix`). An image takes the place of the text cells it covers, so it scrolls
+into the scrollback, is wiped by `clear` and is overwritten like text. Unicode placeholders
+(`kitten icat --unicode-placeholder`, used inside tmux) work too.
+
+Images arrive inline in the program's output; the protocol's file, temporary file and shared
+memory transfers are not supported, so a program can never make Dropshade read a file. Images
+are not kept when a session is restored, and a resize that rewraps a line can split an image wider
+than the new window. Turn images off with `images = false` under `[terminal]`.
 
 ## Bell, activity and finished commands
 

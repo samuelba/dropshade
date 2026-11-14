@@ -3,6 +3,7 @@
 pub mod clicks;
 pub mod colors;
 pub mod frame;
+mod graphics;
 pub mod hints;
 pub mod input;
 pub mod links;
@@ -13,6 +14,7 @@ mod osc133;
 mod pty_loop;
 mod replay;
 mod reset;
+mod sequences;
 pub mod size;
 pub mod terminal;
 pub mod vi;

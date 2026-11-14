@@ -1,8 +1,9 @@
-//! Draws a terminal frame: text runs, the cursor, IME preedit text and the visual bell.
+//! Draws a terminal frame: text runs, images, the cursor, IME preedit text and the visual bell.
 
 use std::ops::Range;
 
 use alacritty_terminal::vte::ansi::CursorShape;
+use iced::advanced::image::Image;
 use iced::widget::canvas::{self, Geometry, Stroke, Text};
 use iced::widget::text::{LineHeight, Shaping};
 use iced::{Color, Font, Pixels, Point, Rectangle, Renderer, Size, font, mouse};
@@ -10,7 +11,7 @@ use unicode_width::UnicodeWidthStr;
 
 use super::{TerminalView, ViewState, scrollbar};
 use crate::colors::{CellColors, to_iced};
-use crate::frame::{Cursor, Run, RunStyle};
+use crate::frame::{Cursor, ImageFit, ImageTile, Run, RunStyle};
 use crate::metrics;
 use crate::vi::ViSelection;
 
@@ -39,6 +40,9 @@ impl<Message> TerminalView<'_, Message> {
         canvas.fill_rectangle(Point::ORIGIN, bounds.size(), background);
         for run in &snapshot.runs {
             self.draw_run(&mut canvas, run);
+        }
+        for tile in &snapshot.images {
+            self.draw_image_tile(&mut canvas, tile);
         }
         if let Some(link) = self.hovered_link(state.pointer.modifiers, bounds, cursor) {
             self.draw_link_underline(&mut canvas, link.line, &link.columns, &snapshot.runs);
@@ -175,6 +179,42 @@ impl<Message> TerminalView<'_, Message> {
                 fg,
             );
         }
+    }
+
+    /// Draws the part of an image that falls on the tile's cells.
+    #[allow(clippy::cast_precision_loss)]
+    fn draw_image_tile(&self, canvas: &mut canvas::Frame, tile: &ImageTile) {
+        let cell = self.style.cell;
+        let placement = &tile.placement;
+        let clip_origin = self.origin(tile.row, tile.column);
+        let clip = Rectangle::new(
+            clip_origin,
+            Size::new(tile.width as f32 * cell.width, cell.height),
+        );
+        let top_left = Point::new(
+            clip_origin.x - tile.image_column as f32 * cell.width,
+            clip_origin.y - tile.image_row as f32 * cell.height,
+        );
+        let area = Size::new(
+            placement.columns as f32 * cell.width,
+            placement.rows as f32 * cell.height,
+        );
+        let image = Size::new(placement.image.width as f32, placement.image.height as f32);
+        let bounds = match placement.fit {
+            ImageFit::Native => Rectangle::new(top_left, image),
+            ImageFit::Stretch => Rectangle::new(top_left, area),
+            ImageFit::Contain => {
+                let scale = (area.width / image.width).min(area.height / image.height);
+                let size = Size::new(image.width * scale, image.height * scale);
+                let offset = Point::new(
+                    top_left.x + (area.width - size.width) / 2.0,
+                    top_left.y + (area.height - size.height) / 2.0,
+                );
+                Rectangle::new(offset, size)
+            }
+        };
+        let image = Image::new(placement.image.handle.clone()).snap(true);
+        canvas.with_clip(clip, |frame| frame.draw_image(bounds, image));
     }
 
     /// Underlines cells of one row in the colour of their text, unless already underlined.

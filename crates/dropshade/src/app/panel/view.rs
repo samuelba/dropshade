@@ -507,6 +507,11 @@ fn terminal(ctx: Ctx<'_>) -> Element<'static, Message> {
             "Lets bash and zsh mark prompts and commands, to jump between prompts, select a command's output and close idle tabs without asking. Applies to new tabs.",
             ctx.colors,
         ),
+        hinted(
+            switch(ctx, "Inline images", Switch::Images),
+            "Shows images that programs print with the kitty graphics protocol or as sixels, such as kitten icat, yazi, timg and img2sixel. Applies to new tabs.",
+            ctx.colors,
+        ),
         subheading("Environment", ctx.colors),
         environment(ctx),
     ]

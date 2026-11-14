@@ -7,6 +7,9 @@ use alacritty_terminal::term::point_to_viewport;
 use alacritty_terminal::vte::ansi::{Color as AnsiColor, CursorShape, NamedColor, Rgb};
 
 use crate::colors::{CellColors, Palette};
+use crate::graphics::placeholder::{self, Parsed};
+use crate::graphics::table::PlacementTable;
+pub use crate::graphics::table::{Image, ImageFit, ImagePlacement};
 
 /// Text attributes that change how a run is drawn.
 #[allow(clippy::struct_excessive_bools)]
@@ -41,11 +44,26 @@ pub struct Cursor {
     pub wide: bool,
 }
 
+/// Consecutive cells on one row that show consecutive columns of one image.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImageTile {
+    pub row: usize,
+    pub column: usize,
+    /// Width in cells.
+    pub width: usize,
+    /// The image row and the image column of the first cell.
+    pub image_row: usize,
+    pub image_column: usize,
+    pub placement: ImagePlacement,
+    key: u32,
+}
+
 /// Everything needed to draw one frame of a terminal.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Frame {
     pub runs: Vec<Run>,
     pub cursor: Option<Cursor>,
+    pub images: Vec<ImageTile>,
 }
 
 impl From<Flags> for RunStyle {
@@ -60,11 +78,12 @@ impl From<Flags> for RunStyle {
     }
 }
 
-/// Builds the frame for the current viewport of `term`.
-pub fn build<T: EventListener>(term: &Term<T>, palette: &Palette) -> Frame {
+/// Builds the frame for the current viewport of `term`, with the images `table` holds.
+pub fn build<T: EventListener>(term: &Term<T>, palette: &Palette, table: &PlacementTable) -> Frame {
     let content = term.renderable_content();
     let default_bg = palette.resolve(AnsiColor::Named(NamedColor::Background), content.colors);
     let mut runs = RunCollector::new(default_bg);
+    let mut images = TileCollector::new(table);
 
     for indexed in content.display_iter {
         let cell = indexed.cell;
@@ -77,6 +96,10 @@ pub fn build<T: EventListener>(term: &Term<T>, palette: &Palette) -> Frame {
         let Some(point) = point_to_viewport(content.display_offset, indexed.point) else {
             continue;
         };
+        if let Some(parsed) = placeholder::parse(cell) {
+            images.push(point.line, point.column.0, parsed);
+            continue;
+        }
         let mut colors = palette.cell_colors(cell.fg, cell.bg, cell.flags, content.colors);
         if content
             .selection
@@ -115,6 +138,80 @@ pub fn build<T: EventListener>(term: &Term<T>, palette: &Palette) -> Frame {
     Frame {
         runs: runs.finish(),
         cursor,
+        images: images.tiles,
+    }
+}
+
+/// A placeholder cell with its row and column worked out.
+#[derive(Clone, Copy)]
+struct Placed {
+    row: usize,
+    column: usize,
+    key: u32,
+    image_row: usize,
+    image_column: usize,
+}
+
+/// Turns placeholder cells into image tiles. A cell may leave out its image column, or both its
+/// row and column, to continue the cell on its left.
+struct TileCollector<'a> {
+    table: &'a PlacementTable,
+    tiles: Vec<ImageTile>,
+    previous: Option<Placed>,
+}
+
+impl<'a> TileCollector<'a> {
+    fn new(table: &'a PlacementTable) -> Self {
+        Self {
+            table,
+            tiles: Vec::new(),
+            previous: None,
+        }
+    }
+
+    fn push(&mut self, row: usize, column: usize, parsed: Parsed) {
+        let left = self
+            .previous
+            .filter(|left| left.row == row && left.column + 1 == column && left.key == parsed.key);
+        let image_row = parsed.row.or(left.map(|left| left.image_row)).unwrap_or(0);
+        let image_column = parsed
+            .column
+            .or(left
+                .filter(|left| left.image_row == image_row)
+                .map(|left| left.image_column + 1))
+            .unwrap_or(0);
+        self.previous = Some(Placed {
+            row,
+            column,
+            key: parsed.key,
+            image_row,
+            image_column,
+        });
+        let Some(placement) = self.table.get(parsed.key) else {
+            return;
+        };
+        if image_row >= placement.rows || image_column >= placement.columns {
+            return;
+        }
+        if let Some(tile) = self.tiles.last_mut()
+            && tile.key == parsed.key
+            && tile.row == row
+            && tile.column + tile.width == column
+            && tile.image_row == image_row
+            && tile.image_column + tile.width == image_column
+        {
+            tile.width += 1;
+            return;
+        }
+        self.tiles.push(ImageTile {
+            row,
+            column,
+            width: 1,
+            image_row,
+            image_column,
+            placement: placement.clone(),
+            key: parsed.key,
+        });
     }
 }
 
@@ -255,7 +352,29 @@ mod tests {
         };
         let mut term = Term::new(Config::default(), &size, VoidListener);
         Processor::<alacritty_terminal::vte::ansi::StdSyncHandler>::new().advance(&mut term, bytes);
-        build(&term, &palette())
+        build(&term, &palette(), &PlacementTable::default())
+    }
+
+    fn image_frame(bytes: &[u8], table: &PlacementTable) -> Frame {
+        let size = GridSize {
+            columns: 10,
+            lines: 3,
+        };
+        let mut term = Term::new(Config::default(), &size, VoidListener);
+        Processor::<alacritty_terminal::vte::ansi::StdSyncHandler>::new().advance(&mut term, bytes);
+        build(&term, &palette(), table)
+    }
+
+    fn table_with(key: u32, columns: usize, rows: usize) -> PlacementTable {
+        let mut table = PlacementTable::default();
+        let placement = ImagePlacement {
+            image: Image::from_rgba(1, 1, vec![0; 4]),
+            columns,
+            rows,
+            fit: ImageFit::Contain,
+        };
+        table.insert(key, placement, key, false, true);
+        table
     }
 
     fn selected_frame(palette: &Palette) -> Frame {
@@ -271,7 +390,7 @@ mod tests {
         let mut selection = Selection::new(SelectionType::Simple, start, Side::Left);
         selection.update(Point::new(Line(0), Column(0)), Side::Right);
         term.selection = Some(selection);
-        build(&term, palette)
+        build(&term, palette, &PlacementTable::default())
     }
 
     fn texts(frame: &Frame) -> Vec<(usize, usize, &str)> {
@@ -280,6 +399,38 @@ mod tests {
             .iter()
             .map(|r| (r.row, r.column, r.text.as_str()))
             .collect()
+    }
+
+    fn tiles(frame: &Frame) -> Vec<(usize, usize, usize, usize, usize)> {
+        frame
+            .images
+            .iter()
+            .map(|t| (t.row, t.column, t.width, t.image_row, t.image_column))
+            .collect()
+    }
+
+    #[test]
+    fn placeholders_become_image_tiles_not_text() {
+        let table = table_with(5, 3, 2);
+        let cells = "\x1b[38;5;5ma\u{10EEEE}\u{305}\u{305}\u{10EEEE}\u{305}\u{30D}\u{10EEEE}\u{305}\u{30E}\r\n\u{10EEEE}\u{30D}\u{305}";
+        let frame = image_frame(cells.as_bytes(), &table);
+        assert_eq!(texts(&frame), vec![(0, 0, "a")]);
+        assert_eq!(tiles(&frame), vec![(0, 1, 3, 0, 0), (1, 0, 1, 1, 0)]);
+    }
+
+    #[test]
+    fn a_placeholder_without_diacritics_continues_its_left_neighbour() {
+        let table = table_with(5, 3, 2);
+        let cells = "\x1b[38;5;5m\u{10EEEE}\u{30D}\u{305}\u{10EEEE}\u{10EEEE}";
+        let frame = image_frame(cells.as_bytes(), &table);
+        assert_eq!(tiles(&frame), vec![(0, 0, 3, 1, 0)]);
+    }
+
+    #[test]
+    fn placeholders_of_unknown_images_draw_nothing() {
+        let frame = image_frame("\x1b[38;5;9m\u{10EEEE}x".as_bytes(), &table_with(5, 1, 1));
+        assert_eq!(tiles(&frame), vec![]);
+        assert_eq!(texts(&frame), vec![(0, 1, "x")]);
     }
 
     #[test]
