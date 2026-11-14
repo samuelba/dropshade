@@ -25,7 +25,8 @@ pub use input::InputConfig;
 pub use input::Shortcut;
 pub use size::{CellSize, GridSize};
 pub use terminal::{
-    ForegroundProcess, Notice, SearchDirection, SelectionKind, SpawnError, SpawnOptions, Terminal,
+    ForegroundProcess, LinkSpan, Notice, SearchDirection, SelectionKind, SpawnError, SpawnOptions,
+    Terminal,
 };
 pub use vi::{ViAction, ViScroll, ViSelection};
 pub use view::{

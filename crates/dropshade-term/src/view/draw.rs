@@ -1,5 +1,7 @@
 //! Draws a terminal frame: text runs, the cursor, IME preedit text and the visual bell.
 
+use std::ops::Range;
+
 use alacritty_terminal::vte::ansi::CursorShape;
 use iced::widget::canvas::{self, Geometry, Stroke, Text};
 use iced::widget::text::{LineHeight, Shaping};
@@ -37,6 +39,9 @@ impl<Message> TerminalView<'_, Message> {
         canvas.fill_rectangle(Point::ORIGIN, bounds.size(), background);
         for run in &snapshot.runs {
             self.draw_run(&mut canvas, run);
+        }
+        if let Some(link) = self.hovered_link(state.pointer.modifiers, bounds, cursor) {
+            self.draw_link_underline(&mut canvas, link.line, &link.columns, &snapshot.runs);
         }
         // Emoji may be wider than their cells, so they go on top of the neighbouring runs.
         for run in snapshot.runs.iter().filter(|run| run.style.emoji) {
@@ -164,6 +169,35 @@ impl<Message> TerminalView<'_, Message> {
                 Point::new(origin.x, y),
                 Size::new(width, DECORATION_THICKNESS),
                 fg,
+            );
+        }
+    }
+
+    /// Underlines cells of one row in the colour of their text, unless already underlined.
+    fn draw_link_underline(
+        &self,
+        canvas: &mut canvas::Frame,
+        row: usize,
+        columns: &Range<usize>,
+        runs: &[Run],
+    ) {
+        let cell = self.style.cell;
+        for run in runs
+            .iter()
+            .filter(|run| run.row == row && !run.style.underline)
+        {
+            let start = run.column.max(columns.start);
+            let end = (run.column + run.width).min(columns.end);
+            if start >= end {
+                continue;
+            }
+            let origin = self.origin(row, start);
+            #[allow(clippy::cast_precision_loss)]
+            let width = (end - start) as f32 * cell.width;
+            canvas.fill_rectangle(
+                Point::new(origin.x, origin.y + cell.height - DECORATION_THICKNESS),
+                Size::new(width, DECORATION_THICKNESS),
+                to_iced(run.colors.fg, 1.0),
             );
         }
     }

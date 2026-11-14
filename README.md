@@ -103,7 +103,7 @@ notification once per version and a download link in About Dropshade. Turn this 
 | Ctrl+Shift+C / Ctrl+Shift+V | Copy / paste |
 | Shift+Insert, middle click | Paste the primary selection |
 | Shift+PageUp/PageDown/Home/End | Scroll the scrollback |
-| Ctrl+click | Open a link |
+| Ctrl+click | Open a link (links under the pointer are underlined while Ctrl is held) |
 | Ctrl+Shift+F | Search the scrollback (Enter: older match) |
 | Ctrl+Shift+Space | [Select with the keyboard](#keyboard-selection) (vi mode) |
 | Ctrl+Shift+Up / Ctrl+Shift+Down | Jump to the previous / next prompt (needs [shell integration](#shell-integration)) |

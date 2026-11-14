@@ -16,7 +16,7 @@ use crate::colors::Palette;
 use crate::input::{self, InputConfig, KeyPress, Resolution, Shortcut};
 use crate::mouse::CellPosition;
 use crate::size::{CellSize, GridSize, Side};
-use crate::terminal::{SelectionKind, Terminal};
+use crate::terminal::{LinkSpan, SelectionKind, Terminal};
 use crate::vi::{self, ViAction};
 
 pub use pointer::PointerState;
@@ -82,6 +82,8 @@ pub struct ViewState {
     preedit: Option<String>,
     /// The first key of a two-key vi command (`gg`).
     vi_pending: Option<char>,
+    /// The link last drawn underlined under the pointer, to redraw when it changes.
+    hovered_link: Option<LinkSpan>,
 }
 
 impl Default for ViewState {
@@ -92,6 +94,7 @@ impl Default for ViewState {
             focused: true,
             preedit: None,
             vi_pending: None,
+            hovered_link: None,
         }
     }
 }
@@ -258,6 +261,32 @@ impl<'a, Message> TerminalView<'a, Message> {
         }
     }
 
+    /// The link under the pointer while Ctrl is held, which Ctrl+click would open.
+    fn hovered_link(
+        &self,
+        modifiers: keyboard::Modifiers,
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> Option<LinkSpan> {
+        if !modifiers.control() {
+            return None;
+        }
+        let position = cursor.position_in(bounds)?;
+        if self
+            .scrollbar(bounds)
+            .is_some_and(|geometry| geometry.contains(position))
+        {
+            return None;
+        }
+        let (cell, _) = self.terminal.size().cell_at(
+            position.x,
+            position.y,
+            self.style.cell,
+            self.style.padding,
+        );
+        self.terminal.link_span_at(cell)
+    }
+
     fn scrollbar(&self, bounds: Rectangle) -> Option<scrollbar::Geometry> {
         if !self.style.scrollbar {
             return None;
@@ -405,6 +434,15 @@ fn implies_focus(event: &Event) -> bool {
     )
 }
 
+/// Events that can change which link is underlined under the pointer.
+fn moves_hover(event: &Event) -> bool {
+    matches!(
+        event,
+        Event::Keyboard(keyboard::Event::ModifiersChanged(_))
+            | Event::Mouse(mouse::Event::CursorMoved { .. } | mouse::Event::CursorLeft)
+    )
+}
+
 impl<Message> canvas::Program<Message> for TerminalView<'_, Message> {
     type State = ViewState;
 
@@ -420,7 +458,13 @@ impl<Message> canvas::Program<Message> for TerminalView<'_, Message> {
             state.focused = true;
         }
         let action = self.handle_event(state, event, bounds, cursor);
-        if refocused {
+        let hover_changed = moves_hover(event) && {
+            let hovered = self.hovered_link(state.pointer.modifiers, bounds, cursor);
+            let changed = hovered != state.hovered_link;
+            state.hovered_link = hovered;
+            changed
+        };
+        if refocused || hover_changed {
             action.or_else(|| Some(Action::request_redraw()))
         } else {
             action
@@ -445,16 +489,11 @@ impl<Message> canvas::Program<Message> for TerminalView<'_, Message> {
         {
             return mouse::Interaction::default();
         }
-        if state.pointer.modifiers.control() {
-            let (cell, _) = self.terminal.size().cell_at(
-                position.x,
-                position.y,
-                self.style.cell,
-                self.style.padding,
-            );
-            if self.terminal.link_at(cell).is_some() {
-                return mouse::Interaction::Pointer;
-            }
+        if self
+            .hovered_link(state.pointer.modifiers, bounds, cursor)
+            .is_some()
+        {
+            return mouse::Interaction::Pointer;
         }
         mouse::Interaction::Text
     }
