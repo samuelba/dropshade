@@ -254,6 +254,11 @@ impl App {
             saved: None,
             drop_target,
         };
+        if app.binds_in_cosmic()
+            && let Some(status) = hotkey::set_up_cosmic(&app.config.window.hotkey)
+        {
+            app.hotkey.status = Some((hotkey::Binder::Cosmic, status));
+        }
         let first_tab = app.startup_tabs(startup);
         let open = app.open_window();
         let service = app.start_service();
