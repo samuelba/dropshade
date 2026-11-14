@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.11.0](https://github.com/samuelba/dropshade/compare/v0.10.0...v0.11.0) (2026-11-14)
+
+
+### Features
+
+* quick-select hints for URLs, paths and hashes ([8287bb1](https://github.com/samuelba/dropshade/commit/8287bb1157c164b9bb23595c7fc6ef8ddefb4fe0))
+* quick-select hints for URLs, paths and hashes ([6269703](https://github.com/samuelba/dropshade/commit/6269703fa9f2d70184d890dd590a1e9313184ce1))
+* show images sent with the kitty graphics protocol ([7fd0eda](https://github.com/samuelba/dropshade/commit/7fd0edad54c9abcc5bf69ff2e475abbc5be3f2f9))
+* show sixel images ([29b4f35](https://github.com/samuelba/dropshade/commit/29b4f35f3ac9654d24b4ba1d07a0bff970416edd))
+* show sixel images ([7e1b311](https://github.com/samuelba/dropshade/commit/7e1b311043b9fa6a954206d3fca2311b53ff371c))
+* underline the link under the pointer while Ctrl is held ([60107d0](https://github.com/samuelba/dropshade/commit/60107d00c9e70a561e7e670c1aa83a477fae20f5))
+
+
+### Bug Fixes
+
+* **gnome-extension:** notify when the app fails before its window opens ([f50baec](https://github.com/samuelba/dropshade/commit/f50baec69c93a2a301d703179d3510b16159b847))
+* **gnome-extension:** notify when the app fails before its window opens ([c4bb5be](https://github.com/samuelba/dropshade/commit/c4bb5bed5f9510868e7fa9855aef46a64bbffe1c))
+* keep the drop target's Wayland connection alive past the display ([a030656](https://github.com/samuelba/dropshade/commit/a03065629e0ec448e3ac5bc790374f03effc80ef))
+* keep the drop target's Wayland connection alive past the display ([921aeb4](https://github.com/samuelba/dropshade/commit/921aeb44c85480cd41a1cc396d8d6af5b72615a5))
+
 ## [0.10.0](https://github.com/samuelba/dropshade/compare/v0.9.0...v0.10.0) (2026-11-14)
 
 
