@@ -25,6 +25,7 @@ use iced::futures::channel::mpsc;
 
 use crate::colors::Palette;
 use crate::frame::{self, Frame};
+use crate::hints::{HintOutcome, HintSession};
 use crate::input::paste_bytes;
 use crate::links;
 use crate::marks::PromptMarks;
@@ -191,6 +192,8 @@ pub struct Terminal {
     vi_direction: SearchDirection,
     /// Where the vi cursor was when the search bar opened; typing searches from there.
     search_origin: Option<Point>,
+    /// Quick select labels, valid while the view stays at this display offset.
+    hints: Option<(HintSession, usize)>,
 }
 
 impl std::fmt::Debug for Terminal {
@@ -254,6 +257,7 @@ impl Terminal {
             search_match: None,
             vi_direction: SearchDirection::Older,
             search_origin: None,
+            hints: None,
         };
         Ok((terminal, receiver))
     }
@@ -287,6 +291,7 @@ impl Terminal {
     }
 
     pub fn resize(&mut self, size: GridSize) {
+        self.hints = None;
         if size == self.size {
             return;
         }
@@ -486,6 +491,58 @@ impl Terminal {
         })
     }
 
+    /// Labels the URLs, paths and hashes in view for quick select, leaving vi mode. Returns
+    /// whether there was anything to label.
+    pub fn start_hints(&mut self) -> bool {
+        if self.vi_mode() {
+            self.toggle_vi_mode();
+        }
+        let term = self.term.lock();
+        let offset = term.grid().display_offset();
+        let rows: Vec<Vec<char>> = (0..term.screen_lines())
+            .map(|line| {
+                let row = &term.grid()[grid_point(offset, CellPosition { column: 0, line }).line];
+                (0..term.columns()).map(|c| row[Column(c)].c).collect()
+            })
+            .collect();
+        drop(term);
+        self.hints = HintSession::new(&rows).map(|session| (session, offset));
+        self.hints.is_some()
+    }
+
+    /// The quick select labels, unless the view has scrolled since they were made.
+    pub fn hints(&self) -> Option<&HintSession> {
+        let offset = self.term.lock().grid().display_offset();
+        self.hints
+            .as_ref()
+            .filter(|(_, shown_at)| *shown_at == offset)
+            .map(|(session, _)| session)
+    }
+
+    pub fn hints_active(&self) -> bool {
+        self.hints().is_some()
+    }
+
+    pub fn cancel_hints(&mut self) {
+        self.hints = None;
+    }
+
+    /// Types a label key; quick select ends unless more keys are needed.
+    pub fn hint_key(&mut self, c: char) -> HintOutcome {
+        if !self.hints_active() {
+            self.hints = None;
+            return HintOutcome::Cancelled;
+        }
+        let Some((session, _)) = self.hints.as_mut() else {
+            return HintOutcome::Cancelled;
+        };
+        let outcome = session.key(c);
+        if outcome != HintOutcome::Pending {
+            self.hints = None;
+        }
+        outcome
+    }
+
     /// Searches the output and scrollback for `query` as plain text, newest match first. The match
     /// becomes the selection and is scrolled into view. Lowercase queries ignore case.
     ///
@@ -592,6 +649,7 @@ impl Terminal {
     /// when that is scrolled away), or off. Either way the selection goes; leaving also ends the
     /// search.
     pub fn toggle_vi_mode(&mut self) {
+        self.hints = None;
         if self.vi_mode() {
             self.search = None;
             self.search_match = None;
@@ -771,7 +829,10 @@ impl Terminal {
     /// Applies an emulator event and tells the UI how to react.
     pub fn handle_event(&mut self, event: Event, palette: &Palette) -> Option<Notice> {
         match event {
-            Event::Wakeup => Some(Notice::Output),
+            Event::Wakeup => {
+                self.hints = None;
+                Some(Notice::Output)
+            }
             Event::CursorBlinkingChange | Event::MouseCursorDirty => Some(Notice::Redraw),
             Event::Title(title) => {
                 self.title = Some(title);
@@ -992,6 +1053,33 @@ mod tests {
             Some((4..20, "https://x.test/a".to_owned()))
         );
         assert_eq!(link_in_row(&row, 99), None);
+    }
+
+    #[test]
+    fn quick_select_picks_what_is_on_screen() {
+        let mut terminal = terminal_showing("see /tmp/x and 1a2b3c4");
+        terminal.toggle_vi_mode();
+        assert!(terminal.start_hints());
+        assert!(!terminal.vi_mode());
+        let labels: Vec<_> = terminal
+            .hints()
+            .expect("hints shown")
+            .hints()
+            .iter()
+            .map(|hint| (hint.label.clone(), hint.text.clone()))
+            .collect();
+        assert_eq!(
+            labels,
+            vec![
+                ("a".into(), "1a2b3c4".into()),
+                ("s".into(), "/tmp/x".into())
+            ]
+        );
+        assert!(matches!(
+            terminal.hint_key('S'),
+            HintOutcome::Picked(crate::hints::Pick { open: true, .. })
+        ));
+        assert!(!terminal.hints_active());
     }
 
     #[test]

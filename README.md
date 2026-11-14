@@ -106,6 +106,7 @@ notification once per version and a download link in About Dropshade. Turn this 
 | Ctrl+click | Open a link (links under the pointer are underlined while Ctrl is held) |
 | Ctrl+Shift+F | Search the scrollback (Enter: older match) |
 | Ctrl+Shift+Space | [Select with the keyboard](#keyboard-selection) (vi mode) |
+| Ctrl+Shift+E | [Quick select](#quick-select) a URL, path or hash: its label copies it, Shift+label opens it |
 | Ctrl+Shift+Up / Ctrl+Shift+Down | Jump to the previous / next prompt (needs [shell integration](#shell-integration)) |
 | Ctrl+Shift+A | Select the last command's output (needs [shell integration](#shell-integration)) |
 | Ctrl+= / Ctrl+- / Ctrl+0 | Zoom in / out / reset (all tabs, not saved) |
@@ -156,6 +157,15 @@ the top-right corner shows the mode, and keys no longer reach the shell.
 
 In the search bar, Enter returns to the cursor at the match. Shortcuts such as Ctrl+Shift+C keep
 working, and new output does not move the view while vi mode is on.
+
+### Quick select
+
+Ctrl+Shift+E labels every URL, file path and hash (git commits, checksums, UUIDs) in view with one
+or two letters, the easiest ones on the newest output. Type a label to copy that text (clipboard
+and primary), or type it with Shift to open it: URLs in the browser, files with their default app
+(relative paths are taken from the shell's directory, and a `:line:column` suffix is dropped).
+Hashes are always copied. Esc, a key that matches no label, scrolling or new output ends it.
+Rebind it with `quick-select` under `[keybindings]`.
 
 In tabs: middle-click closes, right-click opens a menu, and dragging reorders. Right-click the
 empty part of the tab bar for the terminal menu. Every shortcut can be

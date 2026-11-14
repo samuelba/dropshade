@@ -13,6 +13,7 @@ use iced::widget::canvas::{self, Action, Event, Geometry};
 use iced::{Font, Point, Rectangle, Renderer, Theme, keyboard, mouse, window};
 
 use crate::colors::Palette;
+use crate::hints::HintInput;
 use crate::input::{self, InputConfig, KeyPress, Resolution, Shortcut};
 use crate::mouse::CellPosition;
 use crate::size::{CellSize, GridSize, Side};
@@ -70,6 +71,8 @@ pub enum Interaction {
     },
     /// A key pressed in vi mode.
     Vi(ViAction),
+    /// A key pressed while quick select labels are shown.
+    Hint(HintInput),
 }
 
 /// Per-widget state kept by iced between events.
@@ -220,7 +223,7 @@ impl<'a, Message> TerminalView<'a, Message> {
         state: &mut ViewState,
         event: &input_method::Event,
     ) -> Action<Message> {
-        if self.terminal.vi_mode() {
+        if self.terminal.vi_mode() || self.terminal.hints_active() {
             state.preedit = None;
             return Action::capture();
         }
@@ -327,6 +330,9 @@ impl<'a, Message> TerminalView<'a, Message> {
             state.vi_pending = None;
             return Some(Interaction::Shortcut(shortcut));
         }
+        if self.terminal.hints_active() {
+            return hint_input(press).map(Interaction::Hint);
+        }
         if self.terminal.vi_mode() {
             return vi::resolve(press, &mut state.vi_pending).map(Interaction::Vi);
         }
@@ -399,8 +405,10 @@ impl<Message> TerminalView<'_, Message> {
                     Some(interaction) => {
                         Some(Action::publish((self.on_interaction)(interaction)).and_capture())
                     }
-                    // In vi mode every key stays here, even the ones that do nothing.
-                    None if self.terminal.vi_mode() => Some(Action::capture()),
+                    // In vi mode and quick select every key stays here, even ones that do nothing.
+                    None if self.terminal.vi_mode() || self.terminal.hints_active() => {
+                        Some(Action::capture())
+                    }
                     None => None,
                 }
             }
@@ -508,6 +516,22 @@ impl<Message> canvas::Program<Message> for TerminalView<'_, Message> {
     ) -> Vec<Geometry> {
         vec![self.render(state, renderer, bounds, cursor)]
     }
+}
+
+/// Esc ends quick select; letters type label keys, with Shift to open the pick.
+fn hint_input(press: KeyPress<'_>) -> Option<HintInput> {
+    if matches!(
+        press.key,
+        keyboard::Key::Named(keyboard::key::Named::Escape)
+    ) {
+        return Some(HintInput::Cancel);
+    }
+    if press.modifiers.control() || press.modifiers.alt() || press.modifiers.logo() {
+        return None;
+    }
+    vi::typed_char(press)
+        .filter(char::is_ascii_alphabetic)
+        .map(HintInput::Key)
 }
 
 fn alternate_scroll(lines: i32, mode: TermMode) -> Vec<u8> {

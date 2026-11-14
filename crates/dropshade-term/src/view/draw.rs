@@ -60,6 +60,7 @@ impl<Message> TerminalView<'_, Message> {
                 self.draw_preedit(&mut canvas, cursor, preedit);
             }
         }
+        self.draw_hints(&mut canvas, &snapshot.runs);
         self.draw_scrollbar(&mut canvas, state, bounds, cursor);
         self.draw_badges(&mut canvas, bounds);
         if self.bell {
@@ -99,6 +100,9 @@ impl<Message> TerminalView<'_, Message> {
         if self.terminal.vi_mode() {
             let label = vi_label(self.terminal.vi_selection());
             right = self.draw_badge(canvas, right, label) - BADGE_GAP;
+        }
+        if self.terminal.hints_active() {
+            right = self.draw_badge(canvas, right, "HINT") - BADGE_GAP;
         }
         if self.zoomed {
             self.draw_badge(canvas, right, "ZOOM");
@@ -199,6 +203,39 @@ impl<Message> TerminalView<'_, Message> {
                 Size::new(width, DECORATION_THICKNESS),
                 to_iced(run.colors.fg, 1.0),
             );
+        }
+    }
+
+    /// Underlines each quick select match and puts the rest of its label over its first cells,
+    /// in the selection colours. Labels the typed keys no longer lead to are left out.
+    fn draw_hints(&self, canvas: &mut canvas::Frame, runs: &[Run]) {
+        let Some(session) = self.terminal.hints() else {
+            return;
+        };
+        let cell = self.style.cell;
+        let palette = &self.style.palette;
+        let colors = palette.selected(CellColors {
+            fg: palette.foreground,
+            bg: palette.background,
+        });
+        let style = RunStyle {
+            bold: true,
+            ..RunStyle::default()
+        };
+        for hint in session.hints() {
+            let Some(rest) = hint.label.strip_prefix(session.typed()) else {
+                continue;
+            };
+            self.draw_link_underline(canvas, hint.line, &hint.columns, runs);
+            let origin = self.origin(hint.line, hint.columns.start);
+            #[allow(clippy::cast_precision_loss)]
+            let width = rest.len() as f32 * cell.width;
+            canvas.fill_rectangle(
+                origin,
+                Size::new(width, cell.height),
+                to_iced(colors.bg, 1.0),
+            );
+            canvas.fill_text(self.text(rest, origin, to_iced(colors.fg, 1.0), style));
         }
     }
 

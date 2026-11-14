@@ -3,6 +3,7 @@
 pub mod clicks;
 pub mod colors;
 pub mod frame;
+pub mod hints;
 pub mod input;
 pub mod links;
 mod marks;
