@@ -5,10 +5,8 @@
 
 ### Features
 
-* add the COSMIC hotkey shortcut on the first start ([b289feb](https://github.com/samuelba/dropshade/commit/b289feb34dc1950ada34cb3a8df32b74c7456efb))
-* add the COSMIC hotkey shortcut on the first start ([4fbe118](https://github.com/samuelba/dropshade/commit/4fbe1188c7f90e07b31f7367155c338879774dea))
-* restore each pane's scrollback on start (opt-in) ([d056e58](https://github.com/samuelba/dropshade/commit/d056e58eca70b05ffb08d027e29133511d602c29))
-* restore each pane's scrollback on start (opt-in) ([89cca5b](https://github.com/samuelba/dropshade/commit/89cca5b729a61af1ca43ce782e7d1dbced83982f))
+* add the COSMIC hotkey shortcut on the first start (@samuelba) ([4fbe118](https://github.com/samuelba/dropshade/commit/4fbe1188c7f90e07b31f7367155c338879774dea))
+* restore each pane's scrollback on start (opt-in) (@samuelba) ([89cca5b](https://github.com/samuelba/dropshade/commit/89cca5b729a61af1ca43ce782e7d1dbced83982f))
 
 ## [0.7.0](https://github.com/samuelba/dropshade/compare/v0.6.0...v0.7.0) (2026-11-13)
 
