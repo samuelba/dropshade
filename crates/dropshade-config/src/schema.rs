@@ -358,6 +358,8 @@ pub struct Window {
     pub animation_duration: u32,
     /// Hide the terminal when another window gets the focus.
     pub hide_on_unfocus: bool,
+    /// Show an icon in the panel's tray, outside GNOME where the extension adds its own.
+    pub tray_icon: bool,
 }
 
 impl Default for Window {
@@ -372,6 +374,7 @@ impl Default for Window {
             animation: WindowAnimation::SlideTop,
             animation_duration: 180,
             hide_on_unfocus: false,
+            tray_icon: true,
         }
     }
 }

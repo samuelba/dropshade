@@ -62,7 +62,7 @@ class DropshadeIndicatorButton extends PanelMenu.Button {
 
 export class Indicator {
     constructor(uuid, extensionDir, callbacks) {
-        const iconFile = extensionDir.get_child('icons').get_child('dropshade-symbolic.svg');
+        const iconFile = extensionDir.get_child('icons').get_child('dropshade.svg');
         this._button = new IndicatorButton(iconFile, callbacks);
         this._running = false;
         Main.panel.addToStatusArea(uuid, this._button);

@@ -104,6 +104,10 @@ animation = "slide-top"
 animation_duration = 180
 # Hide the terminal when you click into another window.
 hide_on_unfocus = false
+# Show an icon in the panel's tray (COSMIC's Notifications Tray, KDE Plasma's System Tray): a
+# click shows or hides the terminal, its menu opens the settings. On GNOME the extension adds
+# its own icon to the top bar instead.
+tray_icon = true
 
 [session]
 # Reopen the tabs (their names and directories) that were open when Dropshade last quit.

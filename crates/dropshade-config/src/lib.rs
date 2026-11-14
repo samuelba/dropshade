@@ -232,7 +232,7 @@ mod tests {
     fn window_section_configures_the_drop_down() {
         let config = parse_str(
             "[window]\nhotkey = \"<Super>grave\"\nwidth = 0.8\nheight = 0.4\nmonitor = \"DP-1\"\n\
-             animation_duration = 0\nhide_on_unfocus = true\n",
+             animation_duration = 0\nhide_on_unfocus = true\ntray_icon = false\n",
         )
         .expect("valid");
         assert_eq!(config.window.hotkey, "<Super>grave");
@@ -243,6 +243,8 @@ mod tests {
         );
         assert_eq!(config.window.animation_duration, 0);
         assert!(config.window.hide_on_unfocus);
+        assert!(!config.window.tray_icon);
+        assert!(Window::default().tray_icon);
         assert_eq!(
             parse_str("[window]\nmonitor = \"primary\"")
                 .expect("valid")

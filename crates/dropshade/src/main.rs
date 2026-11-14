@@ -15,6 +15,7 @@ mod settings;
 mod shell_integration;
 mod tabs;
 mod theme;
+mod tray;
 mod wayland;
 
 use std::path::{Path, PathBuf};
