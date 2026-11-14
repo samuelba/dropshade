@@ -47,6 +47,8 @@ fi
 echo "== AppImage"
 appdir="$stage/AppDir"
 install -Dm755 "$binary" "$appdir/usr/bin/dropshade"
+install -Dm644 "packaging/icons/hicolor/scalable/apps/$app_id-tray.svg" \
+    "$appdir/usr/share/icons/hicolor/scalable/apps/$app_id-tray.svg"
 install -Dm644 "packaging/icons/hicolor/symbolic/apps/$app_id-symbolic.svg" \
     "$appdir/usr/share/icons/hicolor/symbolic/apps/$app_id-symbolic.svg"
 install -Dm644 "packaging/$app_id.metainfo.xml" "$appdir/usr/share/metainfo/$app_id.appdata.xml"

@@ -261,6 +261,11 @@ These compositors support [layer shell](https://wayland.app/protocols/wlr-layer-
 so no extension is needed: Dropshade slides down over your windows by itself, on the screen in
 `window.monitor`, sized and animated by the `[window]` settings.
 
+While Dropshade runs, its icon sits in the panel's tray: COSMIC's Notifications Tray (add the
+applet to the panel if it is not there) or KDE Plasma's System Tray. A click shows or hides the
+terminal; the icon's menu also opens the settings or the About dialog. Turn it off with
+Settings → Window → Tray icon or `window.tray_icon = false`.
+
 On COSMIC, Dropshade adds a shortcut named "Dropshade" for `window.hotkey` to COSMIC's custom
 shortcuts the first time it starts, and updates it whenever you change the hotkey (press Enter in
 the Hotkey field of Settings, or edit the config file). COSMIC then runs `dropshade toggle`, so

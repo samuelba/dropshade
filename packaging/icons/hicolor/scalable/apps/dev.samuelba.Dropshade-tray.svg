@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="8 11 112 112">
+  <defs>
+    <linearGradient id="frame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f7f5f0"/>
+      <stop offset="1" stop-color="#dcd6ca"/>
+    </linearGradient>
+    <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a2e37"/>
+      <stop offset="1" stop-color="#16181d"/>
+    </linearGradient>
+    <linearGradient id="roller" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5a6070"/>
+      <stop offset="0.45" stop-color="#3a3f4b"/>
+      <stop offset="1" stop-color="#23262e"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.4"/>
+    </filter>
+  </defs>
+  <!-- shadow -->
+  <rect x="14" y="26" width="100" height="92" rx="13" fill="#000" opacity="0.18"/>
+  <!-- window frame and the light behind the shade -->
+  <rect x="14" y="22" width="100" height="92" rx="13" fill="url(#frame)"/>
+  <rect x="22" y="30" width="84" height="76" rx="6" fill="#fdf3e4"/>
+  <!-- the shade, pulled two thirds down -->
+  <path d="M22 30 h84 v54 a4 4 0 0 1 -4 4 h-76 a4 4 0 0 1 -4 -4 z" fill="url(#shade)"/>
+  <rect x="22" y="84" width="84" height="5" rx="2.5" fill="#3a3f4b"/>
+  <!-- terminal prompt on the shade -->
+  <g fill="none" stroke="#f2a65a" stroke-linecap="round" stroke-linejoin="round" stroke-width="5.5">
+    <path d="M34 46 l10 8 l-10 8" filter="url(#glow)" opacity="0.7"/>
+    <path d="M34 46 l10 8 l-10 8"/>
+  </g>
+  <rect x="49" y="59" width="18" height="5.5" rx="2.75" fill="#f2a65a" filter="url(#glow)" opacity="0.7"/>
+  <rect x="49" y="59" width="18" height="5.5" rx="2.75" fill="#f2a65a"/>
+  <!-- pull cord and tab -->
+  <rect x="62.75" y="89" width="2.5" height="9" fill="#3a3f4b"/>
+  <rect x="56" y="97" width="16" height="9" rx="4.5" fill="#f2a65a" filter="url(#glow)" opacity="0.8"/>
+  <rect x="56" y="97" width="16" height="9" rx="4.5" fill="#f2a65a"/>
+  <rect x="58" y="98.5" width="12" height="2.5" rx="1.25" fill="#ffd8a8" opacity="0.8"/>
+  <!-- roller -->
+  <rect x="8" y="16" width="112" height="16" rx="8" fill="url(#roller)"/>
+  <rect x="14" y="18.5" width="100" height="3" rx="1.5" fill="#ffffff" opacity="0.18"/>
+</svg>

@@ -33,6 +33,7 @@ use crate::ipc::{self, Command};
 use crate::screens::{self, Screen};
 use crate::settings::{self, Settings};
 use crate::tabs::{Panes, TabId, TabMessage, Tabs};
+use crate::tray;
 pub use about::AboutMessage;
 pub use dropdown::NAMESPACE as LAYER_NAMESPACE;
 pub use menu::MenuAction;
@@ -343,6 +344,11 @@ impl App {
         } else {
             Subscription::none()
         };
+        let tray = if self.host != Host::Shell && self.config.window.tray_icon {
+            Subscription::run(tray::commands).map(Message::Ipc)
+        } else {
+            Subscription::none()
+        };
         let portal = if self.binds_through_portal() {
             let request = (
                 self.config.window.hotkey.trim().to_owned(),
@@ -362,6 +368,7 @@ impl App {
             drops,
             autosave,
             screens,
+            tray,
             portal,
             slide,
             Subscription::run(termination_signals),

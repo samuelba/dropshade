@@ -346,9 +346,22 @@ fn window(
         ),
         slider_row(ctx, Slider::Animation),
         switch(ctx, "Hide when unfocused", Switch::HideOnUnfocus),
+        tray_icon(ctx, host),
     ]
     .spacing(12)
     .into()
+}
+
+/// The tray icon switch; on GNOME the extension's top bar icon takes its place.
+fn tray_icon(ctx: Ctx<'_>, host: Host) -> Element<'static, Message> {
+    if host == Host::Shell {
+        return Space::new().into();
+    }
+    hinted(
+        switch(ctx, "Tray icon", Switch::TrayIcon),
+        "In COSMIC's Notifications Tray or KDE Plasma's System Tray.",
+        ctx.colors,
+    )
 }
 
 /// Which keys COSMIC runs Dropshade on, and why not if they could not be set.

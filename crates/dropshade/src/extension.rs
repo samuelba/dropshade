@@ -35,8 +35,8 @@ const FILES: [(&str, &str); 10] = [
     ),
     ("LICENSE", include_str!("../../../gnome-extension/LICENSE")),
     (
-        "icons/dropshade-symbolic.svg",
-        include_str!("../../../gnome-extension/icons/dropshade-symbolic.svg"),
+        "icons/dropshade.svg",
+        include_str!("../../../gnome-extension/icons/dropshade.svg"),
     ),
     (
         "schemas/org.gnome.shell.extensions.dropshade.gschema.xml",
