@@ -243,8 +243,7 @@ Running it needs a Wayland or X11 session, Vulkan or OpenGL drivers, and `libxkb
 ### GNOME
 
 Mutter, GNOME's compositor, does not let apps place themselves over other windows, so a small
-companion Shell extension shows and hides Dropshade. It supports GNOME 46 to 50. GNOME 46 (Ubuntu
-24.04) cannot hide a window from Alt+Tab and the dash, so there the terminal is listed while shown.
+companion Shell extension shows and hides Dropshade. It supports GNOME 46 to 50.
 
 The `.rpm` and `.deb` install the extension for all users. For a build of your own:
 

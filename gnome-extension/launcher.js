@@ -62,7 +62,7 @@ export class AppLauncher {
         this._cancellable = new Gio.Cancellable();
         this._windowCreatedId = global.display.connect('window-created', (_display, window) => {
             if (this._client?.owns_window(window))
-                this._onWindow(window);
+                this._onWindow(window, this._client);
         });
         if (parked) {
             GLib.source_remove(parked.stopId);
@@ -73,6 +73,10 @@ export class AppLauncher {
 
     get running() {
         return this._client !== null;
+    }
+
+    get client() {
+        return this._client;
     }
 
     /** The app's window if it already has one, e.g. when taken over from an earlier launcher. */
