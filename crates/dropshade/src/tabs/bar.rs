@@ -92,6 +92,8 @@ pub struct BarState<'a> {
     /// Width available to a horizontal bar, used to size the tabs.
     pub width: f32,
     pub sizing: TabSizing,
+    /// Opacity of the bar's and the tabs' backgrounds; labels and the accent stay opaque.
+    pub opacity: f32,
 }
 
 /// Width of each tab in a horizontal bar: tabs share the space, between a readable minimum and a
@@ -234,7 +236,7 @@ pub fn view<'a, T>(tabs: &'a Tabs<T>, state: BarState<'a>) -> Element<'a, TabMes
             .into()
     };
 
-    let bar = container(content).style(move |_| state.colors.bar_style());
+    let bar = container(content).style(move |_| state.colors.bar_style(state.opacity));
     let bar = if state.position.is_horizontal() {
         bar.width(Fill)
     } else {
@@ -253,6 +255,7 @@ fn entry<'a, T>(
     state: BarState<'a>,
 ) -> Element<'a, TabMessage> {
     let colors = state.colors;
+    let opacity = state.opacity;
     let hovered = state.hovered == Some(tab.id);
     let label: Element<'a, TabMessage> = match state.renaming {
         Some((id, draft)) if id == tab.id => text_input("Tab name", draft)
@@ -329,7 +332,7 @@ fn entry<'a, T>(
 
     let tab_box = container(content)
         .clip(true)
-        .style(move |_| colors.tab_style(active, hovered));
+        .style(move |_| colors.tab_style(active, hovered, opacity));
     let tab_box = if state.position.is_horizontal() {
         tab_box.width(width).height(Fill)
     } else {

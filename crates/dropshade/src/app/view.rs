@@ -69,6 +69,7 @@ impl App {
             colors: self.settings.colors,
             width: self.window_size.width,
             sizing: self.settings.tab_sizing,
+            opacity: self.settings.bar_opacity,
         };
         let tab_bar = bar::view(&self.tabs, state).map(Message::Tab);
         let terminal: Element<'_, Message> = iced::widget::Column::new()

@@ -58,11 +58,13 @@ impl UiColors {
         )
     }
 
-    pub fn bar_style(self) -> container::Style {
-        container::Style::default().background(self.bar)
+    /// The tab bar's background at `opacity`.
+    pub fn bar_style(self, opacity: f32) -> container::Style {
+        container::Style::default().background(fade(self.bar, opacity))
     }
 
-    pub fn tab_style(self, active: bool, hovered: bool) -> container::Style {
+    /// A tab whose highlight is drawn at `opacity`, matching the bar it sits on.
+    pub fn tab_style(self, active: bool, hovered: bool, opacity: f32) -> container::Style {
         let background = if active {
             Some(self.active)
         } else if hovered {
@@ -71,7 +73,7 @@ impl UiColors {
             None
         };
         container::Style {
-            background: background.map(Background::Color),
+            background: background.map(|color| Background::Color(fade(color, opacity))),
             text_color: Some(if active || hovered {
                 self.text
             } else {
@@ -169,6 +171,14 @@ impl UiColors {
     }
 }
 
+/// `color` with its alpha scaled by `opacity`.
+fn fade(color: Color, opacity: f32) -> Color {
+    Color {
+        a: color.a * opacity.clamp(0.0, 1.0),
+        ..color
+    }
+}
+
 /// Blends `from` toward `to` by `amount` (0.0 = `from`, 1.0 = `to`).
 pub fn mix(from: Color, to: Color, amount: f32) -> Color {
     let blend = |a: f32, b: f32| a + (b - a) * amount;
@@ -190,6 +200,20 @@ mod tests {
         assert!((mixed.r - 0.25).abs() < 1e-6 && (mixed.g - 0.25).abs() < 1e-6);
         assert_eq!(mix(Color::BLACK, Color::WHITE, 0.0), Color::BLACK);
         assert_eq!(mix(Color::BLACK, Color::WHITE, 1.0), Color::WHITE);
+    }
+
+    #[test]
+    fn the_bar_fades_without_its_labels() {
+        let colors = UiColors::from_palette(&Palette::default());
+        let background = |style: container::Style| match style.background {
+            Some(Background::Color(color)) => color.a,
+            _ => panic!("expected a color background"),
+        };
+        assert!((background(colors.bar_style(1.0)) - 1.0).abs() < f32::EPSILON);
+        assert!((background(colors.bar_style(0.4)) - 0.4).abs() < 1e-6);
+        let tab = colors.tab_style(true, false, 0.4);
+        assert!((background(tab) - 0.4).abs() < 1e-6);
+        assert_eq!(tab.text_color, Some(colors.text));
     }
 
     #[test]

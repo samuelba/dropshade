@@ -11,6 +11,7 @@ pub enum Slider {
     FontSize,
     LineHeight,
     Opacity,
+    BarOpacity,
     UnfocusedDim,
     Padding,
     Width,
@@ -40,6 +41,14 @@ impl Slider {
                 "appearance",
                 "background_opacity",
                 0.3,
+                1.0,
+                0.01,
+            ),
+            Self::BarOpacity => (
+                "Tab bar opacity",
+                "appearance",
+                "tab_bar_opacity",
+                0.0,
                 1.0,
                 0.01,
             ),
@@ -87,6 +96,7 @@ impl Slider {
             Self::FontSize => config.font.size,
             Self::LineHeight => config.font.line_height,
             Self::Opacity => config.appearance.background_opacity,
+            Self::BarOpacity => config.appearance.tab_bar_opacity,
             Self::UnfocusedDim => config.appearance.unfocused_pane_dim,
             Self::Padding => config.appearance.padding,
             Self::Width => config.window.width as f32,
@@ -101,7 +111,7 @@ impl Slider {
             Self::FontSize => format!("{value:.0}"),
             Self::LineHeight => format!("{value:.2}×"),
             Self::UnfocusedDim if value < 0.005 => "off".into(),
-            Self::Opacity | Self::UnfocusedDim | Self::Width | Self::Height => {
+            Self::Opacity | Self::BarOpacity | Self::UnfocusedDim | Self::Width | Self::Height => {
                 format!("{:.0}%", value * 100.0)
             }
             Self::Padding => format!("{value:.0} px"),
@@ -433,6 +443,7 @@ mod tests {
             Slider::FontSize,
             Slider::LineHeight,
             Slider::Opacity,
+            Slider::BarOpacity,
             Slider::UnfocusedDim,
             Slider::Padding,
             Slider::Width,

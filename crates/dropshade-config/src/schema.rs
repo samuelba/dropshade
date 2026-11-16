@@ -49,6 +49,8 @@ impl Default for Font {
 pub struct Appearance {
     pub theme: ThemeChoice,
     pub background_opacity: f32,
+    /// Opacity of the tab bar, independent of the terminal background.
+    pub tab_bar_opacity: f32,
     pub padding: f32,
     pub tab_bar: TabBarPosition,
     pub tab_width: TabWidth,
@@ -64,6 +66,7 @@ impl Default for Appearance {
         Self {
             theme: ThemeChoice::default(),
             background_opacity: 0.94,
+            tab_bar_opacity: 1.0,
             padding: 10.0,
             tab_bar: TabBarPosition::Top,
             tab_width: TabWidth::Fixed,
