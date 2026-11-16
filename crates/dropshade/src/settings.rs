@@ -24,6 +24,8 @@ pub struct Settings {
     pub colors: UiColors,
     pub input: InputConfig,
     pub bar: BarPosition,
+    /// Opacity of the tab bar's backgrounds.
+    pub bar_opacity: f32,
     pub tab_sizing: TabSizing,
     pub shell: Option<(String, Vec<String>)>,
     pub env: HashMap<String, String>,
@@ -77,6 +79,7 @@ pub fn build(config: &Config, prefers_light: bool, themes_dir: Option<&Path>) ->
         style,
         input,
         bar: bar_position(config.appearance.tab_bar),
+        bar_opacity: config.appearance.tab_bar_opacity,
         tab_sizing: tab_sizing(config.appearance.tab_width),
         shell: (!terminal.shell.trim().is_empty())
             .then(|| (terminal.shell.clone(), terminal.shell_args.clone())),
@@ -273,7 +276,7 @@ mod tests {
     #[test]
     fn appearance_values_are_applied() {
         let settings = settings(
-            "[appearance]\ntheme = \"dawn\"\npadding = 4\nbackground_opacity = 0.5\ntab_bar = \"bottom\"\ntab_width = \"fit\"\n\
+            "[appearance]\ntheme = \"dawn\"\npadding = 4\nbackground_opacity = 0.5\ntab_bar_opacity = 0.6\ntab_bar = \"bottom\"\ntab_width = \"fit\"\n\
              cursor_shape = \"beam\"\ncursor_blink = true\n[font]\nsize = 20\n",
         );
         assert_eq!(
@@ -282,6 +285,7 @@ mod tests {
         );
         assert!((settings.style.padding - 4.0).abs() < f32::EPSILON);
         assert!((settings.style.background_opacity - 0.5).abs() < f32::EPSILON);
+        assert!((settings.bar_opacity - 0.6).abs() < f32::EPSILON);
         assert!((settings.style.font_size - 20.0).abs() < f32::EPSILON);
         assert_eq!(settings.bar, BarPosition::Bottom);
         assert_eq!(settings.tab_sizing, TabSizing::Fit);

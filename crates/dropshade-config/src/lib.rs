@@ -54,6 +54,12 @@ fn validate(config: &Config) -> Result<(), String> {
         0.0,
         1.0,
     )?;
+    check_range(
+        "appearance.tab_bar_opacity",
+        config.appearance.tab_bar_opacity,
+        0.0,
+        1.0,
+    )?;
     check_range("appearance.padding", config.appearance.padding, 0.0, 200.0)?;
     check_range(
         "appearance.unfocused_pane_dim",

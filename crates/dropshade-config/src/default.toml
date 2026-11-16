@@ -16,6 +16,8 @@ line_height = 1.25
 theme = "dusk"
 # 0.0 (fully transparent) to 1.0 (opaque).
 background_opacity = 0.94
+# Opacity of the tab bar, set apart from the background: 0.0 (fully transparent) to 1.0.
+tab_bar_opacity = 1.0
 # Space around the terminal, in pixels.
 padding = 10.0
 # Where the tabs are: "top", "bottom", "left" or "right".

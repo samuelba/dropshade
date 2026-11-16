@@ -199,6 +199,7 @@ fn appearance(ctx: Ctx<'_>) -> Element<'static, Message> {
     column![
         hint("Themes and colors are on the Colors page.", ctx.colors),
         slider_row(ctx, Slider::Opacity),
+        slider_row(ctx, Slider::BarOpacity),
         slider_row(ctx, Slider::UnfocusedDim),
         slider_row(ctx, Slider::Padding),
         choice(
