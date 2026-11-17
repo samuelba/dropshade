@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.12.0](https://github.com/samuelba/dropshade/compare/v0.11.0...v0.12.0) (2026-11-17)
+
+
+### Features
+
+* add a script that installs Dropshade for the user without sudo (@samuelba) ([88c0697](https://github.com/samuelba/dropshade/commit/88c0697214c3427ae6c939e257366e7608737d15))
+* keep skin-toned and ZWJ emoji sequences in one cell (@samuelba) ([cf0466f](https://github.com/samuelba/dropshade/commit/cf0466fdc99d23a076cae424b7cd10a71ae06071))
+* make the tab bar's opacity configurable on its own (@samuelba) ([3eaea28](https://github.com/samuelba/dropshade/commit/3eaea28562ffaf9eb5427f3380b932a336edf48c))
+* show newer releases in a card and update script installs in place (@samuelba) ([fd0c0cc](https://github.com/samuelba/dropshade/commit/fd0c0cca65904d3ed1823064a383353ea0150523))
+* support grapheme mode 2027 and a wide_emoji setting (@samuelba) ([ecd46cb](https://github.com/samuelba/dropshade/commit/ecd46cbac71b1e0b711d5b17f98a8f85a99fdab6))
+
+
+### Bug Fixes
+
+* draw COLRv1 color emoji, which the text renderer leaves blank (@samuelba) ([1530995](https://github.com/samuelba/dropshade/commit/15309950122f278b8ac0d9ee750682d4b4520118))
+
 ## [0.11.0](https://github.com/samuelba/dropshade/compare/v0.10.0...v0.11.0) (2026-11-14)
 
 
