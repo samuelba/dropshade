@@ -5,19 +5,16 @@
 
 ### Features
 
-* add a script that installs Dropshade for the user without sudo ([88c0697](https://github.com/samuelba/dropshade/commit/88c0697214c3427ae6c939e257366e7608737d15))
-* keep skin-toned and ZWJ emoji sequences in one cell ([cf0466f](https://github.com/samuelba/dropshade/commit/cf0466fdc99d23a076cae424b7cd10a71ae06071))
-* make the tab bar's opacity configurable on its own ([710cccb](https://github.com/samuelba/dropshade/commit/710cccb20155ee1ee716a0b2d6e438becae6e93e))
-* make the tab bar's opacity configurable on its own ([3eaea28](https://github.com/samuelba/dropshade/commit/3eaea28562ffaf9eb5427f3380b932a336edf48c))
-* show newer releases in a card and update script installs in place ([3481227](https://github.com/samuelba/dropshade/commit/3481227140b9d9516d25cda1ef46d227df00ca60))
-* show newer releases in a card and update script installs in place ([fd0c0cc](https://github.com/samuelba/dropshade/commit/fd0c0cca65904d3ed1823064a383353ea0150523))
-* support grapheme mode 2027 and a wide_emoji setting ([3b73baf](https://github.com/samuelba/dropshade/commit/3b73baffcfb64e46ca8877fcd89fae6d11153f26))
-* support grapheme mode 2027 and a wide_emoji setting ([ecd46cb](https://github.com/samuelba/dropshade/commit/ecd46cbac71b1e0b711d5b17f98a8f85a99fdab6))
+* add a script that installs Dropshade for the user without sudo (@samuelba) ([88c0697](https://github.com/samuelba/dropshade/commit/88c0697214c3427ae6c939e257366e7608737d15))
+* keep skin-toned and ZWJ emoji sequences in one cell (@samuelba) ([cf0466f](https://github.com/samuelba/dropshade/commit/cf0466fdc99d23a076cae424b7cd10a71ae06071))
+* make the tab bar's opacity configurable on its own (@samuelba) ([3eaea28](https://github.com/samuelba/dropshade/commit/3eaea28562ffaf9eb5427f3380b932a336edf48c))
+* show newer releases in a card and update script installs in place (@samuelba) ([fd0c0cc](https://github.com/samuelba/dropshade/commit/fd0c0cca65904d3ed1823064a383353ea0150523))
+* support grapheme mode 2027 and a wide_emoji setting (@samuelba) ([ecd46cb](https://github.com/samuelba/dropshade/commit/ecd46cbac71b1e0b711d5b17f98a8f85a99fdab6))
 
 
 ### Bug Fixes
 
-* draw COLRv1 color emoji, which the text renderer leaves blank ([1530995](https://github.com/samuelba/dropshade/commit/15309950122f278b8ac0d9ee750682d4b4520118))
+* draw COLRv1 color emoji, which the text renderer leaves blank (@samuelba) ([1530995](https://github.com/samuelba/dropshade/commit/15309950122f278b8ac0d9ee750682d4b4520118))
 
 ## [0.11.0](https://github.com/samuelba/dropshade/compare/v0.10.0...v0.11.0) (2026-11-14)
 
