@@ -6,6 +6,7 @@ mod dropdown;
 mod menu;
 mod panel;
 mod persist;
+mod release_card;
 mod search;
 mod session;
 mod split;
@@ -40,6 +41,7 @@ pub use menu::MenuAction;
 use menu::TerminalMenu;
 pub use panel::SettingsMessage;
 pub use persist::Startup;
+pub use release_card::ReleaseMessage;
 pub use search::SearchMessage;
 use session::Session;
 pub use split::{PaneKey, PaneMessage};
@@ -53,6 +55,8 @@ const BELL_DURATION: Duration = Duration::from_millis(120);
 const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(3);
 const SLIDE_INTERVAL: Duration = Duration::from_millis(8);
 const COMMAND_POLL_INTERVAL: Duration = Duration::from_secs(1);
+/// Dropshade often runs for weeks, so it looks for a newer release again once a day.
+const RELEASE_CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// Who shows, hides and places the window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,6 +88,12 @@ pub struct App {
     about: bool,
     /// A newer release than this build, once the check found one.
     release: Option<crate::release::Release>,
+    /// How this binary was installed, which decides whether it can update itself.
+    install: crate::release::InstallKind,
+    /// The card about the newer release.
+    card: release_card::Card,
+    /// What an update in this run changed, until Dropshade restarts.
+    updated: Option<crate::release::Installed>,
     /// The font zoom of the terminals, on top of the configured size.
     zoom: Zoom,
     dragging: Option<TabId>,
@@ -176,7 +186,7 @@ pub enum Message {
     Menu(MenuAction),
     Settings(SettingsMessage),
     About(AboutMessage),
-    ReleaseChecked(Result<Option<crate::release::Release>, String>),
+    Release(ReleaseMessage),
     WindowResized(Size),
     Escape,
     Enter,
@@ -244,6 +254,9 @@ impl App {
             settings_panel: None,
             about: false,
             release: None,
+            install: crate::release::install_kind(),
+            card: release_card::Card::Hidden,
+            updated: None,
             zoom: Zoom::default(),
             dragging: None,
             bar_pointer: Point::ORIGIN,
@@ -366,6 +379,7 @@ impl App {
             });
         Subscription::batch([
             drops,
+            self.release_checks(),
             autosave,
             screens,
             tray,
@@ -390,6 +404,15 @@ impl App {
                 _ => None,
             }),
         ])
+    }
+
+    /// The daily look for a newer release, the first one being at start.
+    fn release_checks(&self) -> Subscription<Message> {
+        if self.config.updates.check {
+            time::every(RELEASE_CHECK_INTERVAL).map(|_| Message::Release(ReleaseMessage::Check))
+        } else {
+            Subscription::none()
+        }
     }
 
     fn overlay_open(&self) -> bool {

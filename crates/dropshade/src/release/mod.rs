@@ -1,6 +1,11 @@
-//! Looking up the latest release on GitHub and telling the user when it is newer.
+//! Looking up the latest release on GitHub, and updating an install made by `install.sh`.
 
-pub mod notify;
+mod install;
+
+pub use install::{
+    InstallKind, Installed, Restart, install_kind, request_restart, restart_into, self_update,
+    take_restart,
+};
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -12,12 +17,12 @@ const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 const GITHUB: &str = "https://github.com/";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
-const NOTIFIED_FILE: &str = "update-notified";
+const SKIPPED_FILE: &str = "update-skipped";
 
 /// A published release that is newer than the running build.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Release {
-    pub version: String,
+    pub version: Version,
     /// The release page, where the packages are downloaded.
     pub url: String,
 }
@@ -95,7 +100,7 @@ fn newer_than(current: &str, latest: LatestRelease) -> Result<Option<Release>, C
     }
     let current = Version::parse(current).map_err(|_| CheckError::BadTag(current.to_owned()))?;
     Ok((version > current).then(|| Release {
-        version: version.to_string(),
+        version,
         url: latest.html_url,
     }))
 }
@@ -105,27 +110,26 @@ fn parse_tag(tag: &str) -> Result<Version, CheckError> {
     Version::parse(bare).map_err(|_| CheckError::BadTag(tag.to_owned()))
 }
 
-/// Where the last announced version is kept, so each release is announced once.
-pub fn notified_path() -> Option<PathBuf> {
+/// Where the version the user chose to skip is kept.
+pub fn skipped_path() -> Option<PathBuf> {
     directories::ProjectDirs::from("dev", "samuelba", "dropshade")
-        .and_then(|dirs| dirs.state_dir().map(|dir| dir.join(NOTIFIED_FILE)))
+        .and_then(|dirs| dirs.state_dir().map(|dir| dir.join(SKIPPED_FILE)))
 }
 
-/// Whether `release` still needs announcing; records it as announced when it does.
-pub fn first_announcement(path: &Path, release: &Release) -> bool {
-    let announced =
-        std::fs::read_to_string(path).is_ok_and(|previous| previous.trim() == release.version);
-    if announced {
-        return false;
-    }
+/// Whether the user chose to skip exactly this version.
+pub fn is_skipped(path: &Path, version: &Version) -> bool {
+    std::fs::read_to_string(path).is_ok_and(|skipped| skipped.trim() == version.to_string())
+}
+
+/// Remembers that the user does not want to hear about `version` again.
+pub fn skip(path: &Path, version: &Version) {
     let written = path
         .parent()
         .map_or(Ok(()), std::fs::create_dir_all)
-        .and_then(|()| std::fs::write(path, &release.version));
+        .and_then(|()| std::fs::write(path, version.to_string()));
     if let Err(error) = written {
-        tracing::warn!(path = %path.display(), %error, "cannot remember the announced release");
+        tracing::warn!(path = %path.display(), %error, "cannot remember the skipped release");
     }
-    true
 }
 
 #[cfg(test)]
@@ -144,7 +148,7 @@ mod tests {
         let release = newer_than("0.2.0", latest("v0.3.0"))
             .expect("valid")
             .expect("newer");
-        assert_eq!(release.version, "0.3.0");
+        assert_eq!(release.version, Version::new(0, 3, 0));
         assert_eq!(release.url, format!("{REPOSITORY}/releases/tag/v0.3.0"));
     }
 
@@ -224,16 +228,14 @@ mod tests {
     }
 
     #[test]
-    fn each_release_is_announced_once() {
+    fn a_skipped_version_stays_skipped_until_a_newer_one() {
         let dir = std::env::temp_dir().join(format!("dropshade-release-{}", std::process::id()));
-        let path = dir.join("state").join(NOTIFIED_FILE);
-        let release = |version: &str| Release {
-            version: version.into(),
-            url: String::new(),
-        };
-        assert!(first_announcement(&path, &release("0.3.0")));
-        assert!(!first_announcement(&path, &release("0.3.0")));
-        assert!(first_announcement(&path, &release("0.4.0")));
+        let path = dir.join("state").join(SKIPPED_FILE);
+        let v030 = Version::new(0, 3, 0);
+        assert!(!is_skipped(&path, &v030));
+        skip(&path, &v030);
+        assert!(is_skipped(&path, &v030));
+        assert!(!is_skipped(&path, &Version::new(0, 4, 0)));
         std::fs::remove_dir_all(&dir).expect("clean up");
     }
 }

@@ -27,16 +27,43 @@ fn file_in(dir: &Path) -> PathBuf {
 }
 
 fn entry() -> String {
+    let binary =
+        crate::extension::launch_target(std::env::var_os("APPIMAGE"), std::env::current_exe().ok());
+    let program = binary
+        .as_deref()
+        .map_or_else(|| "dropshade".to_owned(), exec_arg);
     format!(
         "[Desktop Entry]\n\
          Type=Application\n\
          Name=Dropshade\n\
          Comment=Starts the drop-down terminal hidden, so its hotkey works\n\
-         Exec=dropshade --hidden\n\
+         Exec={program} --hidden\n\
          Icon={APP_ID}\n\
          Terminal=false\n\
          X-GNOME-Autostart-enabled=true\n"
     )
+}
+
+/// One argument of a desktop entry's `Exec` key. The session may not have the binary's directory
+/// (e.g. ~/.local/bin) on its PATH, so the entry names the binary by its full path. Inside quotes
+/// `"`, `` ` ``, `$` and `\` get a backslash, and the string escapes double every backslash again.
+fn exec_arg(path: &Path) -> String {
+    let text = path.to_string_lossy().replace('%', "%%");
+    let plain = |c: char| c.is_ascii_alphanumeric() || "/._+-%".contains(c);
+    if text.chars().all(plain) {
+        return text;
+    }
+    let mut quoted = String::from("\"");
+    for c in text.chars() {
+        match c {
+            '"' | '`' | '$' => quoted.push_str("\\\\"),
+            '\\' => quoted.push_str("\\\\\\"),
+            _ => {}
+        }
+        quoted.push(c);
+    }
+    quoted.push('"');
+    quoted
 }
 
 /// Desktops switch an entry off with `Hidden=true` instead of removing it.
@@ -78,11 +105,37 @@ mod tests {
         set_in(&dir, true).expect("enable");
         assert!(is_enabled_in(&dir));
         let text = std::fs::read_to_string(file_in(&dir)).expect("entry");
-        assert!(text.contains("Exec=dropshade --hidden\n"));
+        let exec = text
+            .lines()
+            .find_map(|line| line.strip_prefix("Exec="))
+            .expect("Exec line");
+        assert!(exec.ends_with(" --hidden"), "{exec}");
+        assert!(
+            exec.starts_with('/'),
+            "the binary is named by its full path: {exec}"
+        );
         set_in(&dir, false).expect("disable");
         assert!(!file_in(&dir).exists());
         set_in(&dir, false).expect("disabling twice is fine");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn exec_arguments_are_quoted_only_when_needed() {
+        assert_eq!(
+            exec_arg(Path::new("/home/me/.local/bin/dropshade")),
+            "/home/me/.local/bin/dropshade"
+        );
+        assert_eq!(
+            exec_arg(Path::new("/opt/my apps/dropshade")),
+            "\"/opt/my apps/dropshade\""
+        );
+        assert_eq!(
+            exec_arg(Path::new("/a/100%/dropshade")),
+            "/a/100%%/dropshade"
+        );
+        assert_eq!(exec_arg(Path::new("/a b/$x\"")), r#""/a b/\\$x\\"""#);
+        assert_eq!(exec_arg(Path::new("/a b/c\\d")), r#""/a b/c\\\\d""#);
     }
 
     #[test]

@@ -606,7 +606,7 @@ fn session(ctx: Ctx<'_>) -> Element<'static, Message> {
         ),
         hinted(
             switch(ctx, "Check for updates", Switch::CheckUpdates),
-            "Asks GitHub for the latest release on start and notifies you once per new version.",
+            "Asks GitHub for the latest release on start and daily, and shows a card when one is out.",
             ctx.colors,
         ),
     ]

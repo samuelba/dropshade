@@ -203,7 +203,17 @@ fn run(
         Host::Shell | Host::Window => run_window(boot),
     };
     match result {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(()) => match release::take_restart() {
+            Some(restart) => {
+                let error = release::restart_into(&restart);
+                eprintln!(
+                    "dropshade: cannot start {}: {error}",
+                    restart.binary.display()
+                );
+                ExitCode::FAILURE
+            }
+            None => ExitCode::SUCCESS,
+        },
         Err(error) => {
             eprintln!("dropshade: {error}");
             ExitCode::FAILURE

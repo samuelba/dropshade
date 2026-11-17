@@ -307,7 +307,7 @@ impl Default for Session {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Updates {
-    /// Ask GitHub for the latest release on start and notify when it is newer.
+    /// Ask GitHub for the latest release on start and daily, and show a card when it is newer.
     pub check: bool,
 }
 
