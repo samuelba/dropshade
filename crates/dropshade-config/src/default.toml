@@ -131,8 +131,9 @@ restore_scrollback = false
 layout = ""
 
 [updates]
-# Ask GitHub for the latest release on start; a newer one is announced with a notification
-# and a download link in About Dropshade.
+# Ask GitHub for the latest release on start and once a day. A newer one shows a card in a
+# corner of the terminal: installs made with install.sh update in place from there, other
+# installs get a link to the release. "Skip this version" keeps the card away until the next one.
 check = true
 
 [notifications]

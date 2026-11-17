@@ -40,6 +40,9 @@ impl App {
             return Space::new().into();
         }
         let mut layers = vec![self.body()];
+        if let Some(card) = self.release_card() {
+            layers.push(card);
+        }
         if let Some(menu) = self.menu {
             layers.push(self.menu_layer(menu));
         }

@@ -813,6 +813,7 @@ dependencies = [
  "dropshade-term",
  "iced",
  "iced_layershell",
+ "nix",
  "notify",
  "open",
  "ron",
