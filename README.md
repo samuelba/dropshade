@@ -23,8 +23,29 @@ slide animation.
 
 ## Install and set up
 
-Download the package for your machine from the
-[latest release](https://github.com/samuelba/dropshade/releases/latest) and install it:
+Install it for your user, without sudo:
+
+```sh
+curl -fsSL https://samuelba.dev/dropshade/install.sh | sh
+```
+
+Run the same command again to update. It installs to `~/.local/bin` and, on GNOME, also sets up
+the extension. The script is [scripts/install.sh](scripts/install.sh).
+
+To also set up the GNOME extension while you are on another desktop:
+
+```sh
+curl -fsSL https://samuelba.dev/dropshade/install.sh | sh -s -- --gnome-extension
+```
+
+To remove Dropshade again (your configuration stays):
+
+```sh
+curl -fsSL https://samuelba.dev/dropshade/install.sh | sh -s -- --uninstall
+```
+
+To have your package manager update Dropshade instead, download the package for your machine from
+the [latest release](https://github.com/samuelba/dropshade/releases/latest) and install it:
 
 ```sh
 sudo dnf install ./dropshade-*.rpm   # Fedora

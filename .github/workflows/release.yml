@@ -32,11 +32,14 @@ jobs:
     needs: [release-please, packages]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v7
         with:
           pattern: packages-*
           path: dist
           merge-multiple: true
+      # samuelba.dev/dropshade/install.sh redirects to the latest release's copy.
+      - run: cp scripts/install.sh dist/
       - name: Attach the packages to the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

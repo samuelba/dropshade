@@ -86,3 +86,5 @@ jobs:
       - run: appstreamcli validate --no-net packaging/dev.samuelba.Dropshade.metainfo.xml
       - name: Shell scripts parse
         run: for file in scripts/*.sh; do bash -n "$file"; done
+      - name: The installer is POSIX sh
+        run: shellcheck --shell=sh scripts/install.sh
