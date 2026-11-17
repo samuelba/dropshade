@@ -71,7 +71,7 @@ fn url_end(row: &[char], start: usize, scheme_len: usize) -> usize {
     end
 }
 
-fn is_url_char(c: char) -> bool {
+pub fn is_url_char(c: char) -> bool {
     !c.is_whitespace() && !c.is_control() && !matches!(c, '"' | '\'' | '<' | '>' | '`')
 }
 

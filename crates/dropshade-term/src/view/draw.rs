@@ -45,7 +45,9 @@ impl<Message> TerminalView<'_, Message> {
             self.draw_image_tile(&mut canvas, tile);
         }
         if let Some(link) = self.hovered_link(state.pointer.modifiers, bounds, cursor) {
-            self.draw_link_underline(&mut canvas, link.line, &link.columns, &snapshot.runs);
+            for (line, columns) in &link.rows {
+                self.draw_link_underline(&mut canvas, *line, columns, &snapshot.runs);
+            }
         }
         // Emoji may be wider than their cells, so they go on top of the neighbouring runs.
         for run in snapshot.runs.iter().filter(|run| run.style.emoji) {
