@@ -7,6 +7,7 @@ mod colr;
 mod emoji;
 pub mod frame;
 mod graphics;
+mod grid_links;
 pub mod hints;
 pub mod input;
 pub mod links;
