@@ -544,6 +544,14 @@ mod tests {
     }
 
     #[test]
+    fn emoji_widened_by_grapheme_mode_is_a_two_cell_run() {
+        let frame = frame_for("\x1b[?2027h\u{2764}\u{FE0F}x".as_bytes());
+        assert_eq!(texts(&frame), vec![(0, 0, "\u{2764}\u{FE0F}"), (0, 2, "x")]);
+        assert_eq!(frame.runs[0].width, 2);
+        assert!(frame.runs[0].style.emoji);
+    }
+
+    #[test]
     fn regional_indicator_pairs_are_flags() {
         // Switzerland, Germany, then a letter without a partner.
         let frame = frame_for("\u{1F1E8}\u{1F1ED}\u{1F1E9}\u{1F1EA}\u{1F1EB}x".as_bytes());

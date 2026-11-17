@@ -217,6 +217,8 @@ pub struct Terminal {
     pub shell_integration: bool,
     /// Shows inline images (kitty graphics protocol and sixel).
     pub images: bool,
+    /// Gives emoji like ❤️ two cells, as Unicode does, instead of the one `wcwidth` gives them.
+    pub wide_emoji: bool,
 }
 
 impl Default for Terminal {
@@ -231,6 +233,7 @@ impl Default for Terminal {
             env: BTreeMap::new(),
             shell_integration: true,
             images: true,
+            wide_emoji: false,
         }
     }
 }

@@ -5,6 +5,7 @@ use alacritty_terminal::index::{Column, Line};
 use alacritty_terminal::term::cell::{Cell, Flags};
 use alacritty_terminal::term::{Term, TermMode};
 use alacritty_terminal::vte::ansi::{Color, NamedColor};
+use unicode_width::UnicodeWidthChar;
 
 use crate::graphics::placeholder::PLACEHOLDER;
 
@@ -71,8 +72,16 @@ fn dump<T>(term: &Term<T>, max_lines: usize) -> Vec<u8> {
                 out.push(' ');
                 continue;
             }
+            // An emoji grapheme mode widened, like ❤️, is replayed in that mode to stay wide.
+            let widened = cell.flags.contains(Flags::WIDE_CHAR) && cell.c.width() == Some(1);
+            if widened {
+                out.push_str("\x1b[?2027h");
+            }
             out.push(cell.c);
             out.extend(cell.zerowidth().into_iter().flatten());
+            if widened {
+                out.push_str("\x1b[?2027l");
+            }
         }
         if !wraps {
             if style != Style::default() {
@@ -305,5 +314,25 @@ mod tests {
         let lines = text(&target);
         assert_eq!(lines[0], "before vim");
         assert!(!lines.iter().any(|line| line.contains("inside")));
+    }
+
+    #[test]
+    fn widened_emoji_stay_wide_after_a_round_trip() {
+        let mut source = term(20, 5);
+        crate::cluster::advance(
+            &mut Processor::new(),
+            &mut source,
+            "\x1b[?2027h\u{2764}\u{FE0F}x\x1b[?2027l".as_bytes(),
+        );
+        let mut target = term(20, 10);
+        crate::cluster::advance(
+            &mut Processor::new(),
+            &mut target,
+            &dump_main_screen(&mut source, 100),
+        );
+        let row = &target.grid()[Line(0)];
+        assert_eq!(row[Column(0)].c, '\u{2764}');
+        assert!(row[Column(0)].flags.contains(Flags::WIDE_CHAR));
+        assert_eq!(row[Column(2)].c, 'x');
     }
 }

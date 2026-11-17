@@ -5,10 +5,17 @@
 //! emoji is drawn in pieces. [`Clustered`] wraps the terminal while the parser runs and folds
 //! those characters into the cell of the emoji they belong to, as zero-width characters, so
 //! the whole sequence is drawn as one glyph in the emoji's cells.
+//!
+//! In grapheme mode (DEC private mode 2027) it also widens an emoji that is a narrow symbol
+//! made an emoji by U+FE0F or a skin tone, like ❤️, to the two cells Unicode gives it.
+
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 use alacritty_terminal::Term;
 use alacritty_terminal::event::EventListener;
+use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::index::Column;
+use alacritty_terminal::term::TermMode;
 use alacritty_terminal::term::cell::{Cell, Flags};
 use alacritty_terminal::vte::ansi::cursor_icon::CursorIcon;
 use alacritty_terminal::vte::ansi::{
@@ -19,22 +26,103 @@ use alacritty_terminal::vte::ansi::{
 
 /// Zero width joiner: glues the emoji on either side into one.
 const ZWJ: char = '\u{200D}';
+/// Variation selector 16: asks for the emoji presentation of the character before it.
+const EMOJI_PRESENTATION: char = '\u{FE0F}';
+/// Grapheme cluster mode, as proposed for Contour and supported by Ghostty and others.
+const GRAPHEME_MODE: u16 = 2027;
 
-/// Feeds `bytes` to `term` through `parser`, keeping emoji sequences in one cell.
+/// Whether grapheme mode (DEC private mode 2027) is on. Programs that count emoji widths by
+/// grapheme turn it on; the configuration sets what it is until they do.
+#[derive(Debug, Default)]
+pub struct GraphemeMode {
+    default: AtomicBool,
+    /// What the program asked for: [`UNSET`], [`ON`] or [`OFF`].
+    requested: AtomicU8,
+}
+
+const UNSET: u8 = 0;
+const ON: u8 = 1;
+const OFF: u8 = 2;
+
+impl GraphemeMode {
+    pub fn new(default: bool) -> Self {
+        Self {
+            default: AtomicBool::new(default),
+            requested: AtomicU8::new(UNSET),
+        }
+    }
+
+    pub fn set_default(&self, on: bool) {
+        self.default.store(on, Ordering::Relaxed);
+    }
+
+    pub fn enabled(&self) -> bool {
+        match self.requested.load(Ordering::Relaxed) {
+            ON => true,
+            OFF => false,
+            _ => self.default.load(Ordering::Relaxed),
+        }
+    }
+
+    /// Forgets what the program asked for, as a terminal reset does.
+    pub fn reset(&self) {
+        self.requested.store(UNSET, Ordering::Relaxed);
+    }
+
+    fn request(&self, on: bool) {
+        self.requested
+            .store(if on { ON } else { OFF }, Ordering::Relaxed);
+    }
+}
+
+/// What the parser needs besides the terminal: the grapheme mode, and where replies to the
+/// program's queries about it go.
+#[derive(Clone, Copy)]
+pub(crate) struct Context<'a> {
+    pub graphemes: &'a GraphemeMode,
+    pub reply: &'a dyn Fn(String),
+}
+
+impl std::fmt::Debug for Context<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Context")
+            .field("graphemes", &self.graphemes)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Feeds `bytes` to `term` through `parser`, keeping emoji sequences in one cell. Grapheme mode
+/// is off unless the bytes turn it on, and queries about it go unanswered.
 pub(crate) fn advance<T: EventListener>(
     parser: &mut Processor<StdSyncHandler>,
     term: &mut Term<T>,
     bytes: &[u8],
 ) {
-    parser.advance(&mut Clustered(term), bytes);
+    let graphemes = GraphemeMode::default();
+    let context = Context {
+        graphemes: &graphemes,
+        reply: &|_| {},
+    };
+    advance_with(parser, term, context, bytes);
+}
+
+/// Feeds `bytes` to `term` through `parser`, keeping emoji sequences in one cell.
+pub(crate) fn advance_with<T: EventListener>(
+    parser: &mut Processor<StdSyncHandler>,
+    term: &mut Term<T>,
+    context: Context<'_>,
+    bytes: &[u8],
+) {
+    parser.advance(&mut Clustered { term, context }, bytes);
 }
 
 /// Applies a pending synchronized update to `term`, keeping emoji sequences in one cell.
 pub(crate) fn stop_sync<T: EventListener>(
     parser: &mut Processor<StdSyncHandler>,
     term: &mut Term<T>,
+    context: Context<'_>,
 ) {
-    parser.stop_sync(&mut Clustered(term));
+    parser.stop_sync(&mut Clustered { term, context });
 }
 
 /// Whether `c` is an Emoji Modifier: one of the five Fitzpatrick skin tones.
@@ -87,13 +175,30 @@ fn continues(cell: &Cell, c: char) -> bool {
     last == ZWJ && is_pictographic(c) && is_pictographic(cell.c)
 }
 
+/// Whether `cell` holds a one-cell emoji that grapheme mode makes two cells wide: a symbol, or
+/// a keycap digit, followed by U+FE0F or a skin tone.
+fn widens(cell: &Cell) -> bool {
+    let presentation = cell
+        .zerowidth()
+        .and_then(<[char]>::first)
+        .is_some_and(|&z| z == EMOJI_PRESENTATION || is_skin_tone(z));
+    presentation
+        && !cell
+            .flags
+            .intersects(Flags::WIDE_CHAR | Flags::WIDE_CHAR_SPACER)
+        && (is_pictographic(cell.c) || matches!(cell.c, '0'..='9' | '#' | '*'))
+}
+
 /// The terminal, folding the characters that continue an emoji into its cell.
-struct Clustered<'a, T>(&'a mut Term<T>);
+struct Clustered<'a, T> {
+    term: &'a mut Term<T>,
+    context: Context<'a>,
+}
 
 impl<T: EventListener> Clustered<'_, T> {
     /// The cell the last character was written to, if it is on the cursor's line.
     fn previous_cell(&mut self) -> Option<&mut Cell> {
-        let grid = self.0.grid_mut();
+        let grid = self.term.grid_mut();
         let cursor = &grid.cursor;
         let line = cursor.point.line;
         let mut column = cursor.point.column.0;
@@ -108,6 +213,40 @@ impl<T: EventListener> Clustered<'_, T> {
         }
         Some(&mut grid[line][Column(column)])
     }
+
+    /// Makes the one-cell emoji just written two cells wide, moving it to the next line when
+    /// it is in the last column. The terminal writes the spacers, so wrapping, insert mode and
+    /// overwritten wide characters work as for any wide character.
+    fn widen_previous(&mut self) {
+        if !self.previous_cell().is_some_and(|cell| widens(cell)) {
+            return;
+        }
+        let grid = self.term.grid();
+        if grid.cursor.input_needs_wrap {
+            if !self.term.mode().contains(TermMode::LINE_WRAP) || grid.columns() < 2 {
+                return;
+            }
+            let line = grid.cursor.point.line;
+            let column = grid.cursor.point.column;
+            let emoji = grid[line][column].clone();
+            self.term.grid_mut().cursor.input_needs_wrap = false;
+            self.write_spacer(Flags::LEADING_WIDE_CHAR_SPACER);
+            self.term.input(' ');
+            let point = self.term.grid().cursor.point;
+            self.term.grid_mut()[point.line][point.column - 1] = emoji;
+        }
+        if let Some(cell) = self.previous_cell() {
+            cell.flags.insert(Flags::WIDE_CHAR);
+        }
+        self.write_spacer(Flags::WIDE_CHAR_SPACER);
+    }
+
+    /// Writes a blank cell carrying `flag` at the cursor.
+    fn write_spacer(&mut self, flag: Flags) {
+        self.term.grid_mut().cursor.template.flags.insert(flag);
+        self.term.input(' ');
+        self.term.grid_mut().cursor.template.flags.remove(flag);
+    }
 }
 
 /// Forwards each listed [`Handler`] method to the terminal.
@@ -115,7 +254,7 @@ macro_rules! forward {
     ($($name:ident($($arg:ident: $ty:ty),*);)*) => {
         $(
             fn $name(&mut self, $($arg: $ty),*) {
-                self.0.$name($($arg),*);
+                self.term.$name($($arg),*);
             }
         )*
     };
@@ -127,9 +266,45 @@ impl<T: EventListener> Handler for Clustered<'_, T> {
             && continues(cell, c)
         {
             cell.push_zerowidth(c);
-            return;
+        } else {
+            self.term.input(c);
         }
-        self.0.input(c);
+        if (c == EMOJI_PRESENTATION || is_skin_tone(c)) && self.context.graphemes.enabled() {
+            self.widen_previous();
+        }
+    }
+
+    fn set_private_mode(&mut self, mode: PrivateMode) {
+        match mode {
+            PrivateMode::Unknown(GRAPHEME_MODE) => self.context.graphemes.request(true),
+            mode => self.term.set_private_mode(mode),
+        }
+    }
+
+    fn unset_private_mode(&mut self, mode: PrivateMode) {
+        match mode {
+            PrivateMode::Unknown(GRAPHEME_MODE) => self.context.graphemes.request(false),
+            mode => self.term.unset_private_mode(mode),
+        }
+    }
+
+    fn report_private_mode(&mut self, mode: PrivateMode) {
+        match mode {
+            PrivateMode::Unknown(GRAPHEME_MODE) => {
+                let state = if self.context.graphemes.enabled() {
+                    1
+                } else {
+                    2
+                };
+                (self.context.reply)(format!("\x1b[?{GRAPHEME_MODE};{state}$y"));
+            }
+            mode => self.term.report_private_mode(mode),
+        }
+    }
+
+    fn reset_state(&mut self) {
+        self.context.graphemes.reset();
+        self.term.reset_state();
     }
 
     forward! {
@@ -170,15 +345,11 @@ impl<T: EventListener> Handler for Clustered<'_, T> {
         clear_screen(mode: ClearMode);
         clear_tabs(mode: TabulationClearMode);
         set_tabs(interval: u16);
-        reset_state();
         reverse_index();
         terminal_attribute(attr: Attr);
         set_mode(mode: Mode);
         unset_mode(mode: Mode);
         report_mode(mode: Mode);
-        set_private_mode(mode: PrivateMode);
-        unset_private_mode(mode: PrivateMode);
-        report_private_mode(mode: PrivateMode);
         set_scrolling_region(top: usize, bottom: Option<usize>);
         set_keypad_application_mode();
         unset_keypad_application_mode();
@@ -303,5 +474,94 @@ mod tests {
         let term = term("abcdefghijklmnopqr👋🏽");
         assert_eq!(cells(&term).last().map(String::as_str), Some("👋🏽"));
         assert!(term.grid().cursor.input_needs_wrap);
+    }
+
+    /// `bytes` fed with grapheme mode `wide` by default, plus the replies to the program.
+    fn term_in(bytes: &str, wide: bool) -> (Term<VoidListener>, Vec<String>) {
+        let replies = std::cell::RefCell::new(Vec::new());
+        let reply = |text: String| replies.borrow_mut().push(text);
+        let graphemes = GraphemeMode::new(wide);
+        let size = GridSize {
+            columns: 20,
+            lines: 3,
+        };
+        let mut term = Term::new(Config::default(), &size, VoidListener);
+        let context = Context {
+            graphemes: &graphemes,
+            reply: &reply,
+        };
+        advance_with(&mut Processor::new(), &mut term, context, bytes.as_bytes());
+        (term, replies.into_inner())
+    }
+
+    fn flags_at(term: &Term<VoidListener>, line: i32, column: usize) -> Flags {
+        term.grid()[Line(line)][Column(column)].flags
+    }
+
+    #[test]
+    fn emoji_presentation_of_a_narrow_symbol_keeps_one_cell_by_default() {
+        let term = term("\u{2764}\u{FE0F}x");
+        assert_eq!(cells(&term), ["\u{2764}\u{FE0F}", "x"]);
+        assert_eq!(term.grid().cursor.point.column, Column(2));
+    }
+
+    #[test]
+    fn grapheme_mode_widens_emoji_presentation_to_two_cells() {
+        let term = term("\x1b[?2027h\u{2764}\u{FE0F}x");
+        assert_eq!(cells(&term), ["\u{2764}\u{FE0F}", "x"]);
+        assert!(flags_at(&term, 0, 0).contains(Flags::WIDE_CHAR));
+        assert!(flags_at(&term, 0, 1).contains(Flags::WIDE_CHAR_SPACER));
+        assert_eq!(term.grid().cursor.point.column, Column(3));
+    }
+
+    #[test]
+    fn grapheme_mode_widens_skin_toned_symbols_and_keycaps() {
+        let term = term("\x1b[?2027h\u{270C}\u{1F3FE}1\u{FE0F}\u{20E3}");
+        assert_eq!(cells(&term), ["\u{270C}\u{1F3FE}", "1\u{FE0F}\u{20E3}"]);
+        assert_eq!(term.grid().cursor.point.column, Column(4));
+    }
+
+    #[test]
+    fn grapheme_mode_leaves_text_presentation_narrow() {
+        let term = term("\x1b[?2027h\u{2764}x\u{2764}\u{FE0E}y");
+        assert_eq!(term.grid().cursor.point.column, Column(4));
+    }
+
+    #[test]
+    fn widened_emoji_in_the_last_column_moves_to_the_next_line() {
+        let term = term(&format!("\x1b[?2027h{}\u{2764}\u{FE0F}x", "a".repeat(19)));
+        assert!(flags_at(&term, 0, 19).contains(Flags::LEADING_WIDE_CHAR_SPACER));
+        assert!(flags_at(&term, 0, 19).contains(Flags::WRAPLINE));
+        assert_eq!(cells_on(&term, 1), ["\u{2764}\u{FE0F}", "x"]);
+        assert!(flags_at(&term, 1, 0).contains(Flags::WIDE_CHAR));
+        assert_eq!(term.grid().cursor.point.column, Column(3));
+    }
+
+    #[test]
+    fn widened_emoji_fills_the_last_two_columns() {
+        let term = term(&format!("\x1b[?2027h{}\u{2764}\u{FE0F}", "a".repeat(18)));
+        assert!(flags_at(&term, 0, 18).contains(Flags::WIDE_CHAR));
+        assert!(flags_at(&term, 0, 19).contains(Flags::WIDE_CHAR_SPACER));
+        assert!(term.grid().cursor.input_needs_wrap);
+    }
+
+    #[test]
+    fn the_configured_default_applies_until_the_program_switches() {
+        let (term, _) = term_in("\u{2764}\u{FE0F}", true);
+        assert_eq!(term.grid().cursor.point.column, Column(2));
+        let (term, _) = term_in("\x1b[?2027l\u{2764}\u{FE0F}", true);
+        assert_eq!(term.grid().cursor.point.column, Column(1));
+    }
+
+    #[test]
+    fn grapheme_mode_is_reported() {
+        let (_, replies) = term_in("\x1b[?2027$p\x1b[?2027h\x1b[?2027$p", false);
+        assert_eq!(replies, ["\x1b[?2027;2$y", "\x1b[?2027;1$y"]);
+    }
+
+    #[test]
+    fn a_reset_returns_to_the_configured_default() {
+        let (_, replies) = term_in("\x1b[?2027l\x1bc\x1b[?2027$p", true);
+        assert_eq!(replies, ["\x1b[?2027;1$y"]);
     }
 }

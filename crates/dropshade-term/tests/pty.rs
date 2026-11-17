@@ -783,4 +783,24 @@ mod images {
         wait_for(&terminal, "done");
         assert_eq!(terminal.frame(&Palette::default()).images, []);
     }
+
+    #[test]
+    fn wide_emoji_gives_emoji_presentation_two_cells() {
+        for (wide, x_column) in [(false, 1), (true, 2)] {
+            let options = SpawnOptions {
+                command: Some((
+                    "sh".into(),
+                    vec!["-c".into(), "printf '\u{2764}\u{FE0F}x'; sleep 2".into()],
+                )),
+                size: SIZE,
+                wide_emoji: wide,
+                ..SpawnOptions::default()
+            };
+            let (terminal, _events) = Terminal::spawn(options).expect("spawn sh");
+            wait_for(&terminal, "x");
+            let frame = terminal.frame(&Palette::default());
+            let x = frame.runs.iter().find(|run| run.text == "x").expect("an x");
+            assert_eq!(x.column, x_column, "wide_emoji = {wide}: {frame:?}");
+        }
+    }
 }

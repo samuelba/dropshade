@@ -252,6 +252,18 @@ memory transfers are not supported, so a program can never make Dropshade read a
 are not kept when a session is restored, and a resize that rewraps a line can split an image wider
 than the new window. Turn images off with `images = false` under `[terminal]`.
 
+## Emoji
+
+Emoji are drawn in color from Noto Color Emoji or another installed emoji font, including the
+COLRv1 fonts Fedora and other current distributions ship. Skin tones, ZWJ sequences like 👨‍👩‍👧 and
+flags are drawn as one emoji.
+
+An emoji that is a symbol plus U+FE0F, like ❤️ or ☀️, gets one cell and is drawn small, because
+that is how wide bash, zsh, vim and tmux count it. With `wide_emoji = true` under `[terminal]` it
+gets two cells, as in kitty and Ghostty, but programs that count one cell then put the cursor a
+cell off after it. Programs that count graphemes themselves can ask for wide emoji with grapheme
+mode (DEC mode 2027) whatever the setting.
+
 ## Bell, activity and finished commands
 
 The bell does not flash the terminal unless you set `[notifications] visual_bell = true`. A
