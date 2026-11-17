@@ -17,11 +17,30 @@ pub enum HintKind {
     Hash,
 }
 
-/// A piece of text on one viewport row that can be picked by typing its label.
+/// A line of output, one char per cell, soft-wrapped over the viewport rows from `first_row`
+/// on. `first_row` is negative when the line starts above the viewport.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WrappedLine {
+    pub first_row: isize,
+    pub chars: Vec<char>,
+}
+
+/// Where the text of the viewport is: its lines, each wrapped at `columns`, of which the
+/// viewport shows the rows `0..rows`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ViewShape {
+    pub columns: usize,
+    pub rows: usize,
+}
+
+/// The columns something covers on each viewport row it is on, top to bottom.
+pub type RowSpans = Vec<(usize, Range<usize>)>;
+
+/// A piece of text in view that can be picked by typing its label. `rows` holds the columns it
+/// covers on each viewport row it is on, top to bottom, and is never empty.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Hint {
-    pub line: usize,
-    pub columns: Range<usize>,
+    pub rows: RowSpans,
     pub text: String,
     pub kind: HintKind,
     pub label: String,
@@ -60,9 +79,9 @@ pub struct HintSession {
 }
 
 impl HintSession {
-    /// Labels the matches in `rows` (one char per cell, top to bottom); `None` when there are none.
-    pub fn new(rows: &[Vec<char>]) -> Option<Self> {
-        let hints = find(rows);
+    /// Labels the matches in view in `lines` (top to bottom); `None` when there are none.
+    pub fn new(lines: &[WrappedLine], shape: ViewShape) -> Option<Self> {
+        let hints = find(lines, shape);
         (!hints.is_empty()).then(|| Self {
             hints,
             typed: String::new(),
@@ -101,16 +120,19 @@ impl HintSession {
     }
 }
 
-/// Finds the URLs, paths and hashes in `rows` and labels them, the shortest and easiest labels
-/// going to the newest output at the bottom.
-pub fn find(rows: &[Vec<char>]) -> Vec<Hint> {
-    let mut matches: Vec<(usize, Range<usize>, HintKind)> = rows
+/// Finds the URLs, paths and hashes in view in `lines` and labels them, the shortest and
+/// easiest labels going to the newest output at the bottom.
+pub fn find(lines: &[WrappedLine], shape: ViewShape) -> Vec<Hint> {
+    let mut matches: Vec<(RowSpans, String, HintKind)> = lines
         .iter()
-        .enumerate()
-        .flat_map(|(line, row)| {
-            row_matches(row)
+        .flat_map(|line| {
+            row_matches(&line.chars)
                 .into_iter()
-                .map(move |(columns, kind)| (line, columns, kind))
+                .filter_map(move |(span, kind)| {
+                    let rows = visible_rows(line.first_row, &span, shape);
+                    let text = line.chars[span].iter().collect();
+                    (!rows.is_empty()).then_some((rows, text, kind))
+                })
         })
         .collect();
     let skipped = matches.len().saturating_sub(MAX_HINTS);
@@ -120,12 +142,38 @@ pub fn find(rows: &[Vec<char>]) -> Vec<Hint> {
         .into_iter()
         .rev()
         .zip(labels)
-        .map(|((line, columns, kind), label)| Hint {
-            line,
-            text: rows[line][columns.clone()].iter().collect(),
-            columns,
+        .map(|((rows, text, kind), label)| Hint {
+            rows,
+            text,
             kind,
             label,
+        })
+        .collect()
+}
+
+/// The columns `span` of a line starting on `first_row` covers on each viewport row.
+fn visible_rows(first_row: isize, span: &Range<usize>, shape: ViewShape) -> RowSpans {
+    let columns = shape.columns.max(1);
+    let first = span.start / columns;
+    let last = (span.end - 1) / columns;
+    (first..=last)
+        .filter_map(|wrap| {
+            let row = isize::try_from(wrap)
+                .ok()
+                .and_then(|wrap| first_row.checked_add(wrap))
+                .and_then(|row| usize::try_from(row).ok())
+                .filter(|&row| row < shape.rows)?;
+            let start = if wrap == first {
+                span.start % columns
+            } else {
+                0
+            };
+            let end = if wrap == last {
+                (span.end - 1) % columns + 1
+            } else {
+                columns
+            };
+            Some((row, start..end))
         })
         .collect()
 }
@@ -269,13 +317,25 @@ fn strip_position(text: &str) -> &str {
 mod tests {
     use super::*;
 
-    fn rows(lines: &[&str]) -> Vec<Vec<char>> {
-        lines.iter().map(|line| line.chars().collect()).collect()
+    const WIDE: ViewShape = ViewShape {
+        columns: 80,
+        rows: 24,
+    };
+
+    fn rows(lines: &[&str]) -> Vec<WrappedLine> {
+        lines
+            .iter()
+            .zip(0..)
+            .map(|(line, first_row)| WrappedLine {
+                first_row,
+                chars: line.chars().collect(),
+            })
+            .collect()
     }
 
     fn found(lines: &[&str]) -> Vec<(String, HintKind)> {
-        let mut hints = find(&rows(lines));
-        hints.sort_by_key(|hint| (hint.line, hint.columns.start));
+        let mut hints = find(&rows(lines), WIDE);
+        hints.sort_by_key(|hint| (hint.rows[0].0, hint.rows[0].1.start));
         hints
             .into_iter()
             .map(|hint| (hint.text, hint.kind))
@@ -332,10 +392,42 @@ mod tests {
 
     #[test]
     fn the_newest_output_gets_the_first_labels() {
-        let hints = find(&rows(&["/top", "/bottom"]));
+        let hints = find(&rows(&["/top", "/bottom"]), WIDE);
         assert_eq!(hints[0].text, "/bottom");
         assert_eq!(hints[0].label, "a");
         assert_eq!(hints[1].label, "s");
+    }
+
+    #[test]
+    fn matches_continue_over_soft_wrapped_rows() {
+        let line = WrappedLine {
+            first_row: 1,
+            chars: "see https://x.test/abc/def ok".chars().collect(),
+        };
+        let shape = ViewShape {
+            columns: 10,
+            rows: 5,
+        };
+        let hints = find(&[line], shape);
+        assert_eq!(hints.len(), 1);
+        assert_eq!(hints[0].text, "https://x.test/abc/def");
+        assert_eq!(hints[0].rows, vec![(1, 4..10), (2, 0..10), (3, 0..6)]);
+    }
+
+    #[test]
+    fn matches_partly_out_of_view_are_found_whole() {
+        let line = WrappedLine {
+            first_row: -1,
+            chars: "/tmp/a/very/long/path /tmp/off".chars().collect(),
+        };
+        let shape = ViewShape {
+            columns: 10,
+            rows: 1,
+        };
+        let hints = find(&[line], shape);
+        let texts: Vec<_> = hints.iter().map(|hint| hint.text.as_str()).collect();
+        assert_eq!(texts, vec!["/tmp/a/very/long/path"]);
+        assert_eq!(hints[0].rows, vec![(0, 0..10)]);
     }
 
     #[test]
@@ -351,7 +443,7 @@ mod tests {
 
     #[test]
     fn typing_a_label_picks_its_hint() {
-        let mut session = HintSession::new(&rows(&["/a /b"])).expect("hints");
+        let mut session = HintSession::new(&rows(&["/a /b"]), WIDE).expect("hints");
         assert_eq!(
             session.key('s'),
             HintOutcome::Picked(Pick {
@@ -364,12 +456,12 @@ mod tests {
 
     #[test]
     fn shift_opens_and_wrong_keys_cancel() {
-        let mut session = HintSession::new(&rows(&["/a"])).expect("hints");
+        let mut session = HintSession::new(&rows(&["/a"]), WIDE).expect("hints");
         assert!(matches!(
             session.key('A'),
             HintOutcome::Picked(Pick { open: true, .. })
         ));
-        let mut session = HintSession::new(&rows(&["/a"])).expect("hints");
+        let mut session = HintSession::new(&rows(&["/a"]), WIDE).expect("hints");
         assert_eq!(session.key('z'), HintOutcome::Cancelled);
     }
 
@@ -379,7 +471,7 @@ mod tests {
             .map(|i| format!("/p{i}"))
             .collect::<Vec<_>>()
             .join(" ");
-        let mut session = HintSession::new(&rows(&[&line])).expect("hints");
+        let mut session = HintSession::new(&rows(&[&line]), WIDE).expect("hints");
         assert_eq!(session.key('a'), HintOutcome::Pending);
         assert_eq!(session.typed(), "a");
         assert!(matches!(session.key('a'), HintOutcome::Picked(_)));
@@ -387,7 +479,7 @@ mod tests {
 
     #[test]
     fn no_matches_means_no_session() {
-        assert_eq!(HintSession::new(&rows(&["nothing here"])), None);
+        assert_eq!(HintSession::new(&rows(&["nothing here"]), WIDE), None);
     }
 
     #[test]

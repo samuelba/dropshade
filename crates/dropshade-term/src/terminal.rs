@@ -27,7 +27,7 @@ use crate::colors::Palette;
 use crate::frame::{self, Frame};
 use crate::graphics::{self, placeholder, table::PlacementTable};
 use crate::grid_links;
-use crate::hints::{HintOutcome, HintSession};
+use crate::hints::{HintOutcome, HintSession, ViewShape};
 use crate::input::paste_bytes;
 use crate::marks::PromptMarks;
 use crate::mouse::CellPosition;
@@ -541,14 +541,14 @@ impl Terminal {
         }
         let term = self.term.lock();
         let offset = term.grid().display_offset();
-        let rows: Vec<Vec<char>> = (0..term.screen_lines())
-            .map(|line| {
-                let row = &term.grid()[grid_point(offset, CellPosition { column: 0, line }).line];
-                (0..term.columns()).map(|c| row[Column(c)].c).collect()
-            })
-            .collect();
+        let top = grid_point(offset, CellPosition { column: 0, line: 0 }).line;
+        let shape = ViewShape {
+            columns: term.columns(),
+            rows: term.screen_lines(),
+        };
+        let lines = grid_links::wrapped_lines(&*term, top, shape.rows);
         drop(term);
-        self.hints = HintSession::new(&rows).map(|session| (session, offset));
+        self.hints = HintSession::new(&lines, shape).map(|session| (session, offset));
         self.hints.is_some()
     }
 
