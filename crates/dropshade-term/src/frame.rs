@@ -6,6 +6,7 @@ use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::term::point_to_viewport;
 use alacritty_terminal::vte::ansi::{Color as AnsiColor, CursorShape, NamedColor, Rgb};
 
+use crate::cluster::is_skin_tone;
 use crate::colors::{CellColors, Palette};
 use crate::graphics::placeholder::{self, Parsed};
 use crate::graphics::table::PlacementTable;
@@ -226,13 +227,18 @@ fn is_emoji(c: char, zerowidth: &[char], wide: bool) -> bool {
     if zerowidth.contains(&TEXT_PRESENTATION) {
         return false;
     }
-    if zerowidth.contains(&EMOJI_PRESENTATION) {
+    if zerowidth.contains(&EMOJI_PRESENTATION) || zerowidth.iter().any(|&z| is_skin_tone(z)) {
         return true;
     }
     wide && matches!(
         u32::from(c),
         0x1F000..=0x1FAFF | 0x2300..=0x23FF | 0x2600..=0x27BF | 0x2B00..=0x2BFF
     )
+}
+
+/// Whether `c` is one of the 26 letters that make flags in pairs, like 🇨 and 🇭 for 🇨🇭.
+fn is_regional_indicator(c: char) -> bool {
+    matches!(u32::from(c), 0x1F1E6..=0x1F1FF)
 }
 
 #[derive(Clone, Copy)]
@@ -263,7 +269,10 @@ impl RunCollector {
     }
 
     fn push(&mut self, cell: CellInput<'_>) {
-        let alone = cell.wide || cell.style.emoji;
+        if is_regional_indicator(cell.c) && self.pair_flag(&cell) {
+            return;
+        }
+        let alone = cell.wide || cell.style.emoji || is_regional_indicator(cell.c);
         if let Some((run, false)) = &mut self.current
             && !alone
             && run.row == cell.row
@@ -288,6 +297,31 @@ impl RunCollector {
             style: cell.style,
         };
         self.current = Some((run, alone));
+    }
+
+    /// Joins `cell` to the lone regional indicator right before it: the two letters are one
+    /// flag, drawn as an emoji across both cells. A third letter starts the next flag.
+    fn pair_flag(&mut self, cell: &CellInput<'_>) -> bool {
+        let Some((run, true)) = &mut self.current else {
+            return false;
+        };
+        let mut chars = run.text.chars();
+        let lone = matches!(
+            (chars.next(), chars.next()),
+            (Some(first), None) if is_regional_indicator(first)
+        );
+        if !lone
+            || run.row != cell.row
+            || run.column + run.width != cell.column
+            || run.colors != cell.colors
+        {
+            return false;
+        }
+        run.text.push(cell.c);
+        run.text.extend(cell.zerowidth);
+        run.width += 1;
+        run.style.emoji = true;
+        true
     }
 
     fn flush(&mut self) {
@@ -351,7 +385,7 @@ mod tests {
             lines: 3,
         };
         let mut term = Term::new(Config::default(), &size, VoidListener);
-        Processor::<alacritty_terminal::vte::ansi::StdSyncHandler>::new().advance(&mut term, bytes);
+        crate::cluster::advance(&mut Processor::new(), &mut term, bytes);
         build(&term, &palette(), &PlacementTable::default())
     }
 
@@ -492,6 +526,77 @@ mod tests {
         );
         assert!(frame.runs[1].style.emoji);
         assert!(!frame.runs[0].style.emoji && !frame.runs[2].style.emoji);
+    }
+
+    #[test]
+    fn skin_toned_emoji_is_one_two_cell_run() {
+        let frame = frame_for("\u{1F44B}\u{1F3FD}x\u{270C}\u{1F3FE}".as_bytes());
+        assert_eq!(
+            texts(&frame),
+            vec![
+                (0, 0, "\u{1F44B}\u{1F3FD}"),
+                (0, 2, "x"),
+                (0, 3, "\u{270C}\u{1F3FE}")
+            ]
+        );
+        assert_eq!(frame.runs[0].width, 2);
+        assert!(frame.runs[0].style.emoji && frame.runs[2].style.emoji);
+    }
+
+    #[test]
+    fn emoji_widened_by_grapheme_mode_is_a_two_cell_run() {
+        let frame = frame_for("\x1b[?2027h\u{2764}\u{FE0F}x".as_bytes());
+        assert_eq!(texts(&frame), vec![(0, 0, "\u{2764}\u{FE0F}"), (0, 2, "x")]);
+        assert_eq!(frame.runs[0].width, 2);
+        assert!(frame.runs[0].style.emoji);
+    }
+
+    #[test]
+    fn regional_indicator_pairs_are_flags() {
+        // Switzerland, Germany, then a letter without a partner.
+        let frame = frame_for("\u{1F1E8}\u{1F1ED}\u{1F1E9}\u{1F1EA}\u{1F1EB}x".as_bytes());
+        assert_eq!(
+            texts(&frame),
+            vec![
+                (0, 0, "\u{1F1E8}\u{1F1ED}"),
+                (0, 2, "\u{1F1E9}\u{1F1EA}"),
+                (0, 4, "\u{1F1EB}"),
+                (0, 5, "x")
+            ]
+        );
+        let shape: Vec<(usize, bool)> = frame
+            .runs
+            .iter()
+            .map(|r| (r.width, r.style.emoji))
+            .collect();
+        assert_eq!(shape, vec![(2, true), (2, true), (1, false), (1, false)]);
+    }
+
+    #[test]
+    fn half_selected_flag_is_two_letters() {
+        use alacritty_terminal::index::{Column, Line, Point, Side};
+        use alacritty_terminal::selection::{Selection, SelectionType};
+        let palette = palette();
+        let size = GridSize {
+            columns: 10,
+            lines: 3,
+        };
+        let mut term = Term::new(Config::default(), &size, VoidListener);
+        crate::cluster::advance(
+            &mut Processor::new(),
+            &mut term,
+            "\u{1F1E8}\u{1F1ED}".as_bytes(),
+        );
+        let mut selection = Selection::new(
+            SelectionType::Simple,
+            Point::new(Line(0), Column(1)),
+            Side::Left,
+        );
+        selection.update(Point::new(Line(0), Column(1)), Side::Right);
+        term.selection = Some(selection);
+        let frame = build(&term, &palette, &PlacementTable::default());
+        assert_eq!(frame.runs.len(), 2);
+        assert!(frame.runs.iter().all(|r| r.width == 1 && !r.style.emoji));
     }
 
     #[test]

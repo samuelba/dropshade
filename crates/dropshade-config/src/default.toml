@@ -68,6 +68,11 @@ shell_integration = true
 # Show images that programs print with the kitty graphics protocol or as sixels (kitten icat,
 # yazi, timg, chafa, img2sixel). Applies to new tabs.
 images = true
+# Give emoji that are a symbol plus U+FE0F, like ❤️ and ☀️, two cells, as kitty and Ghostty do,
+# instead of drawing them small in one. Programs that count with wcwidth (bash, zsh, vim, tmux)
+# think they take one cell, so the cursor lands a cell off after them. Programs that support
+# grapheme mode (DEC mode 2027) can switch it on themselves either way.
+wide_emoji = false
 
 [terminal.env]
 # Extra environment variables, e.g. EDITOR = "nvim"

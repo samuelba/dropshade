@@ -490,14 +490,16 @@ impl App {
         } else {
             settings.zoomed(self.zoom.scale(), self.config.font.line_height)
         };
-        let (scrollback, cursor_style, cell) = (
+        let (scrollback, cursor_style, cell, wide_emoji) = (
             self.settings.scrollback_lines,
             self.settings.cursor_style,
             self.settings.style.cell,
+            self.settings.wide_emoji,
         );
         for session in self.sessions_mut() {
             let terminal = &mut session.terminal;
             terminal.update_options(scrollback, cursor_style);
+            terminal.set_wide_emoji(wide_emoji);
             terminal.set_cell(cell);
         }
     }

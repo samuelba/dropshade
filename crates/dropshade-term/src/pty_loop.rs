@@ -24,6 +24,7 @@ use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 use nix::sys::wait::{Id, WaitPidFlag, waitid};
 use nix::unistd::Pid;
 
+use crate::cluster::{self, Context, GraphemeMode};
 use crate::graphics::table::PlacementTable;
 use crate::graphics::{Graphics, Op};
 use crate::marks::PromptMarks;
@@ -77,6 +78,7 @@ pub(crate) struct Shared {
     pub term: Arc<FairMutex<Term<EventProxy>>>,
     pub marks: Arc<Mutex<PromptMarks>>,
     pub images: Arc<Mutex<PlacementTable>>,
+    pub graphemes: Arc<GraphemeMode>,
     pub proxy: EventProxy,
 }
 
@@ -92,6 +94,7 @@ pub(crate) fn spawn(
         term,
         marks,
         images: table,
+        graphemes,
         proxy,
     } = shared;
     let (wake_sender, wake_receiver) = UnixStream::pair()?;
@@ -120,6 +123,7 @@ pub(crate) fn spawn(
         pty,
         term,
         marks,
+        graphemes,
         proxy,
         messages: receiver,
         wake: wake_receiver,
@@ -153,6 +157,7 @@ struct PtyLoop {
     pty: Pty,
     term: Arc<FairMutex<Term<EventProxy>>>,
     marks: Arc<Mutex<PromptMarks>>,
+    graphemes: Arc<GraphemeMode>,
     proxy: EventProxy,
     messages: Receiver<Msg>,
     wake: UnixStream,
@@ -338,15 +343,21 @@ impl PtyLoop {
             steps.extend(step.map(|step| (end, step)));
         }
 
+        let reply = |text| self.proxy.send_event(Event::PtyWrite(text));
+        let context = Context {
+            graphemes: &self.graphemes,
+            reply: &reply,
+        };
         let mut term = self.term.lock();
         let mut marks = self.marks.lock().unwrap_or_else(PoisonError::into_inner);
         let mut start = 0;
         for (end, step) in steps {
-            advance(&mut self.parser, &mut term, &mut marks, &bytes[start..end]);
+            let bytes = &bytes[start..end];
+            advance(&mut self.parser, &mut term, &mut marks, context, bytes);
             if self.parser.sync_timeout().sync_timeout().is_some() {
                 // The step's place is only known once the buffered update is applied.
                 let probe = PromptMarks::begin(&mut term);
-                self.parser.stop_sync(&mut *term);
+                cluster::stop_sync(&mut self.parser, &mut term, context);
                 marks.finish(&mut term, probe);
             }
             match step {
@@ -354,22 +365,34 @@ impl PtyLoop {
                 Step::Image(op) => {
                     let probe = PromptMarks::begin(&mut term);
                     let parser = &mut self.parser;
-                    self.graphics
-                        .apply(&mut term, op, |term, bytes| parser.advance(term, bytes));
+                    self.graphics.apply(&mut term, op, |term, bytes| {
+                        cluster::advance_with(parser, term, context, bytes);
+                    });
                     marks.finish(&mut term, probe);
                 }
             }
             start = end;
         }
-        advance(&mut self.parser, &mut term, &mut marks, &bytes[start..]);
+        advance(
+            &mut self.parser,
+            &mut term,
+            &mut marks,
+            context,
+            &bytes[start..],
+        );
     }
 
     /// Applies a synchronized update whose time ran out.
     fn stop_sync(&mut self) {
         let mut term = self.term.lock();
         let mut marks = self.marks.lock().unwrap_or_else(PoisonError::into_inner);
+        let reply = |text| self.proxy.send_event(Event::PtyWrite(text));
+        let context = Context {
+            graphemes: &self.graphemes,
+            reply: &reply,
+        };
         let probe = PromptMarks::begin(&mut term);
-        self.parser.stop_sync(&mut *term);
+        cluster::stop_sync(&mut self.parser, &mut term, context);
         marks.finish(&mut term, probe);
         drop((term, marks));
         self.proxy.send_event(Event::Wakeup);
@@ -400,12 +423,13 @@ fn advance(
     parser: &mut Processor<StdSyncHandler>,
     term: &mut Term<EventProxy>,
     marks: &mut PromptMarks,
+    context: Context<'_>,
     bytes: &[u8],
 ) {
     if bytes.is_empty() {
         return;
     }
     let probe = PromptMarks::begin(term);
-    parser.advance(term, bytes);
+    cluster::advance_with(parser, term, context, bytes);
     marks.finish(term, probe);
 }

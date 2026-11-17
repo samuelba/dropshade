@@ -19,10 +19,11 @@ use alacritty_terminal::term::{
 };
 use alacritty_terminal::tty;
 use alacritty_terminal::vi_mode::ViMotion;
-use alacritty_terminal::vte::ansi::{CursorShape, CursorStyle, Processor, StdSyncHandler};
+use alacritty_terminal::vte::ansi::{CursorShape, CursorStyle, Processor};
 use iced::futures::Stream;
 use iced::futures::channel::mpsc;
 
+use crate::cluster::GraphemeMode;
 use crate::colors::Palette;
 use crate::frame::{self, Frame};
 use crate::graphics::{self, placeholder, table::PlacementTable};
@@ -76,6 +77,9 @@ pub struct SpawnOptions {
     pub replay: Option<Vec<u8>>,
     /// Shows images sent with the kitty graphics protocol or as sixels.
     pub images: bool,
+    /// Starts in grapheme mode, giving emoji like ❤️ two cells as Unicode does, instead of the
+    /// one `wcwidth` gives them; programs can still switch it with DEC private mode 2027.
+    pub wide_emoji: bool,
 }
 
 impl Default for SpawnOptions {
@@ -97,6 +101,7 @@ impl Default for SpawnOptions {
             },
             replay: None,
             images: true,
+            wide_emoji: false,
         }
     }
 }
@@ -188,6 +193,7 @@ pub struct Terminal {
     images: Arc<Mutex<PlacementTable>>,
     /// Whether inline images are shown, so the terminal reports sixel support.
     images_enabled: bool,
+    graphemes: Arc<GraphemeMode>,
     size: GridSize,
     cell: CellSize,
     title: Option<String>,
@@ -232,7 +238,7 @@ impl Terminal {
         );
         let mut term = Term::new(config, &options.size, proxy.clone());
         if let Some(bytes) = &options.replay {
-            Processor::<StdSyncHandler>::new().advance(&mut term, bytes);
+            crate::cluster::advance(&mut Processor::new(), &mut term, bytes);
         }
         let term = Arc::new(FairMutex::new(term));
 
@@ -250,10 +256,12 @@ impl Terminal {
         let pty_handle = pty.file().try_clone().map_err(SpawnError::Pty)?;
         let marks = Arc::new(Mutex::new(PromptMarks::new(options.scrollback_lines)));
         let images = Arc::new(Mutex::new(PlacementTable::default()));
+        let graphemes = Arc::new(GraphemeMode::new(options.wide_emoji));
         let shared = pty_loop::Shared {
             term: Arc::clone(&term),
             marks: Arc::clone(&marks),
             images: Arc::clone(&images),
+            graphemes: Arc::clone(&graphemes),
             proxy,
         };
         let loop_sender = pty_loop::spawn(pty, shared, window_size, options.images)
@@ -265,6 +273,7 @@ impl Terminal {
             marks,
             images,
             images_enabled: options.images,
+            graphemes,
             size: options.size,
             cell: options.cell,
             title: None,
@@ -344,6 +353,7 @@ impl Terminal {
             reset::soft(&mut term);
             marks.finish(&mut term, probe);
         }
+        self.graphemes.reset();
         self.redraw_prompt();
     }
 
@@ -351,6 +361,7 @@ impl Terminal {
     pub fn reset_and_clear(&mut self) {
         self.clear_search();
         reset::full(&mut self.term.lock());
+        self.graphemes.reset();
         lock(&self.marks).clear();
         graphics::lock(&self.images).clear();
         self.redraw_prompt();
@@ -369,6 +380,11 @@ impl Terminal {
         let mut term = self.term.lock();
         term.set_options(term_config(scrollback_lines, true, cursor_style));
         lock(&self.marks).set_max_history(scrollback_lines);
+    }
+
+    /// Whether emoji like ❤️ get two cells until a program switches grapheme mode itself.
+    pub fn set_wide_emoji(&self, on: bool) {
+        self.graphemes.set_default(on);
     }
 
     /// Jumps the viewport back to the live end of the output.
@@ -1071,7 +1087,7 @@ mod tests {
             lines: 2,
         };
         let mut term = Term::new(Config::default(), &size, VoidListener);
-        Processor::<StdSyncHandler>::new().advance(&mut term, bytes);
+        crate::cluster::advance(&mut Processor::new(), &mut term, bytes);
         term.grid()[Line(0)].clone()
     }
 

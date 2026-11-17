@@ -513,6 +513,11 @@ fn terminal(ctx: Ctx<'_>) -> Element<'static, Message> {
             "Shows images that programs print with the kitty graphics protocol or as sixels, such as kitten icat, yazi, timg and img2sixel. Applies to new tabs.",
             ctx.colors,
         ),
+        hinted(
+            switch(ctx, "Wide emoji", Switch::WideEmoji),
+            "Gives emoji like ❤️ and ☀️ two cells, as kitty and Ghostty do, instead of drawing them small in one. Bash, zsh, vim and tmux count them as one cell, so the cursor can land a cell off after them. Programs that support grapheme mode can ask for wide emoji themselves.",
+            ctx.colors,
+        ),
         subheading("Environment", ctx.colors),
         environment(ctx),
     ]

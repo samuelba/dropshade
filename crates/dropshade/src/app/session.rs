@@ -60,6 +60,7 @@ pub fn spawn(
         cell: settings.style.cell,
         replay,
         images: settings.images,
+        wide_emoji: settings.wide_emoji,
         ..SpawnOptions::default()
     };
     let (terminal, events) = Terminal::spawn(options)?;
