@@ -268,8 +268,11 @@ impl<Message> TerminalView<'_, Message> {
             let Some(rest) = hint.label.strip_prefix(session.typed()) else {
                 continue;
             };
-            self.draw_link_underline(canvas, hint.line, &hint.columns, runs);
-            let origin = self.origin(hint.line, hint.columns.start);
+            for (line, columns) in &hint.rows {
+                self.draw_link_underline(canvas, *line, columns, runs);
+            }
+            let (line, columns) = &hint.rows[0];
+            let origin = self.origin(*line, columns.start);
             #[allow(clippy::cast_precision_loss)]
             let width = rest.len() as f32 * cell.width;
             canvas.fill_rectangle(

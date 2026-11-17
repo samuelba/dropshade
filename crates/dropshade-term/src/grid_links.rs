@@ -8,10 +8,14 @@ use alacritty_terminal::index::{Column, Line, Point};
 use alacritty_terminal::term::Term;
 use alacritty_terminal::term::cell::{Cell, Flags};
 
+use crate::hints::WrappedLine;
 use crate::links;
 
 /// How far a link is followed in each direction, so huge unbroken output stays cheap to hover.
 const MAX_LINK_CELLS: usize = 16 * 1024;
+
+/// How many rows above and below the viewport a soft-wrapped line is followed.
+const MAX_HIDDEN_ROWS: i32 = 256;
 
 /// A link in the grid: the columns it covers on each of its rows, and where it goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +48,37 @@ pub fn link_at<T>(term: &Term<T>, point: Point) -> Option<GridLink> {
         rows: rows(term, &cells[span.clone()]),
         uri: chars[span].iter().collect(),
     })
+}
+
+/// The lines of text on the `rows` grid rows from `top` on, each joined over its soft wraps,
+/// including the wrapped parts above and below those rows.
+pub fn wrapped_lines<T>(term: &Term<T>, top: Line, rows: usize) -> Vec<WrappedLine> {
+    let grid = term.grid();
+    let bottom = top + rows.saturating_sub(1);
+    let first = (1..=MAX_HIDDEN_ROWS)
+        .map(|up| top - up)
+        .take_while(|&line| line >= term.topmost_line() && wraps(term, line))
+        .last()
+        .unwrap_or(top);
+    let last = (0..MAX_HIDDEN_ROWS)
+        .map(|down| bottom + down)
+        .take_while(|&line| line < term.bottommost_line() && wraps(term, line))
+        .last()
+        .map_or(bottom, |line| line + 1);
+    let mut lines: Vec<WrappedLine> = Vec::new();
+    let mut joined = false;
+    for line in (first.0..=last.0).map(Line) {
+        let chars = (0..term.columns()).map(|c| grid[line][Column(c)].c);
+        match lines.last_mut() {
+            Some(current) if joined => current.chars.extend(chars),
+            _ => lines.push(WrappedLine {
+                first_row: isize::try_from(line.0 - top.0).unwrap_or_default(),
+                chars: chars.collect(),
+            }),
+        }
+        joined = wraps(term, line);
+    }
+    lines
 }
 
 /// The cells around `point`, in order, that are `part` of the same thing as it.
@@ -180,6 +215,19 @@ mod tests {
             Some("https://a.test/x".to_owned())
         );
         assert_eq!(at(&term, 1, 1), None);
+    }
+
+    #[test]
+    fn wrapped_lines_join_soft_wrapped_rows() {
+        let term = term(b"https://example.test/a/very/long/path\r\nnext");
+        let lines = wrapped_lines(&term, Line(1), 2);
+        let text = |line: &WrappedLine| line.chars.iter().collect::<String>();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].first_row, -1);
+        assert!(text(&lines[0]).starts_with("https://example.test/a/very/long/path"));
+        assert_eq!(lines[0].chars.len(), 40);
+        assert_eq!(lines[1].first_row, 1);
+        assert!(text(&lines[1]).starts_with("next"));
     }
 
     #[test]
