@@ -112,6 +112,18 @@ desktop_exec() {
     esac
 }
 
+# Other installers may have left an icon cache here, which hides icons it does not list.
+refresh_icon_cache() {
+    icon_dir="$data_dir/icons/hicolor"
+    [ -f "$icon_dir/icon-theme.cache" ] || return 0
+    for tool in gtk-update-icon-cache gtk4-update-icon-cache; do
+        if has "$tool"; then
+            "$tool" -q -f -t "$icon_dir" 2>/dev/null && return 0
+        fi
+    done
+    rm -f -- "$icon_dir/icon-theme.cache"
+}
+
 do_uninstall() {
     [ -e "$binary" ] || [ -e "$marker" ] || die "Dropshade is not installed in $bin_dir"
     if [ -d "$extension_dir" ]; then
@@ -127,6 +139,7 @@ do_uninstall() {
     for icon in $icon_files; do
         rm -f -- "$data_dir/icons/hicolor/$icon"
     done
+    refresh_icon_cache
     rmdir -- "$data_dir/dropshade" 2>/dev/null || true
     say "Removed Dropshade. Your configuration in $config_dir/dropshade stays."
     say "On COSMIC, also remove the Dropshade entry from Settings → Keyboard → Custom shortcuts."
@@ -204,6 +217,7 @@ for icon in $icon_files; do
     mkdir -p "$data_dir/icons/hicolor/${icon%/*}"
     cp "$src/packaging/icons/hicolor/$icon" "$data_dir/icons/hicolor/$icon"
 done
+refresh_icon_cache
 
 # Older Dropshade versions wrote `Exec=dropshade --hidden` into the autostart entry, and the
 # session may not look in ~/.local/bin.
