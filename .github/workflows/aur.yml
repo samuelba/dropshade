@@ -1,13 +1,11 @@
 name: AUR
 
-# Publishes packaging/arch/*/PKGBUILD to the AUR. The release workflow calls this after the
-# packages are uploaded; run it by hand to republish, e.g. after bumping pkgrel. Without the
+# Publishes packaging/arch/*/PKGBUILD to the AUR once a release is published (by
+# scripts/sign-release.sh); run it by hand to republish, e.g. after bumping pkgrel. Without the
 # AUR_SSH_PRIVATE_KEY secret it does nothing.
 on:
-  workflow_call:
-    secrets:
-      AUR_SSH_PRIVATE_KEY:
-        required: false
+  release:
+    types: [published]
   workflow_dispatch:
 
 env:

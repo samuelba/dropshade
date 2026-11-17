@@ -28,6 +28,9 @@ jobs:
     if: needs.release-please.outputs.release_created == 'true'
     uses: ./.github/workflows/packages.yml
 
+  # release-please makes a draft. CI only attaches the files: scripts/sign-release.sh, run by
+  # the maintainer, signs them with a key CI never sees and publishes the release, which starts
+  # the AUR workflow. With immutable releases, nothing can change the files after that.
   upload:
     needs: [release-please, packages]
     runs-on: ubuntu-latest
@@ -40,12 +43,8 @@ jobs:
           merge-multiple: true
       # samuelba.dev/dropshade/install.sh redirects to the latest release's copy.
       - run: cp scripts/install.sh dist/
-      - name: Attach the packages to the GitHub release
+      - name: Attach the packages to the draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ needs.release-please.outputs.tag_name }}" dist/* --clobber --repo "${{ github.repository }}"
-
-  aur:
-    needs: upload
-    uses: ./.github/workflows/aur.yml
-    secrets: inherit
+      - run: echo "::notice::Run scripts/sign-release.sh ${{ needs.release-please.outputs.tag_name }} to sign and publish the release."

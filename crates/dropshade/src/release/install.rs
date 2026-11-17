@@ -1,5 +1,6 @@
 //! Updating an install made by `install.sh` (in `~/.local`, without sudo) by running the new
-//! release's own `install.sh`, and restarting into the new binary.
+//! release's own `install.sh`, and restarting into the new binary. The script and the tarball it
+//! installs are checked against the release's signed checksums first.
 //!
 //! Package installs (rpm, deb, Arch) are left to the package manager, and `AppImage` or cargo
 //! installs to the user: those only get a link to the release.
@@ -12,11 +13,15 @@ use std::sync::{Mutex, PoisonError};
 
 use semver::Version;
 
+use super::verify::Sums;
 use super::{REPOSITORY, REQUEST_TIMEOUT};
 use crate::extension::UUID;
 
-/// The script is a few KiB; anything far larger is not it.
-const MAX_SCRIPT_BYTES: u64 = 1 << 20;
+/// The script and the checksums are a few KiB; anything far larger is not them.
+const MAX_DOWNLOAD_BYTES: u64 = 1 << 20;
+const INSTALLER: &str = "install.sh";
+/// The checksums of every release file, signed into `SHA256SUMS.minisig`.
+const SUMS: &str = "SHA256SUMS";
 /// The marker `install.sh` writes: `method=script` and `version=<installed version>`.
 const MARKER: &str = "dropshade/install-method";
 /// The file that changes with every release even when the extension's code does not.
@@ -95,28 +100,23 @@ pub async fn self_update(version: Version) -> Result<Installed, String> {
 }
 
 fn run_installer(version: &Version) -> Result<Installed, String> {
-    let url = format!(
-        "{}/releases/download/v{version}/install.sh",
+    let base = format!(
+        "{}/releases/download/v{version}",
         REPOSITORY.trim_end_matches('/')
     );
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(REQUEST_TIMEOUT))
         .build()
         .into();
-    let mut script = String::new();
-    agent
-        .get(&url)
-        .header(
-            "User-Agent",
-            concat!("dropshade/", env!("CARGO_PKG_VERSION")),
-        )
-        .call()
-        .map_err(|error| format!("cannot download the installer: {error}"))?
-        .body_mut()
-        .as_reader()
-        .take(MAX_SCRIPT_BYTES)
-        .read_to_string(&mut script)
-        .map_err(|error| format!("cannot download the installer: {error}"))?;
+    let download = |name: &str| fetch_text(&agent, &format!("{base}/{name}"), name);
+    let sums = Sums::verified(
+        &download(SUMS)?,
+        &download(&format!("{SUMS}.minisig"))?,
+        version,
+    )?;
+    let script = download(INSTALLER)?;
+    sums.check(INSTALLER, script.as_bytes())?;
+    let bundle_hash = sums.hash(&bundle(version))?;
 
     let extension = extension_dir();
     let before = extension.as_deref().and_then(extension_code);
@@ -124,6 +124,7 @@ fn run_installer(version: &Version) -> Result<Installed, String> {
     let mut child = Command::new("sh")
         .arg("-s")
         .env("DROPSHADE_VERSION", version.to_string())
+        .env("DROPSHADE_SHA256", bundle_hash)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -147,6 +148,32 @@ fn run_installer(version: &Version) -> Result<Installed, String> {
     Ok(Installed {
         extension_changed: after.is_some() && before != after,
     })
+}
+
+fn fetch_text(agent: &ureq::Agent, url: &str, name: &str) -> Result<String, String> {
+    let mut text = String::new();
+    agent
+        .get(url)
+        .header(
+            "User-Agent",
+            concat!("dropshade/", env!("CARGO_PKG_VERSION")),
+        )
+        .call()
+        .map_err(|error| format!("cannot download {name}: {error}"))?
+        .body_mut()
+        .as_reader()
+        .take(MAX_DOWNLOAD_BYTES)
+        .read_to_string(&mut text)
+        .map_err(|error| format!("cannot download {name}: {error}"))?;
+    Ok(text)
+}
+
+/// The tarball `install.sh` downloads for this machine.
+fn bundle(version: &Version) -> String {
+    format!(
+        "dropshade-{version}-{}-linux.tar.gz",
+        std::env::consts::ARCH
+    )
 }
 
 /// The installer's own explanation, without its prefix, or else how it ended.

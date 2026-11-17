@@ -1,6 +1,7 @@
 //! Looking up the latest release on GitHub, and updating an install made by `install.sh`.
 
 mod install;
+mod verify;
 
 pub use install::{
     InstallKind, Installed, Restart, install_kind, request_restart, restart_into, self_update,

@@ -39,6 +39,8 @@ zbus = { version = "6", default-features = false, features = ["tokio", "proxy", 
 tokio = { version = "1", default-features = false, features = ["rt", "time", "signal", "macros"] }
 wl-clipboard-rs = "0.9.5"
 nix = { workspace = true, features = ["fs"] }
+minisign-verify = "0.3"
+sha2 = "0.11"
 
 [lints]
 workspace = true
