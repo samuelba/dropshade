@@ -346,7 +346,7 @@ impl PtyLoop {
             if self.parser.sync_timeout().sync_timeout().is_some() {
                 // The step's place is only known once the buffered update is applied.
                 let probe = PromptMarks::begin(&mut term);
-                self.parser.stop_sync(&mut *term);
+                crate::cluster::stop_sync(&mut self.parser, &mut term);
                 marks.finish(&mut term, probe);
             }
             match step {
@@ -354,8 +354,9 @@ impl PtyLoop {
                 Step::Image(op) => {
                     let probe = PromptMarks::begin(&mut term);
                     let parser = &mut self.parser;
-                    self.graphics
-                        .apply(&mut term, op, |term, bytes| parser.advance(term, bytes));
+                    self.graphics.apply(&mut term, op, |term, bytes| {
+                        crate::cluster::advance(parser, term, bytes);
+                    });
                     marks.finish(&mut term, probe);
                 }
             }
@@ -406,6 +407,6 @@ fn advance(
         return;
     }
     let probe = PromptMarks::begin(term);
-    parser.advance(term, bytes);
+    crate::cluster::advance(parser, term, bytes);
     marks.finish(term, probe);
 }

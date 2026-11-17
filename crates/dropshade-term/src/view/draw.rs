@@ -297,8 +297,9 @@ impl<Message> TerminalView<'_, Message> {
         match shape {
             CursorShape::Block => {
                 canvas.fill_rectangle(origin, Size::new(width, cell.height), color);
-                if let Some((text, style)) = text_at(runs, cursor) {
+                if let Some((text, style, column)) = text_at(runs, cursor) {
                     let bg = to_iced(self.style.palette.cursor_text(), 1.0);
+                    let origin = self.origin(cursor.row, column);
                     canvas.fill_text(self.text(&text, origin, bg, style));
                 }
             }
@@ -393,7 +394,9 @@ fn vi_label(selection: Option<ViSelection>) -> &'static str {
 }
 
 /// The text under the cursor and its style: one character, or a whole emoji sequence.
-fn text_at(runs: &[Run], cursor: Cursor) -> Option<(String, RunStyle)> {
+/// The text under the cursor, its style, and the column to draw it from: an emoji is drawn
+/// whole from its first cell, even with the cursor on its second, like a flag's second letter.
+fn text_at(runs: &[Run], cursor: Cursor) -> Option<(String, RunStyle, usize)> {
     let run = runs.iter().find(|run| {
         run.row == cursor.row && (run.column..run.column + run.width).contains(&cursor.column)
     })?;
@@ -403,10 +406,10 @@ fn text_at(runs: &[Run], cursor: Cursor) -> Option<(String, RunStyle)> {
         ..run.style
     };
     if run.style.emoji {
-        return Some((run.text.clone(), style));
+        return Some((run.text.clone(), style, run.column));
     }
     let c = run.text.chars().nth(cursor.column - run.column)?;
-    Some((c.to_string(), style))
+    Some((c.to_string(), style, cursor.column))
 }
 
 #[cfg(test)]
@@ -445,8 +448,34 @@ mod tests {
             shape: CursorShape::Block,
             wide: false,
         };
-        let (text, style) = text_at(&[run], cursor).expect("cursor inside the run");
-        assert_eq!(text, "b");
+        let (text, style, column) = text_at(&[run], cursor).expect("cursor inside the run");
+        assert_eq!((text.as_str(), column), ("b", 5));
         assert!(style.bold && !style.italic);
+    }
+
+    #[test]
+    fn cursor_on_a_flags_second_letter_draws_the_flag_from_its_start() {
+        let run = Run {
+            row: 0,
+            column: 3,
+            width: 2,
+            text: "\u{1F1E8}\u{1F1ED}".to_owned(),
+            colors: crate::colors::CellColors {
+                fg: Palette::default().foreground,
+                bg: Palette::default().background,
+            },
+            style: crate::frame::RunStyle {
+                emoji: true,
+                ..Default::default()
+            },
+        };
+        let cursor = Cursor {
+            row: 0,
+            column: 4,
+            shape: CursorShape::Block,
+            wide: false,
+        };
+        let (text, _, column) = text_at(&[run], cursor).expect("cursor inside the run");
+        assert_eq!((text.as_str(), column), ("\u{1F1E8}\u{1F1ED}", 3));
     }
 }

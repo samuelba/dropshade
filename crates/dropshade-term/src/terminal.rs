@@ -19,7 +19,7 @@ use alacritty_terminal::term::{
 };
 use alacritty_terminal::tty;
 use alacritty_terminal::vi_mode::ViMotion;
-use alacritty_terminal::vte::ansi::{CursorShape, CursorStyle, Processor, StdSyncHandler};
+use alacritty_terminal::vte::ansi::{CursorShape, CursorStyle, Processor};
 use iced::futures::Stream;
 use iced::futures::channel::mpsc;
 
@@ -232,7 +232,7 @@ impl Terminal {
         );
         let mut term = Term::new(config, &options.size, proxy.clone());
         if let Some(bytes) = &options.replay {
-            Processor::<StdSyncHandler>::new().advance(&mut term, bytes);
+            crate::cluster::advance(&mut Processor::new(), &mut term, bytes);
         }
         let term = Arc::new(FairMutex::new(term));
 
@@ -1071,7 +1071,7 @@ mod tests {
             lines: 2,
         };
         let mut term = Term::new(Config::default(), &size, VoidListener);
-        Processor::<StdSyncHandler>::new().advance(&mut term, bytes);
+        crate::cluster::advance(&mut Processor::new(), &mut term, bytes);
         term.grid()[Line(0)].clone()
     }
 

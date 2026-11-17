@@ -1,6 +1,7 @@
 //! Terminal widget for Dropshade: `alacritty_terminal` emulation rendered with iced.
 
 pub mod clicks;
+mod cluster;
 pub mod colors;
 pub mod frame;
 mod graphics;
