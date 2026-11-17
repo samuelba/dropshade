@@ -656,7 +656,8 @@ mod bash_integration {
     use std::path::PathBuf;
     use std::time::{Duration, Instant};
 
-    use dropshade_term::{GridSize, SpawnOptions, Terminal};
+    use dropshade_term::{GridSize, Palette, SpawnOptions, Terminal};
+    use iced::futures::{FutureExt, StreamExt};
 
     use super::TIMEOUT;
 
@@ -706,6 +707,77 @@ mod bash_integration {
         assert!(wait_until(|| terminal.command_running() == Some(true)));
         terminal.write(&b"\x03"[..]);
         assert!(wait_until(|| terminal.command_running() == Some(false)));
+        drop(terminal);
+        std::fs::remove_dir_all(home).unwrap();
+    }
+
+    /// Each prompt names the terminal `user@host: dir`, which also replaces a title that a
+    /// command (ssh, say) left behind.
+    #[test]
+    fn the_bash_script_sets_the_title_at_each_prompt() {
+        let script = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../dropshade/shell-integration/bash/dropshade.bash");
+        let home =
+            std::env::temp_dir().join(format!("dropshade-bash-title-{}", std::process::id()));
+        std::fs::create_dir_all(&home).unwrap();
+        let options = SpawnOptions {
+            command: Some((
+                "bash".into(),
+                vec!["--rcfile".into(), script.to_string_lossy().into_owned()],
+            )),
+            env: HashMap::from([
+                ("HOME".to_owned(), home.to_string_lossy().into_owned()),
+                ("PS1".to_owned(), "$ ".to_owned()),
+            ]),
+            working_directory: Some(home.clone()),
+            size: GridSize {
+                columns: 40,
+                lines: 10,
+            },
+            ..SpawnOptions::default()
+        };
+        let (mut terminal, events) = Terminal::spawn(options).expect("spawn bash");
+        let mut events = Box::pin(events);
+        let mut titles = Vec::new();
+        let mut wait_for_titles = |terminal: &mut Terminal, done: &dyn Fn(&[String]) -> bool| {
+            let deadline = Instant::now() + TIMEOUT;
+            while !done(&titles) {
+                if Instant::now() > deadline {
+                    return false;
+                }
+                match events.next().now_or_never() {
+                    Some(Some(event)) => {
+                        terminal.handle_event(event, &Palette::default());
+                        if let Some(title) = terminal.title() {
+                            titles.push(title.to_owned());
+                        }
+                    }
+                    Some(None) => return false,
+                    None => std::thread::sleep(Duration::from_millis(20)),
+                }
+            }
+            true
+        };
+        let last_ends_with = |suffix: &'static str| {
+            move |titles: &[String]| titles.last().is_some_and(|t| t.ends_with(suffix))
+        };
+
+        assert!(wait_for_titles(&mut terminal, &last_ends_with(": ~")));
+        assert!(terminal.title().is_some_and(|title| title.contains('@')));
+
+        terminal.write(&b"cd /\r"[..]);
+        assert!(wait_for_titles(&mut terminal, &last_ends_with(": /")));
+
+        terminal.write(&b"printf '\\e]2;remote@server: ~\\a'\r"[..]);
+        let back_after_remote = |titles: &[String]| {
+            titles
+                .iter()
+                .rposition(|title| title == "remote@server: ~")
+                .is_some_and(|remote| titles[remote + 1..].iter().any(|t| t.ends_with(": /")))
+        };
+        assert!(wait_for_titles(&mut terminal, &back_after_remote));
+        assert!(terminal.title().is_some_and(|title| title.ends_with(": /")));
+
         drop(terminal);
         std::fs::remove_dir_all(home).unwrap();
     }

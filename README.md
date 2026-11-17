@@ -238,7 +238,7 @@ the connectors differently; use connectors for two screens of the same model.
 ## Shell integration
 
 Bash and zsh tell Dropshade where each prompt, command and command output is (with OSC 133
-marks). That makes three things possible:
+marks). That makes these things possible:
 
 - **Jump between prompts** with Ctrl+Shift+Up / Ctrl+Shift+Down.
 - **Select a command's output**: right-click it and choose Select Command Output, or press
@@ -247,6 +247,8 @@ marks). That makes three things possible:
 - **Close idle tabs without asking**: Ctrl+Shift+W only asks while a command runs, which also
   works inside ssh, a nested shell or tmux. Without shell integration it asks whenever a program
   other than the shell is in the foreground.
+- **Tab titles**: each prompt names the tab `user@host: dir`, so a tab no longer keeps the
+  title ssh set after you log out. A title your own prompt sets still wins.
 
 Dropshade sets this up by itself. It writes small scripts to `~/.local/share/dropshade/shell-integration/`,
 then starts bash with `--rcfile` pointing at its script, which loads your `~/.bashrc` first. Zsh

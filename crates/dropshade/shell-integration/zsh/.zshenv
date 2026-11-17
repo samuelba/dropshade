@@ -5,6 +5,8 @@
 # with OSC 133 marks:
 #   A  the prompt starts            B  the command line starts
 #   C  the command's output starts  D  the command finished, with its exit status
+# Each prompt also sets the title to `user@host: dir`, so a title a program set (ssh, for one)
+# does not outlive it. Precmd hooks from your .zshrc run after this one, so their titles win.
 # Turn it off with `shell_integration = false` in the [terminal] section of the config.
 
 if [[ -n ${DROPSHADE_ZDOTDIR+set} ]]; then
@@ -25,6 +27,7 @@ if [[ -o interactive && -z ${__dropshade_integrated-} ]]; then
     __dropshade_precmd() {
         local ret=$?
         builtin print -n "\e]133;D;${ret}\a"
+        builtin print -Pn '\e]2;%n@%m: %~\a'
         if [[ $PROMPT != *'133;A'* ]]; then
             PROMPT=$'%{\e]133;A\a%}'"$PROMPT"$'%{\e]133;B\a%}'
         fi

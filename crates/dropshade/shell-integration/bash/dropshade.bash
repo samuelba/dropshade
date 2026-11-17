@@ -4,6 +4,8 @@
 # have, then reports prompts and commands to the terminal with OSC 133 marks:
 #   A  the prompt starts            B  the command line starts
 #   C  the command's output starts  D  the command finished, with its exit status
+# Each prompt also sets the title to `user@host: dir`, so a title a program set (ssh, for one)
+# does not outlive it. A title your own PS1 or PROMPT_COMMAND sets comes later and wins.
 # Turn it off with `shell_integration = false` in the [terminal] section of the config.
 
 if [[ -f ~/.bashrc ]]; then
@@ -18,6 +20,8 @@ if [[ $- == *i* && -z ${__dropshade_integrated-} ]]; then
     __dropshade_precmd() {
         local ret=$?
         builtin printf '\e]133;D;%s\a' "$ret"
+        local title='\u@\h: \w'
+        builtin printf '\e]2;%s\a' "${title@P}"
         return "$ret"
     }
 
