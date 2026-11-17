@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.12.1](https://github.com/samuelba/dropshade/compare/v0.12.0...v0.12.1) (2026-11-17)
+
+
+### Bug Fixes
+
+* find links whole when they wrap over several rows (@samuelba) ([7e91899](https://github.com/samuelba/dropshade/commit/7e91899702c3d74f3c01a3296ebe7ca9a906dce0))
+* find quick select hints whole when they wrap over several rows (@samuelba) ([7f4bdf0](https://github.com/samuelba/dropshade/commit/7f4bdf0d91d13db205718ec2bfac360490a496ec))
+* refresh the icon cache when installing or uninstalling (@samuelba) ([cdd0cab](https://github.com/samuelba/dropshade/commit/cdd0cababe0b391ad49c9381288e315fd3f6d1cc))
+
 ## [0.12.0](https://github.com/samuelba/dropshade/compare/v0.11.0...v0.12.0) (2026-11-17)
 
 
