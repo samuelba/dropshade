@@ -32,6 +32,8 @@ clap = { version = "4", features = ["derive"] }
 nix = { version = "0.31", default-features = false, features = ["process", "term", "poll"] }
 thiserror = "2"
 tracing = "0.1"
+skrifa = "0.44"
+tiny-skia = { version = "0.11", default-features = false, features = ["std", "simd"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [workspace.lints.rust]

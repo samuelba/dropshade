@@ -3,6 +3,8 @@
 pub mod clicks;
 mod cluster;
 pub mod colors;
+mod colr;
+mod emoji;
 pub mod frame;
 mod graphics;
 pub mod hints;
