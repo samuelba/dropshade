@@ -61,8 +61,8 @@ impl App {
         stack(layers).width(Fill).height(Fill).into()
     }
 
-    fn body(&self) -> Element<'_, Message> {
-        let state = BarState {
+    pub(super) fn bar_state(&self) -> BarState<'_> {
+        BarState {
             position: self.settings.bar,
             hovered: self.hovered,
             renaming: self
@@ -71,10 +71,14 @@ impl App {
                 .map(|rename| (rename.id, rename.draft.as_str())),
             colors: self.settings.colors,
             width: self.window_size.width,
+            height: self.window_size.height,
             sizing: self.settings.tab_sizing,
             opacity: self.settings.bar_opacity,
-        };
-        let tab_bar = bar::view(&self.tabs, state).map(Message::Tab);
+        }
+    }
+
+    fn body(&self) -> Element<'_, Message> {
+        let tab_bar = bar::view(&self.tabs, self.bar_state()).map(Message::Tab);
         let terminal: Element<'_, Message> = iced::widget::Column::new()
             .push(self.banner())
             .push(self.search_bar())

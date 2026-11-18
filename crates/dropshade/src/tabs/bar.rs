@@ -3,9 +3,12 @@
 use std::borrow::Cow;
 
 use dropshade_term::metrics;
+use iced::mouse::ScrollDelta;
+use iced::widget::scrollable::{Direction, Scrollable, Scrollbar};
 use iced::widget::text::Wrapping;
 use iced::widget::{
-    Column, Id, Row, Space, button, column, container, mouse_area, row, text, text_input,
+    Column, Id, Row, Space, button, column, container, mouse_area, row, scrollable, text,
+    text_input,
 };
 use iced::{Color, Element, Fill, Font, Length, Padding, Point};
 
@@ -13,11 +16,15 @@ use super::model::{Attention, Tab, TabId, Tabs};
 use crate::theme::UiColors;
 
 pub const RENAME_INPUT: &str = "tab-rename";
+pub const TAB_STRIP: &str = "tab-strip";
 pub const HORIZONTAL_HEIGHT: f32 = 38.0;
 pub const VERTICAL_WIDTH: f32 = 200.0;
 const MAX_TAB_WIDTH: f32 = 240.0;
-const MIN_TAB_WIDTH: f32 = 72.0;
+const MIN_TAB_WIDTH: f32 = 128.0;
+const VERTICAL_TAB_HEIGHT: f32 = 33.0;
 const NEW_TAB_BUTTON_WIDTH: f32 = 32.0;
+const NEW_TAB_BUTTON_HEIGHT: f32 = 21.0;
+const WHEEL_LINE: f32 = 60.0;
 const LABEL_SIZE: f32 = 13.0;
 const ACCENT_THICKNESS: f32 = 2.0;
 const SPACING: f32 = 4.0;
@@ -78,6 +85,7 @@ pub enum TabMessage {
     MoveRight(TabId),
     /// Pointer position over the bar, relative to the bar; anchors the context menu.
     PointerMoved(Point),
+    Wheel(ScrollDelta),
     ConfirmClose,
     CancelClose,
 }
@@ -91,9 +99,70 @@ pub struct BarState<'a> {
     pub colors: UiColors,
     /// Width available to a horizontal bar, used to size the tabs.
     pub width: f32,
+    /// Height available to a vertical bar.
+    pub height: f32,
     pub sizing: TabSizing,
     /// Opacity of the bar's and the tabs' backgrounds; labels and the accent stay opaque.
     pub opacity: f32,
+}
+
+/// Where the tabs sit along the strip, which scrolls when they do not all fit.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StripLayout {
+    sizes: Vec<f32>,
+    viewport: f32,
+}
+
+impl StripLayout {
+    fn new(sizes: Vec<f32>, bar_length: f32, button_length: f32) -> Self {
+        let viewport = (bar_length - 3.0 * SPACING - button_length).max(0.0);
+        Self { sizes, viewport }
+    }
+
+    fn content(&self) -> f32 {
+        let spaced: f32 = self.sizes.iter().map(|size| size + SPACING).sum();
+        (spaced - SPACING).max(0.0)
+    }
+
+    fn visible(&self) -> f32 {
+        self.content().min(self.viewport)
+    }
+
+    /// `offset` limited to how far the strip can scroll.
+    pub fn clamped(&self, offset: f32) -> f32 {
+        offset.clamp(0.0, (self.content() - self.viewport).max(0.0))
+    }
+
+    /// The offset nearest to `offset` that shows the tab at `index` in full, or its start when
+    /// it is larger than the strip.
+    pub fn revealing(&self, offset: f32, index: usize) -> f32 {
+        let Some(&size) = self.sizes.get(index) else {
+            return self.clamped(offset);
+        };
+        let start: f32 = self.sizes[..index].iter().map(|s| s + SPACING).sum();
+        self.clamped(offset.max(start + size - self.viewport).min(start))
+    }
+}
+
+pub fn strip_layout<T>(tabs: &Tabs<T>, state: BarState<'_>) -> StripLayout {
+    if state.position.is_horizontal() {
+        StripLayout::new(tab_widths(tabs, state), state.width, NEW_TAB_BUTTON_WIDTH)
+    } else {
+        StripLayout::new(
+            vec![VERTICAL_TAB_HEIGHT; tabs.len()],
+            state.height,
+            NEW_TAB_BUTTON_HEIGHT,
+        )
+    }
+}
+
+/// How far a wheel or touchpad movement scrolls the strip, whichever way the bar runs.
+pub fn wheel_pixels(delta: ScrollDelta) -> f32 {
+    let (x, y, scale) = match delta {
+        ScrollDelta::Lines { x, y } => (x, y, WHEEL_LINE),
+        ScrollDelta::Pixels { x, y } => (x, y, 1.0),
+    };
+    -scale * if x.abs() > y.abs() { x } else { y }
 }
 
 /// Width of each tab in a horizontal bar: tabs share the space, between a readable minimum and a
@@ -208,32 +277,44 @@ fn tab_widths<T>(tabs: &Tabs<T>, state: BarState<'_>) -> Vec<f32> {
 
 pub fn view<'a, T>(tabs: &'a Tabs<T>, state: BarState<'a>) -> Element<'a, TabMessage> {
     let active = tabs.active_id();
-    let widths = if state.position.is_horizontal() {
-        tab_widths(tabs, state)
-    } else {
-        vec![VERTICAL_WIDTH - 2.0 * SPACING; tabs.len()]
-    };
-    let entries = tabs
-        .iter()
-        .zip(widths)
-        .map(|(tab, width)| entry(tab, Some(tab.id) == active, width, state));
+    let horizontal = state.position.is_horizontal();
+    let layout = strip_layout(tabs, state);
+    let visible = layout.visible();
+    let entries = tabs.iter().zip(layout.sizes).map(|(tab, size)| {
+        let width = if horizontal {
+            size
+        } else {
+            VERTICAL_WIDTH - 2.0 * SPACING
+        };
+        entry(tab, Some(tab.id) == active, width, state)
+    });
     let new_tab = icon_button("+", state.colors.muted, state.colors).on_press(TabMessage::New);
 
-    let content: Element<'a, TabMessage> = if state.position.is_horizontal() {
-        Row::with_children(entries)
-            .push(new_tab)
-            .spacing(SPACING)
-            .padding(SPACING)
-            .height(Length::Fixed(HORIZONTAL_HEIGHT))
-            .align_y(iced::Center)
-            .into()
+    let content: Element<'a, TabMessage> = if horizontal {
+        let tabs = Row::with_children(entries).spacing(SPACING).height(Fill);
+        row![
+            strip(tabs, Direction::Horizontal(Scrollbar::hidden()))
+                .width(visible)
+                .height(HORIZONTAL_HEIGHT - 2.0 * SPACING),
+            new_tab,
+        ]
+        .spacing(SPACING)
+        .padding(SPACING)
+        .height(Length::Fixed(HORIZONTAL_HEIGHT))
+        .align_y(iced::Center)
+        .into()
     } else {
-        Column::with_children(entries)
-            .push(new_tab)
-            .spacing(SPACING)
-            .padding(SPACING)
-            .width(Length::Fixed(VERTICAL_WIDTH))
-            .into()
+        let tabs = Column::with_children(entries).spacing(SPACING);
+        column![
+            strip(tabs, Direction::Vertical(Scrollbar::hidden()))
+                .width(Fill)
+                .height(visible),
+            new_tab.height(NEW_TAB_BUTTON_HEIGHT),
+        ]
+        .spacing(SPACING)
+        .padding(SPACING)
+        .width(Length::Fixed(VERTICAL_WIDTH))
+        .into()
     };
 
     let bar = container(content).style(move |_| state.colors.bar_style(state.opacity));
@@ -246,6 +327,17 @@ pub fn view<'a, T>(tabs: &'a Tabs<T>, state: BarState<'a>) -> Element<'a, TabMes
         .on_move(TabMessage::PointerMoved)
         .on_right_press(TabMessage::OpenBarMenu)
         .into()
+}
+
+/// The scrolling part of the bar. The wheel is handled inside it because a horizontal scrollable
+/// ignores a plain wheel's vertical movement.
+fn strip<'a>(
+    tabs: impl Into<Element<'a, TabMessage>>,
+    direction: Direction,
+) -> Scrollable<'a, TabMessage> {
+    scrollable(mouse_area(tabs).on_scroll(TabMessage::Wheel))
+        .direction(direction)
+        .id(Id::new(TAB_STRIP))
 }
 
 fn entry<'a, T>(
@@ -336,7 +428,7 @@ fn entry<'a, T>(
     let tab_box = if state.position.is_horizontal() {
         tab_box.width(width).height(Fill)
     } else {
-        tab_box.width(Fill)
+        tab_box.width(Fill).height(VERTICAL_TAB_HEIGHT)
     };
 
     mouse_area(tab_box)
@@ -374,11 +466,85 @@ fn icon_button(label: &str, color: Color, colors: UiColors) -> button::Button<'_
 
 #[cfg(test)]
 mod tests {
+    use super::{SPACING, ScrollDelta, StripLayout, wheel_pixels};
+
+    /// Five 100px tabs in a strip that shows 250px.
+    fn crowded_strip() -> StripLayout {
+        StripLayout {
+            sizes: vec![100.0; 5],
+            viewport: 250.0,
+        }
+    }
+
+    #[test]
+    fn the_strip_leaves_room_for_the_new_tab_button() {
+        let layout = StripLayout::new(vec![], 400.0, 32.0);
+        assert!((layout.viewport - (400.0 - 3.0 * SPACING - 32.0)).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn tabs_that_fit_take_only_their_own_room_and_never_scroll() {
+        let layout = StripLayout {
+            sizes: vec![100.0, 50.0],
+            viewport: 500.0,
+        };
+        assert!((layout.visible() - (150.0 + SPACING)).abs() < f32::EPSILON);
+        assert!(layout.clamped(80.0).abs() < f32::EPSILON);
+        assert!(layout.revealing(80.0, 1).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn an_empty_strip_has_no_size() {
+        let layout = StripLayout::new(vec![], 400.0, 32.0);
+        assert!(layout.visible().abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn revealing_scrolls_only_as_far_as_needed() {
+        let layout = crowded_strip();
+        let last_end = 5.0 * 100.0 + 4.0 * SPACING;
+        assert!((layout.revealing(0.0, 4) - (last_end - 250.0)).abs() < f32::EPSILON);
+        assert!(layout.revealing(200.0, 0).abs() < f32::EPSILON);
+        let second_start = 100.0 + SPACING;
+        assert!((layout.revealing(150.0, 1) - second_start).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn a_visible_tab_does_not_move_the_strip() {
+        assert!((crowded_strip().revealing(110.0, 2) - 110.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn a_tab_larger_than_the_strip_shows_its_start() {
+        let layout = StripLayout {
+            sizes: vec![100.0, 300.0, 100.0],
+            viewport: 250.0,
+        };
+        let start = 100.0 + SPACING;
+        assert!((layout.revealing(0.0, 1) - start).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn offsets_stay_inside_the_strip() {
+        let layout = crowded_strip();
+        let end = layout.content() - layout.viewport;
+        assert!(layout.clamped(-20.0).abs() < f32::EPSILON);
+        assert!((layout.clamped(9_000.0) - end).abs() < f32::EPSILON);
+        assert!((layout.revealing(9_000.0, 99) - end).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn a_wheel_scrolls_whichever_way_it_turns() {
+        let down = ScrollDelta::Lines { x: 0.0, y: -1.0 };
+        assert!((wheel_pixels(down) - super::WHEEL_LINE).abs() < f32::EPSILON);
+        let sideways = ScrollDelta::Pixels { x: 12.0, y: 3.0 };
+        assert!((wheel_pixels(sideways) + 12.0).abs() < f32::EPSILON);
+    }
 
     #[test]
     fn tabs_share_the_bar_within_limits() {
         assert!((super::tab_width(1600.0, 2) - super::MAX_TAB_WIDTH).abs() < f32::EPSILON);
-        let crowded = super::tab_width(800.0, 6);
+        let crowded = super::tab_width(1000.0, 6);
         assert!(crowded > super::MIN_TAB_WIDTH && crowded < super::MAX_TAB_WIDTH);
         assert!((super::tab_width(300.0, 40) - super::MIN_TAB_WIDTH).abs() < f32::EPSILON);
         assert!(super::tab_width(1600.0, 0) <= super::MAX_TAB_WIDTH);
@@ -386,19 +552,19 @@ mod tests {
 
     #[test]
     fn fitted_tabs_follow_their_labels_within_limits() {
-        let widths = super::fitted_widths(1600.0, &[100.0, 30.0, 900.0]);
+        let widths = super::fitted_widths(1600.0, &[150.0, 30.0, 900.0]);
         assert_eq!(
             widths,
-            vec![100.0, super::MIN_TAB_WIDTH, super::MAX_TAB_WIDTH]
+            vec![150.0, super::MIN_TAB_WIDTH, super::MAX_TAB_WIDTH]
         );
     }
 
     #[test]
     fn crowded_fitted_tabs_keep_short_ones_and_share_the_rest() {
-        let natural = [80.0, 200.0, 200.0];
-        let widths = super::fitted_widths(400.0, &natural);
-        let available = super::available_width(400.0, natural.len());
-        assert!((widths[0] - 80.0).abs() < f32::EPSILON);
+        let natural = [140.0, 300.0, 300.0];
+        let widths = super::fitted_widths(600.0, &natural);
+        let available = super::available_width(600.0, natural.len());
+        assert!((widths[0] - 140.0).abs() < f32::EPSILON);
         assert!((widths[1] - widths[2]).abs() < f32::EPSILON);
         assert!((widths.iter().sum::<f32>() - available).abs() < 0.01);
     }

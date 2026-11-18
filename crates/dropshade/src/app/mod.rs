@@ -98,6 +98,8 @@ pub struct App {
     zoom: Zoom,
     dragging: Option<TabId>,
     bar_pointer: Point,
+    /// How far the tab strip is scrolled.
+    tab_scroll: f32,
     window_size: Size,
     error: Option<String>,
     /// The window, while it is open; without the extension, hiding closes it.
@@ -260,6 +262,7 @@ impl App {
             zoom: Zoom::default(),
             dragging: None,
             bar_pointer: Point::ORIGIN,
+            tab_scroll: 0.0,
             window_size: INITIAL_SIZE,
             error: None,
             window: None,
