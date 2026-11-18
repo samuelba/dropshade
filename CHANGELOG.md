@@ -5,8 +5,7 @@
 
 ### Bug Fixes
 
-* scroll the tab strip when the tabs do not fit ([da59055](https://github.com/samuelba/dropshade/commit/da590552c88b362a74e8ea332015347cb9751832))
-* scroll the tab strip when the tabs do not fit ([0c8f9fc](https://github.com/samuelba/dropshade/commit/0c8f9fc7c5153cc4d6c73cf3060b7e6c3b35b6d8))
+* scroll the tab strip when the tabs do not fit (@samuelba) ([0c8f9fc](https://github.com/samuelba/dropshade/commit/0c8f9fc7c5153cc4d6c73cf3060b7e6c3b35b6d8))
 
 ## [0.13.0](https://github.com/samuelba/dropshade/compare/v0.12.1...v0.13.0) (2026-11-18)
 
