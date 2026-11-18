@@ -8,8 +8,9 @@ use dropshade_term::mouse::CellPosition;
 use dropshade_term::{
     Interaction, Notice, SearchDirection, Shortcut, TermEvent, Terminal, ViAction, links,
 };
+use iced::widget::operation::AbsoluteOffset;
 use iced::widget::{Id, operation};
-use iced::{Point, Task};
+use iced::{Point, Size, Task};
 
 use super::commands::{self, Finished};
 use super::persist::clear_saved_scrollback;
@@ -23,9 +24,51 @@ use super::{
 use crate::clipboard::{Clipboard, Selection};
 use crate::ipc::client::Visibility;
 use crate::notifications::{self, DEFAULT_ACTION, Notification};
-use crate::tabs::{Attention, Panes, TabId, TabMessage, bar};
+use crate::tabs::{Attention, BarPosition, Panes, TabId, TabMessage, bar};
+
+/// What decides where the tab strip should be scrolled to.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct TabStripKey {
+    active: Option<TabId>,
+    index: Option<usize>,
+    count: usize,
+    window: Size,
+    position: BarPosition,
+}
 
 impl App {
+    fn tab_strip_key(&self) -> TabStripKey {
+        let active = self.tabs.active_id();
+        TabStripKey {
+            active,
+            index: active.and_then(|id| self.tabs.index_of(id)),
+            count: self.tabs.len(),
+            window: self.window_size,
+            position: self.settings.bar,
+        }
+    }
+
+    /// Scrolls the tab strip just far enough to show the active tab.
+    pub(super) fn reveal_active_tab(&mut self) -> Task<Message> {
+        let layout = bar::strip_layout(&self.tabs, self.bar_state());
+        let index = self.tabs.active_id().and_then(|id| self.tabs.index_of(id));
+        self.tab_scroll = index.map_or_else(
+            || layout.clamped(self.tab_scroll),
+            |index| layout.revealing(self.tab_scroll, index),
+        );
+        self.apply_tab_scroll()
+    }
+
+    fn apply_tab_scroll(&self) -> Task<Message> {
+        let offset = Some(self.tab_scroll);
+        let target = if self.settings.bar.is_horizontal() {
+            AbsoluteOffset { x: offset, y: None }
+        } else {
+            AbsoluteOffset { x: None, y: offset }
+        };
+        operation::scroll_to(Id::new(bar::TAB_STRIP), target)
+    }
+
     fn set_drop_target(&mut self, target: Option<crate::dnd::DropTarget>) -> Task<Message> {
         self.drop_target = self.drop_target.take().or(target);
         Task::none()
@@ -43,6 +86,21 @@ impl App {
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
+        let before = self.tab_strip_key();
+        let was_dragging = self.dragging.is_some();
+        let task = self.dispatch(message);
+        let after = self.tab_strip_key();
+        // Scrolling during a drag would slide another tab under the pointer and reorder it.
+        if self.dragging.is_some() || (before == after && !was_dragging) {
+            return task;
+        }
+        if before.position.is_horizontal() != after.position.is_horizontal() {
+            self.tab_scroll = 0.0;
+        }
+        Task::batch([task, self.reveal_active_tab()])
+    }
+
+    fn dispatch(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Term(key, event) => self.terminal_event(key, event),
             Message::Interaction(key, Interaction::ContextMenu { position, cell }) => {
@@ -455,6 +513,11 @@ impl App {
                 self.menu = None;
             }
             TabMessage::PointerMoved(position) => self.bar_pointer = position,
+            TabMessage::Wheel(delta) => {
+                let layout = bar::strip_layout(&self.tabs, self.bar_state());
+                self.tab_scroll = layout.clamped(self.tab_scroll + bar::wheel_pixels(delta));
+                return self.apply_tab_scroll();
+            }
             TabMessage::ConfirmClose => return self.confirm_close(),
             TabMessage::CancelClose => self.pending_close = None,
         }

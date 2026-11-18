@@ -170,7 +170,8 @@ impl App {
         } else {
             Task::none()
         };
-        Task::batch([placed, drop_target])
+        // A new window starts with the tab strip unscrolled.
+        Task::batch([placed, drop_target, self.reveal_active_tab()])
     }
 
     pub(super) fn window_closed(&mut self, id: window::Id) {
