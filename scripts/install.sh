@@ -8,7 +8,8 @@
 #   --force            reinstall even when this version is already installed
 #   --uninstall        remove Dropshade; the configuration in ~/.config/dropshade stays
 # Environment: DROPSHADE_VERSION pins a release (e.g. 0.11.0). DROPSHADE_GNOME_EXTENSION=1,
-# DROPSHADE_FORCE=1 and DROPSHADE_UNINSTALL=1 do the same as the options.
+# DROPSHADE_FORCE=1 and DROPSHADE_UNINSTALL=1 do the same as the options. DROPSHADE_SHA256 is
+# the tarball's checksum, which Dropshade's updater passes after checking the release's signature.
 #
 # Files: ~/.local/bin/dropshade, the desktop entry, icons and metainfo under ~/.local/share,
 # and the GNOME Shell extension under ~/.local/share/gnome-shell/extensions.
@@ -56,7 +57,7 @@ fetch() { # URL FILE
     if has curl; then
         curl -fsSL --proto '=https' --tlsv1.2 -o "$2" "$1"
     elif has wget; then
-        wget -q -O "$2" "$1"
+        wget -q --https-only -O "$2" "$1"
     else
         die "needs curl or wget"
     fi
@@ -66,7 +67,7 @@ latest_version() {
     if has curl; then
         url="$(curl -fsSLI --proto '=https' -o /dev/null -w '%{url_effective}' "$repo/releases/latest")"
     elif has wget; then
-        url="$(wget -q -S --spider --max-redirect=0 "$repo/releases/latest" 2>&1 |
+        url="$(wget -q --https-only -S --spider --max-redirect=0 "$repo/releases/latest" 2>&1 |
             sed -n 's/^ *[Ll]ocation: *//p' | tr -d '\r' | tail -n 1)" || true
     else
         die "needs curl or wget"
@@ -192,10 +193,14 @@ bundle="dropshade-$version-$arch-linux"
 say "Downloading Dropshade $version ($arch)"
 fetch "$repo/releases/download/v$version/$bundle.tar.gz" "$tmp/$bundle.tar.gz" ||
     die "cannot download Dropshade $version for $arch. Nothing was installed."
-fetch "$repo/releases/download/v$version/SHA256SUMS-$arch" "$tmp/SHA256SUMS" ||
-    die "cannot download the checksums. Nothing was installed."
-expected="$(awk -v name="$bundle.tar.gz" '$2 == name || $2 == "*" name { print $1 }' "$tmp/SHA256SUMS")"
-[ -n "$expected" ] || die "$bundle.tar.gz is missing from SHA256SUMS-$arch. Nothing was installed."
+if [ -n "${DROPSHADE_SHA256:-}" ]; then
+    expected="$DROPSHADE_SHA256"
+else
+    fetch "$repo/releases/download/v$version/SHA256SUMS-$arch" "$tmp/SHA256SUMS" ||
+        die "cannot download the checksums. Nothing was installed."
+    expected="$(awk -v name="$bundle.tar.gz" '$2 == name || $2 == "*" name { print $1 }' "$tmp/SHA256SUMS")"
+    [ -n "$expected" ] || die "$bundle.tar.gz is missing from SHA256SUMS-$arch. Nothing was installed."
+fi
 [ "$(sha256 "$tmp/$bundle.tar.gz")" = "$expected" ] ||
     die "the download does not match its checksum. Nothing was installed."
 tar -xzf "$tmp/$bundle.tar.gz" -C "$tmp"
