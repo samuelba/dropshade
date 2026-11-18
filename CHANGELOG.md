@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.0](https://github.com/samuelba/dropshade/compare/v0.12.1...v0.13.0) (2026-11-18)
+
+
+### Features
+
+* verify the self-update against checksums signed offline ([9b0b49a](https://github.com/samuelba/dropshade/commit/9b0b49adf53b47f463023c360bb9d2ecb03d73ab))
+* verify the self-update against checksums signed offline ([1b763e1](https://github.com/samuelba/dropshade/commit/1b763e1f840c44adfb06ba2f701d574479242c87))
+
 ## [0.12.1](https://github.com/samuelba/dropshade/compare/v0.12.0...v0.12.1) (2026-11-17)
 
 
