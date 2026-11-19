@@ -67,6 +67,9 @@ enum Command {
     /// Manage the companion GNOME Shell extension.
     #[command(subcommand)]
     GnomeExtension(ExtensionCommand),
+    /// Has the GNOME Shell extension start the updated binary once the old instance quit.
+    #[command(hide = true, name = release::RELAUNCH_SUBCOMMAND)]
+    Relaunch,
 }
 
 #[derive(Debug, Subcommand)]
@@ -108,6 +111,7 @@ fn main() -> ExitCode {
     let request = match cli.command {
         Some(Command::Config(command)) => return config_command(&command, config_path.as_deref()),
         Some(Command::GnomeExtension(ExtensionCommand::Install)) => return extension::install(),
+        Some(Command::Relaunch) => return exit_code(release::run_helper()),
         Some(Command::Layout(LayoutCommand::List)) => return list_layouts(),
         Some(Command::Layout(LayoutCommand::Save { name })) => match valid_layout(name) {
             Ok(name) => Request::SaveLayout(name),
@@ -134,6 +138,9 @@ fn main() -> ExitCode {
 
 fn launch(request: &Request, config_path: Option<PathBuf>) -> ExitCode {
     let managed = is_shell_managed(std::env::var(SHELL_LAUNCHED_ENV).ok().as_deref());
+    if managed && release::replaced_an_older_instance() && release::claim_hand_over() {
+        return hand_over_to_shell();
+    }
     match cli::hand_off(request, managed) {
         Ok(Outcome::Handled) => ExitCode::SUCCESS,
         Ok(Outcome::RunHere { startup, show }) => {
@@ -204,6 +211,7 @@ fn run(
     };
     match result {
         Ok(()) => match release::take_restart() {
+            Some(_) if host == Host::Shell => hand_over_to_shell(),
             Some(restart) => {
                 let error = release::restart_into(&restart);
                 eprintln!(
@@ -214,6 +222,21 @@ fn run(
             }
             None => ExitCode::SUCCESS,
         },
+        Err(error) => {
+            eprintln!("dropshade: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Quits and has the GNOME Shell extension start Dropshade again; see `release::relaunch`.
+fn hand_over_to_shell() -> ExitCode {
+    exit_code(release::spawn_helper().map_err(|error| format!("cannot restart: {error}")))
+}
+
+fn exit_code(result: Result<(), impl std::fmt::Display>) -> ExitCode {
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("dropshade: {error}");
             ExitCode::FAILURE
@@ -390,6 +413,12 @@ mod tests {
             install.command,
             Some(Command::GnomeExtension(ExtensionCommand::Install))
         ));
+    }
+
+    #[test]
+    fn cli_parses_the_relaunch_helper() {
+        let cli = Cli::try_parse_from(["dropshade", release::RELAUNCH_SUBCOMMAND]).expect("valid");
+        assert!(matches!(cli.command, Some(Command::Relaunch)));
     }
 
     #[test]
