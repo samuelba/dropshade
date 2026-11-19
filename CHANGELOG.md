@@ -5,9 +5,8 @@
 
 ### Bug Fixes
 
-* keep the shell launch marker out of the tabs' environment ([ced5af8](https://github.com/samuelba/dropshade/commit/ced5af8dea4f59825e6e997a0ad4c1ac934f9884))
-* keep the shell launch marker out of the tabs' environment ([286f524](https://github.com/samuelba/dropshade/commit/286f524ce3cc28cdf229ea648cffcf665b62cfa1))
-* restart through the GNOME Shell extension after an update ([42068b9](https://github.com/samuelba/dropshade/commit/42068b965be09e3ee4bec0eada2b9eaa0bb9924a))
+* keep the shell launch marker out of the tabs' environment (@samuelba) ([286f524](https://github.com/samuelba/dropshade/commit/286f524ce3cc28cdf229ea648cffcf665b62cfa1))
+* restart through the GNOME Shell extension after an update (@samuelba) ([42068b9](https://github.com/samuelba/dropshade/commit/42068b965be09e3ee4bec0eada2b9eaa0bb9924a))
 
 ## [0.13.1](https://github.com/samuelba/dropshade/compare/v0.13.0...v0.13.1) (2026-11-18)
 
