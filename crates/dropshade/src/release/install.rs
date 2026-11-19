@@ -244,8 +244,8 @@ pub fn take_restart() -> Option<Restart> {
         .take()
 }
 
-/// Replaces this process with the new binary, keeping its PID: on GNOME the extension that
-/// started Dropshade keeps tracking it. Returns only when that fails.
+/// Replaces this process with the new binary. Under GNOME Shell the extension has to start it
+/// instead; see `relaunch`. Returns only when that fails.
 pub fn restart_into(restart: &Restart) -> std::io::Error {
     use std::os::unix::process::CommandExt;
 
@@ -265,7 +265,7 @@ pub fn restart_into(restart: &Restart) -> std::io::Error {
     unsafe_code,
     reason = "nix only sets descriptor flags through a BorrowedFd, which needs an open descriptor"
 )]
-fn close_on_exec() {
+pub(super) fn close_on_exec() {
     use std::os::fd::BorrowedFd;
 
     use nix::fcntl::{FcntlArg, FdFlag, fcntl};

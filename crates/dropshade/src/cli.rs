@@ -80,11 +80,7 @@ pub fn hand_off(request: &Request, launched_by_shell: bool) -> Result<Outcome, S
         },
         show: *request != Request::Background,
     };
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|error| format!("cannot start the async runtime: {error}"))?;
-    runtime.block_on(async {
+    runtime()?.block_on(async {
         let Ok(connection) = Connection::session().await else {
             return Ok(run_here());
         };
@@ -104,6 +100,13 @@ pub fn hand_off(request: &Request, launched_by_shell: bool) -> Result<Outcome, S
             Outcome::Handled
         })
     })
+}
+
+pub fn runtime() -> Result<tokio::runtime::Runtime, String> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| format!("cannot start the async runtime: {error}"))
 }
 
 async fn execute(connection: &Connection, plan: Plan, request: &Request) -> zbus::Result<()> {
