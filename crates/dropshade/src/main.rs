@@ -99,6 +99,7 @@ enum ExtensionCommand {
 }
 
 fn main() -> ExitCode {
+    let managed = take_shell_marker();
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .init();
@@ -133,11 +134,23 @@ fn main() -> ExitCode {
             }
         },
     };
-    launch(&request, config_path)
+    launch(&request, config_path, managed)
 }
 
-fn launch(request: &Request, config_path: Option<PathBuf>) -> ExitCode {
+/// Whether the GNOME Shell extension started this process. The marker leaves the environment so
+/// that the shells in the tabs, and the commands run in them, do not pass for its launch.
+#[expect(
+    unsafe_code,
+    reason = "removing an environment variable is unsafe while other threads may read it"
+)]
+fn take_shell_marker() -> bool {
     let managed = is_shell_managed(std::env::var(SHELL_LAUNCHED_ENV).ok().as_deref());
+    // SAFETY: main calls this first, while this is the only thread.
+    unsafe { std::env::remove_var(SHELL_LAUNCHED_ENV) };
+    managed
+}
+
+fn launch(request: &Request, config_path: Option<PathBuf>, managed: bool) -> ExitCode {
     if managed && release::replaced_an_older_instance() && release::claim_hand_over() {
         return hand_over_to_shell();
     }
