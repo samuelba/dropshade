@@ -1,6 +1,9 @@
 //! The card in a corner of the terminal that tells about a newer release. It updates installs
-//! made by `install.sh` in place and links other installs to the release page. It never takes
-//! the keyboard: typing keeps going to the terminal while it shows.
+//! made by `install.sh` in place, points package installs with their repository to the package
+//! manager and links other installs to the release page. It never takes the keyboard: typing
+//! keeps going to the terminal while it shows.
+
+use std::path::PathBuf;
 
 use dropshade_term::colors::to_iced;
 use iced::widget::{Space, button, column, container, row, text};
@@ -106,11 +109,20 @@ impl App {
         tracing::info!(version = %found.version, "a newer release is available");
         let skipped =
             release::skipped_path().is_some_and(|path| release::is_skipped(&path, &found.version));
-        self.card = card_after_check(&self.card, &self.install, self.updated, &found, skipped);
+        let replaced = release::binary_replaced();
+        self.card = card_after_check(
+            &self.card,
+            &self.install,
+            self.updated,
+            &found,
+            skipped,
+            replaced,
+        );
         self.release = Some(found);
     }
 
     /// Updates a script install; other installs get the release page, where their package is.
+    /// The card offers no update to a package install with its repository.
     fn start_update(&mut self) -> Task<Message> {
         let Some(release) = &self.release else {
             return Task::none();
@@ -130,11 +142,13 @@ impl App {
 
     /// Saves the tabs and quits; `main` then starts the new binary in this process.
     fn restart(&mut self) -> Task<Message> {
-        let InstallKind::Script { binary, .. } = &self.install else {
-            return Task::none();
+        let binary = match &self.install {
+            InstallKind::Script { binary, .. } => binary.clone(),
+            InstallKind::Repository { .. } => PathBuf::from(release::PACKAGE_BINARY),
+            InstallKind::Other => return Task::none(),
         };
         release::request_restart(Restart {
-            binary: binary.clone(),
+            binary,
             config: self.config_path.clone(),
         });
         self.save_session_on_exit();
@@ -152,6 +166,10 @@ impl App {
             (InstallKind::Script { .. }, _) => (
                 format!("Update to version {}", release.version),
                 ReleaseMessage::Update,
+            ),
+            (InstallKind::Repository { .. }, _) => (
+                format!("Version {} is available", release.version),
+                ReleaseMessage::OpenRelease,
             ),
             (InstallKind::Other, _) => (
                 format!("Download version {}", release.version),
@@ -204,16 +222,44 @@ impl App {
         Some(match &self.card {
             Card::Hidden => return None,
             Card::Available => {
-                let action = if matches!(self.install, InstallKind::Script { .. }) {
-                    primary(format!("Update to {version}"), ReleaseMessage::Update)
-                } else {
-                    primary("Download".to_owned(), ReleaseMessage::OpenRelease)
-                };
                 let skip = secondary("Skip this version", ReleaseMessage::Skip);
+                let (body, buttons) = match &self.install {
+                    InstallKind::Script { .. } => (
+                        paragraph(format!("You have {RUNNING}."), colors.muted),
+                        row![
+                            primary(format!("Update to {version}"), ReleaseMessage::Update),
+                            notes(),
+                            skip
+                        ],
+                    ),
+                    InstallKind::Repository { command } => (
+                        column![
+                            paragraph(
+                                format!("You have {RUNNING}. Update it with your package manager:"),
+                                colors.muted,
+                            ),
+                            text(*command)
+                                .size(TEXT_SIZE)
+                                .font(Font::MONOSPACE)
+                                .color(colors.text),
+                        ]
+                        .spacing(4)
+                        .into(),
+                        row![notes(), skip],
+                    ),
+                    InstallKind::Other => (
+                        paragraph(format!("You have {RUNNING}."), colors.muted),
+                        row![
+                            primary("Download".to_owned(), ReleaseMessage::OpenRelease),
+                            notes(),
+                            skip
+                        ],
+                    ),
+                };
                 (
                     format!("Dropshade {version} is available"),
-                    paragraph(format!("You have {RUNNING}."), colors.muted),
-                    Some(row![action, notes(), skip].spacing(4).into()),
+                    body,
+                    Some(buttons.spacing(4).into()),
                 )
             }
             Card::Updating => (
@@ -308,13 +354,15 @@ fn paragraph<'a>(content: String, color: Color) -> Element<'a, Message> {
 }
 
 /// What the card shows once a check found `found`, newer than the running build. `updated` is
-/// what an update in this run changed.
+/// what an update in this run changed; `replaced` is whether the running binary was replaced on
+/// disk, as a package upgrade does.
 fn card_after_check(
     current: &Card,
     install: &InstallKind,
     updated: Option<Installed>,
     found: &Release,
     skipped: bool,
+    replaced: bool,
 ) -> Card {
     // An update is under way or done; a later check changes nothing about that.
     if matches!(current, Card::Updating | Card::Installed(_)) {
@@ -332,6 +380,12 @@ fn card_after_check(
             extension_changed: false,
         }));
     }
+    // The package manager already put a newer binary in place: only a restart is missing.
+    if matches!(install, InstallKind::Repository { .. }) && replaced {
+        return Card::Installed(Installed {
+            extension_changed: false,
+        });
+    }
     if skipped {
         Card::Hidden
     } else {
@@ -348,6 +402,7 @@ mod tests {
     use super::*;
 
     const NOT_SKIPPED: bool = false;
+    const NOT_REPLACED: bool = false;
 
     fn found(version: &str) -> Release {
         Release {
@@ -371,6 +426,7 @@ mod tests {
             None,
             &found("0.12.0"),
             NOT_SKIPPED,
+            NOT_REPLACED,
         );
         assert_eq!(card, Card::Available);
     }
@@ -383,6 +439,7 @@ mod tests {
             None,
             &found("0.12.0"),
             true,
+            NOT_REPLACED,
         );
         assert_eq!(card, Card::Hidden);
     }
@@ -395,6 +452,7 @@ mod tests {
             None,
             &found("0.12.0"),
             NOT_SKIPPED,
+            NOT_REPLACED,
         );
         assert_eq!(card, Card::Available);
     }
@@ -407,6 +465,7 @@ mod tests {
             None,
             &found("0.12.0"),
             NOT_SKIPPED,
+            NOT_REPLACED,
         );
         assert!(matches!(card, Card::Installed(_)), "{card:?}");
     }
@@ -419,6 +478,7 @@ mod tests {
             None,
             &found("0.12.0"),
             NOT_SKIPPED,
+            NOT_REPLACED,
         );
         assert_eq!(card, Card::Updating);
         let installed = Card::Installed(Installed {
@@ -430,6 +490,7 @@ mod tests {
             None,
             &found("0.12.0"),
             NOT_SKIPPED,
+            NOT_REPLACED,
         );
         assert_eq!(card, installed);
     }
@@ -445,8 +506,32 @@ mod tests {
             Some(updated),
             &found("0.12.0"),
             NOT_SKIPPED,
+            NOT_REPLACED,
         );
         assert_eq!(card, Card::Installed(updated));
+    }
+
+    #[test]
+    fn a_package_the_package_manager_upgraded_only_asks_for_a_restart() {
+        let repository = InstallKind::Repository { command: "upgrade" };
+        let card = card_after_check(
+            &Card::Hidden,
+            &repository,
+            None,
+            &found("0.12.0"),
+            NOT_SKIPPED,
+            true,
+        );
+        assert!(matches!(card, Card::Installed(_)), "{card:?}");
+        let card = card_after_check(
+            &Card::Hidden,
+            &repository,
+            None,
+            &found("0.12.0"),
+            NOT_SKIPPED,
+            NOT_REPLACED,
+        );
+        assert_eq!(card, Card::Available);
     }
 
     #[test]
@@ -458,6 +543,7 @@ mod tests {
             None,
             &found("0.12.0"),
             NOT_SKIPPED,
+            NOT_REPLACED,
         );
         assert_eq!(card, Card::Available);
     }

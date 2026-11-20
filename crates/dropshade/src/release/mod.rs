@@ -5,8 +5,8 @@ mod relaunch;
 mod verify;
 
 pub use install::{
-    InstallKind, Installed, Restart, install_kind, request_restart, restart_into, self_update,
-    take_restart,
+    InstallKind, Installed, PACKAGE_BINARY, Restart, binary_replaced, install_kind,
+    request_restart, restart_into, self_update, take_restart,
 };
 pub use relaunch::{
     SUBCOMMAND as RELAUNCH_SUBCOMMAND, claim_hand_over, replaced_an_older_instance, run_helper,

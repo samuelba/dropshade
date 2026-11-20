@@ -1,0 +1,7 @@
+# Updates for Dropshade, from https://github.com/samuelba/dropshade. Installed by the dropshade
+# package; to stop them, set Enabled: no rather than deleting this file.
+Types: deb
+URIs: https://samuelba.github.io/dropshade/deb
+Suites: stable
+Components: main
+Signed-By: /etc/apt/keyrings/dropshade.asc
