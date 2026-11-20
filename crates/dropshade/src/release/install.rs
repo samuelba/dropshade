@@ -3,7 +3,8 @@
 //! installs are checked against the release's signed checksums first.
 //!
 //! Package installs (rpm, deb, Arch) are left to the package manager, and `AppImage` or cargo
-//! installs to the user: those only get a link to the release.
+//! installs to the user: those only get a link to the release, unless the .deb or .rpm's own
+//! repository is set up, so the package manager brings the new release.
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -26,6 +27,22 @@ const SUMS: &str = "SHA256SUMS";
 const MARKER: &str = "dropshade/install-method";
 /// The file that changes with every release even when the extension's code does not.
 const EXTENSION_METADATA: &str = "metadata.json";
+/// Where the .deb and .rpm put the binary.
+pub const PACKAGE_BINARY: &str = "/usr/bin/dropshade";
+/// The repository files the .deb and .rpm install (packaging/repo/), the separator of their
+/// `key: value` or `key=value` lines, and the command that updates from them.
+const REPOSITORIES: [(&str, char, &str); 2] = [
+    (
+        "/etc/apt/sources.list.d/dropshade.sources",
+        ':',
+        "sudo apt update && sudo apt upgrade",
+    ),
+    (
+        "/etc/yum.repos.d/dropshade.repo",
+        '=',
+        "sudo dnf upgrade --refresh",
+    ),
+];
 
 /// How the running binary was installed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,7 +53,10 @@ pub enum InstallKind {
         binary: PathBuf,
         installed: Option<Version>,
     },
-    /// By a package, an `AppImage`, cargo or by hand.
+    /// By the .deb or .rpm, with its repository turned on: the package manager updates it, as
+    /// `command` does.
+    Repository { command: &'static str },
+    /// By a package without its repository, an `AppImage`, cargo or by hand.
     Other,
 }
 
@@ -48,6 +68,16 @@ pub struct Installed {
 }
 
 pub fn install_kind() -> InstallKind {
+    let current = std::env::current_exe().ok();
+    match script_install(current.as_deref()) {
+        InstallKind::Other => repository_install(current.as_deref(), |path| {
+            std::fs::read_to_string(path).ok()
+        }),
+        script => script,
+    }
+}
+
+fn script_install(current: Option<&Path>) -> InstallKind {
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let xdg = |name: &str, fallback: &str| {
         std::env::var_os(name)
@@ -62,11 +92,7 @@ pub fn install_kind() -> InstallKind {
         return InstallKind::Other;
     };
     let marker = std::fs::read_to_string(data_dir.join(MARKER)).ok();
-    kind_of(
-        marker.as_deref(),
-        std::env::current_exe().ok().as_deref(),
-        &bin_dir,
-    )
+    kind_of(marker.as_deref(), current, &bin_dir)
 }
 
 /// The install kind from the marker's text, the running binary and the script's bin directory.
@@ -78,17 +104,59 @@ fn kind_of(marker: Option<&str>, current: Option<&Path>, bin_dir: &Path) -> Inst
             .map(str::trim)
     };
     let binary = bin_dir.join("dropshade");
-    // Linux reports a replaced binary as "<path> (deleted)".
-    let running = current
-        .and_then(Path::to_str)
-        .map(|path| path.strip_suffix(" (deleted)").unwrap_or(path));
-    if value("method") != Some("script") || running != binary.to_str() {
+    if value("method") != Some("script") || running(current) != binary.to_str() {
         return InstallKind::Other;
     }
     InstallKind::Script {
         installed: value("version").and_then(|version| Version::parse(version).ok()),
         binary,
     }
+}
+
+/// Whether the running binary was replaced on disk, as a package upgrade does: then a newer
+/// version waits for a restart.
+pub fn binary_replaced() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.to_str().map(|path| path.ends_with(" (deleted)")))
+        .unwrap_or(false)
+}
+
+/// The running binary's path. Linux reports a replaced binary as "<path> (deleted)".
+fn running(current: Option<&Path>) -> Option<&str> {
+    current
+        .and_then(Path::to_str)
+        .map(|path| path.strip_suffix(" (deleted)").unwrap_or(path))
+}
+
+/// A package install whose repository is set up and turned on, from the running binary and
+/// `read`, which gives a file's text.
+fn repository_install(
+    current: Option<&Path>,
+    read: impl Fn(&str) -> Option<String>,
+) -> InstallKind {
+    if running(current) != Some(PACKAGE_BINARY) {
+        return InstallKind::Other;
+    }
+    REPOSITORIES
+        .iter()
+        .find(|(path, separator, _)| read(path).is_some_and(|text| enabled(&text, *separator)))
+        .map_or(InstallKind::Other, |&(_, _, command)| {
+            InstallKind::Repository { command }
+        })
+}
+
+/// Whether a repository file leaves its repository on: apt's `Enabled: no` and dnf's
+/// `enabled=0` turn it off.
+fn enabled(text: &str, separator: char) -> bool {
+    !text.lines().any(|line| {
+        line.split_once(separator).is_some_and(|(key, value)| {
+            key.trim().eq_ignore_ascii_case("enabled")
+                && ["no", "0", "false", "off"]
+                    .iter()
+                    .any(|off| value.trim().eq_ignore_ascii_case(off))
+        })
+    })
 }
 
 /// Downloads `install.sh` from the release and runs it for that version.
@@ -349,6 +417,65 @@ mod tests {
             Path::new(BIN),
         );
         assert_eq!(kind, script("not a version"));
+    }
+
+    fn repository(files: &[(&str, &str)]) -> InstallKind {
+        let files: Vec<(String, String)> = files
+            .iter()
+            .map(|(path, text)| ((*path).to_owned(), (*text).to_owned()))
+            .collect();
+        repository_install(Some(Path::new(PACKAGE_BINARY)), |path| {
+            files
+                .iter()
+                .find(|(name, _)| name == path)
+                .map(|(_, text)| text.clone())
+        })
+    }
+
+    #[test]
+    fn a_package_with_its_repository_updates_through_the_package_manager() {
+        let apt = include_str!("../../../../packaging/repo/dropshade.sources");
+        let dnf = include_str!("../../../../packaging/repo/dropshade.repo");
+        assert_eq!(
+            repository(&[(REPOSITORIES[0].0, apt)]),
+            InstallKind::Repository {
+                command: REPOSITORIES[0].2
+            }
+        );
+        assert_eq!(
+            repository(&[(REPOSITORIES[1].0, dnf)]),
+            InstallKind::Repository {
+                command: REPOSITORIES[1].2
+            }
+        );
+    }
+
+    #[test]
+    fn a_turned_off_or_missing_repository_leaves_the_release_page() {
+        let apt = include_str!("../../../../packaging/repo/dropshade.sources");
+        let dnf = include_str!("../../../../packaging/repo/dropshade.repo");
+        let apt_off = format!("{apt}Enabled: no\n");
+        let dnf_off = dnf.replace("enabled=1", "enabled = 0");
+        assert_eq!(
+            repository(&[(REPOSITORIES[0].0, &apt_off)]),
+            InstallKind::Other
+        );
+        assert_eq!(
+            repository(&[(REPOSITORIES[1].0, &dnf_off)]),
+            InstallKind::Other
+        );
+        assert_eq!(repository(&[]), InstallKind::Other);
+    }
+
+    #[test]
+    fn only_the_packages_binary_counts_as_a_package_install() {
+        let apt = include_str!("../../../../packaging/repo/dropshade.sources");
+        let kind = repository_install(Some(Path::new("/opt/dropshade")), |_| Some(apt.to_owned()));
+        assert_eq!(kind, InstallKind::Other);
+        let upgraded = repository_install(Some(Path::new("/usr/bin/dropshade (deleted)")), |_| {
+            Some(apt.to_owned())
+        });
+        assert!(matches!(upgraded, InstallKind::Repository { .. }));
     }
 
     #[test]

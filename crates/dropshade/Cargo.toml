@@ -70,6 +70,10 @@ assets = [
     ["../../gnome-extension/icons/dropshade.svg", "usr/share/gnome-shell/extensions/dropshade@samuelba.dev/icons/", "644"],
     ["../../gnome-extension/schemas/org.gnome.shell.extensions.dropshade.gschema.xml", "usr/share/glib-2.0/schemas/", "644"],
     ["../../README.md", "usr/share/doc/dropshade/", "644"],
+    # The apt repository, so the package updates itself. Under /etc they are conffiles: an
+    # upgrade keeps the user's changes, and a purge removes them.
+    ["../../packaging/repo/dropshade.sources", "etc/apt/sources.list.d/", "644"],
+    ["../../packaging/repo/dropshade.asc", "etc/apt/keyrings/", "644"],
 ]
 
 [package.metadata.generate-rpm]
@@ -87,4 +91,7 @@ assets = [
     { source = "../../gnome-extension/icons/dropshade.svg", dest = "/usr/share/gnome-shell/extensions/dropshade@samuelba.dev/icons/dropshade.svg", mode = "644" },
     { source = "../../gnome-extension/schemas/org.gnome.shell.extensions.dropshade.gschema.xml", dest = "/usr/share/glib-2.0/schemas/org.gnome.shell.extensions.dropshade.gschema.xml", mode = "644" },
     { source = "../../README.md", dest = "/usr/share/doc/dropshade/README.md", mode = "644", doc = true },
+    # The dnf repository, so the package updates itself. An upgrade keeps the user's changes.
+    { source = "../../packaging/repo/dropshade.repo", dest = "/etc/yum.repos.d/dropshade.repo", mode = "644", config = "noreplace" },
+    { source = "../../packaging/repo/dropshade.asc", dest = "/etc/pki/rpm-gpg/RPM-GPG-KEY-dropshade", mode = "644", config = "noreplace" },
 ]

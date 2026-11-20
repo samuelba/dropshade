@@ -44,14 +44,24 @@ To remove Dropshade again (your configuration stays):
 curl -fsSL https://samuelba.dev/dropshade/install.sh | sh -s -- --uninstall
 ```
 
-To have your package manager update Dropshade instead, download the package for your machine from
-the [latest release](https://github.com/samuelba/dropshade/releases/latest) and install it:
+To have your package manager install and update Dropshade instead, download the package for your
+machine from the [latest release](https://github.com/samuelba/dropshade/releases/latest) and
+install it:
 
 ```sh
 sudo dnf install ./dropshade-*.rpm   # Fedora
-sudo apt install ./dropshade_*.deb   # Debian, Ubuntu
+sudo apt install ./dropshade_*.deb   # Debian 12+, Ubuntu 22.04+
 sudo pacman -U ./dropshade-bin-*.pkg.tar.zst   # Arch, CachyOS (x86_64)
 ```
+
+The `.deb` and `.rpm` also add Dropshade's apt or dnf repository, so from then on `apt upgrade`,
+`dnf upgrade` and your desktop's software updater bring new releases. On Fedora, run
+`sudo dnf upgrade` once in a terminal first and confirm the repository's key; until then, GNOME
+Software and dnf-automatic cannot read the repository. To add the repository without downloading a package,
+follow [samuelba.github.io/dropshade](https://samuelba.github.io/dropshade/). To stop these
+updates, set `Enabled: no` in `/etc/apt/sources.list.d/dropshade.sources` or `enabled=0` in
+`/etc/yum.repos.d/dropshade.repo`; upgrades keep that change. An Ubuntu release upgrade turns the
+repository off, so set it back to `Enabled: yes` afterwards.
 
 Then set up the hotkey once, depending on your desktop. From then on <kbd>F12</kbd> drops the
 terminal down and hides it again, and the first press starts Dropshade.
