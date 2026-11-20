@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/samuelba/dropshade/compare/v0.13.2...v0.14.0) (2026-11-20)
+
+
+### Features
+
+* update .deb and .rpm installs from apt and dnf repositories (@samuelba) ([01bd627](https://github.com/samuelba/dropshade/commit/01bd627e89b374ce1818e119ca18adc90bcce8f6))
+
 ## [0.13.2](https://github.com/samuelba/dropshade/compare/v0.13.1...v0.13.2) (2026-11-19)
 
 
