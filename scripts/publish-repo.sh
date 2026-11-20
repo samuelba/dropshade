@@ -203,7 +203,8 @@ zcat -- "$primary" >"$work/primary.xml"
 ! grep -q 'xml:base' "$work/primary.xml" || die "the primary data points elsewhere (xml:base)"
 # One "<sha256> <name>" per package: dnf downloads <name> next to repodata/ and checks <sha256>.
 # Each package may hold only the elements createrepo_c writes for dropshade: its own name and
-# version from the signed file name, provides of dropshade alone, requires of system libraries
+# version from the signed file name, provides of dropshade alone (config(dropshade) comes with
+# its %config files under /etc), requires of system libraries
 # alone, and no conflicts, obsoletes or weak dependencies.
 awk '
     function attr(line, key) {
@@ -243,7 +244,7 @@ awk '
         else if (tag == "rpm:provides" || tag == "rpm:requires") section = closing ? "" : tag
         else if (tag == "rpm:entry") {
             entry = attr($0, "name")
-            if (section == "rpm:provides") { if (entry != "dropshade" && entry !~ /^dropshade\([a-z0-9_-]+\)$/) ok = 0 }
+            if (section == "rpm:provides") { if (entry !~ /^(dropshade|dropshade\([a-z0-9_-]+\)|config\(dropshade\))$/) ok = 0 }
             else if (section == "rpm:requires") {
                 if (entry !~ /^(\/bin\/sh|rtld\(GNU_HASH\)|(ld-linux|lib)[A-Za-z0-9_.+-]*\.so\.[0-9.]+(\([A-Za-z0-9_.]*\))?(\(64bit\))?)$/) ok = 0
             }
