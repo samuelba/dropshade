@@ -5,8 +5,7 @@
 
 ### Features
 
-* update .deb and .rpm installs from apt and dnf repositories ([faad57c](https://github.com/samuelba/dropshade/commit/faad57c75cf7346e85d61cf05aab004a4bcc512d))
-* update .deb and .rpm installs from apt and dnf repositories ([01bd627](https://github.com/samuelba/dropshade/commit/01bd627e89b374ce1818e119ca18adc90bcce8f6))
+* update .deb and .rpm installs from apt and dnf repositories (@samuelba) ([01bd627](https://github.com/samuelba/dropshade/commit/01bd627e89b374ce1818e119ca18adc90bcce8f6))
 
 ## [0.13.2](https://github.com/samuelba/dropshade/compare/v0.13.1...v0.13.2) (2026-11-19)
 
