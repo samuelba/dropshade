@@ -23,6 +23,7 @@ pub mod size;
 pub mod terminal;
 pub mod vi;
 pub mod view;
+mod wide;
 
 pub use alacritty_terminal;
 pub use alacritty_terminal::event::Event as TermEvent;
