@@ -848,7 +848,7 @@ checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 
 [[package]]
 name = "dropshade"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "clap",
  "directories",
@@ -882,7 +882,7 @@ dependencies = [
 
 [[package]]
 name = "dropshade-config"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "directories",
  "serde",
@@ -893,7 +893,7 @@ dependencies = [
 
 [[package]]
 name = "dropshade-session"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "directories",
  "serde",
@@ -903,7 +903,7 @@ dependencies = [
 
 [[package]]
 name = "dropshade-term"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "alacritty_terminal",
  "base64 0.22.1",
