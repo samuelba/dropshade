@@ -22,6 +22,8 @@ pub struct RunStyle {
     pub strikeout: bool,
     /// Drawn with the color emoji font, in a run of its own.
     pub emoji: bool,
+    /// One double-width character, in a run of its own.
+    pub wide: bool,
 }
 
 /// Consecutive cells on one row that share colors and style.
@@ -75,6 +77,7 @@ impl From<Flags> for RunStyle {
             underline: flags.intersects(Flags::ALL_UNDERLINES),
             strikeout: flags.contains(Flags::STRIKEOUT),
             emoji: false,
+            wide: flags.contains(Flags::WIDE_CHAR),
         }
     }
 }
@@ -499,6 +502,7 @@ mod tests {
                 underline: true,
                 strikeout: true,
                 emoji: false,
+                wide: false,
             }
         );
     }
@@ -515,6 +519,7 @@ mod tests {
         let frame = frame_for("日x".as_bytes());
         assert_eq!(texts(&frame), vec![(0, 0, "日"), (0, 2, "x")]);
         assert_eq!(frame.runs[0].width, 2);
+        assert!(frame.runs[0].style.wide && !frame.runs[1].style.wide);
     }
 
     #[test]

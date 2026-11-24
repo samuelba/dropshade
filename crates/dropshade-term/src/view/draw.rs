@@ -7,13 +7,13 @@ use iced::advanced::image::Image;
 use iced::widget::canvas::{self, Geometry, Stroke, Text};
 use iced::widget::text::{LineHeight, Shaping};
 use iced::{Color, Font, Pixels, Point, Rectangle, Renderer, Size, font, mouse};
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use super::{TerminalView, ViewState, scrollbar};
 use crate::colors::{CellColors, to_iced};
 use crate::frame::{Cursor, ImageFit, ImageTile, Run, RunStyle};
 use crate::vi::ViSelection;
-use crate::{emoji, metrics};
+use crate::{emoji, metrics, wide};
 
 const BAR_THICKNESS: f32 = 2.0;
 const DECORATION_THICKNESS: f32 = 1.0;
@@ -163,7 +163,7 @@ impl<Message> TerminalView<'_, Message> {
         }
         let fg = to_iced(run.colors.fg, 1.0);
         if !run.style.emoji {
-            canvas.fill_text(self.text(&run.text, origin, fg, run.style));
+            self.draw_text(canvas, &run.text, origin, fg, run.style, run.width);
         }
         if run.style.underline {
             let y = origin.y + cell.height - DECORATION_THICKNESS;
@@ -329,8 +329,9 @@ impl<Message> TerminalView<'_, Message> {
         }
     }
 
-    /// Draws text over `cells` cells. Emoji are scaled to fit them and centred; those from
-    /// `COLRv1` fonts are painted as images since the text renderer leaves them blank.
+    /// Draws text over `cells` cells. Emoji and wide characters are scaled to fit them and
+    /// centred; emoji from `COLRv1` fonts are painted as images since the text renderer leaves
+    /// them blank.
     fn draw_text(
         &self,
         canvas: &mut canvas::Frame,
@@ -342,7 +343,11 @@ impl<Message> TerminalView<'_, Message> {
     ) {
         let emoji = style.emoji.then(metrics::emoji_font).flatten();
         let Some(emoji) = emoji else {
-            canvas.fill_text(self.text(content, origin, color, style));
+            if style.wide {
+                self.draw_wide(canvas, content, origin, color, style, cells);
+            } else {
+                canvas.fill_text(self.text(content, origin, color, style));
+            }
             return;
         };
         #[allow(clippy::cast_precision_loss)]
@@ -361,6 +366,33 @@ impl<Message> TerminalView<'_, Message> {
                 ..self.text(content, origin, color, RunStyle::default())
             }),
         }
+    }
+
+    /// Draws a double-width character in a font that has it as one glyph, so it stays inside
+    /// its cells instead of falling apart into pieces, like 한 into ㅎㅏㄴ.
+    fn draw_wide(
+        &self,
+        canvas: &mut canvas::Frame,
+        content: &str,
+        origin: Point,
+        color: Color,
+        style: RunStyle,
+        cells: usize,
+    ) {
+        let glyph = content
+            .chars()
+            .next()
+            .and_then(|c| wide::glyph(self.style.font.family, c));
+        let mut text = self.text(content, origin, color, style);
+        if let Some(glyph) = glyph {
+            #[allow(clippy::cast_precision_loss)]
+            let room = cells.max(1) as f32 * self.style.cell.width;
+            let size = self.style.font_size.min(room / glyph.advance);
+            text.font.family = glyph.family;
+            text.size = Pixels(size);
+            text.position.x += (room - size * glyph.advance) / 2.0;
+        }
+        canvas.fill_text(text);
     }
 
     fn text(&self, content: &str, position: Point, color: Color, style: RunStyle) -> Text {
@@ -402,7 +434,19 @@ impl<Message> TerminalView<'_, Message> {
             to_iced(palette.background, 1.0),
         );
         let fg = to_iced(palette.foreground, 1.0);
-        canvas.fill_text(self.text(preedit, origin, fg, RunStyle::default()));
+        let mut x = origin.x;
+        for c in preedit.chars() {
+            let cells = c.width().unwrap_or(0);
+            let style = RunStyle {
+                wide: cells == 2,
+                ..RunStyle::default()
+            };
+            let content = c.to_string();
+            self.draw_text(canvas, &content, Point::new(x, origin.y), fg, style, cells);
+            #[allow(clippy::cast_precision_loss)]
+            let advance = cells as f32 * cell.width;
+            x += advance;
+        }
         let underline = Point::new(origin.x, origin.y + cell.height - DECORATION_THICKNESS);
         canvas.fill_rectangle(
             underline,
@@ -421,9 +465,9 @@ fn vi_label(selection: Option<ViSelection>) -> &'static str {
     }
 }
 
-/// The text under the cursor and its style: one character, or a whole emoji sequence.
-/// What a block cursor draws over: an emoji whole, from its first cell, even with the cursor
-/// on its second, like a flag's second letter; otherwise the one character under it.
+/// What a block cursor draws over: an emoji or wide character whole, from its first cell, even
+/// with the cursor on its second, like a flag's second letter; otherwise the one character
+/// under it.
 #[derive(Debug, PartialEq)]
 struct UnderCursor {
     text: String,
@@ -441,7 +485,7 @@ fn text_at(runs: &[Run], cursor: Cursor) -> Option<UnderCursor> {
         strikeout: false,
         ..run.style
     };
-    if run.style.emoji {
+    if run.style.emoji || run.style.wide {
         return Some(UnderCursor {
             text: run.text.clone(),
             style,
