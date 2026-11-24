@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.1](https://github.com/samuelba/dropshade/compare/v0.14.0...v0.14.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* accept the config(dropshade) provide in the dnf repository check (@samuelba) ([8342fbb](https://github.com/samuelba/dropshade/commit/8342fbbe3efd0fea18584e2807ba24af3c4c66a1))
+* draw wide characters as one glyph that fits their two cells (@samuelba) ([ff63863](https://github.com/samuelba/dropshade/commit/ff63863059a817c7cddcacc39981aeab5f6a122f))
+
 ## [0.14.0](https://github.com/samuelba/dropshade/compare/v0.13.2...v0.14.0) (2026-11-20)
 
 
