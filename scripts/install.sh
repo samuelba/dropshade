@@ -7,9 +7,11 @@
 #   --gnome-extension  also install the GNOME Shell extension when not on GNOME right now
 #   --force            reinstall even when this version is already installed
 #   --uninstall        remove Dropshade; the configuration in ~/.config/dropshade stays
+#   --from DIR         install the unpacked bundle in DIR instead of downloading a release
 # Environment: DROPSHADE_VERSION pins a release (e.g. 0.11.0). DROPSHADE_GNOME_EXTENSION=1,
-# DROPSHADE_FORCE=1 and DROPSHADE_UNINSTALL=1 do the same as the options. DROPSHADE_SHA256 is
-# the tarball's checksum, which Dropshade's updater passes after checking the release's signature.
+# DROPSHADE_FORCE=1, DROPSHADE_UNINSTALL=1 and DROPSHADE_FROM=DIR do the same as the options.
+# DROPSHADE_SHA256 is the tarball's checksum, which Dropshade's updater passes after checking the
+# release's signature.
 #
 # Files: ~/.local/bin/dropshade, the desktop entry, icons and metainfo under ~/.local/share,
 # and the GNOME Shell extension under ~/.local/share/gnome-shell/extensions.
@@ -29,21 +31,32 @@ icon_files="scalable/apps/$app_id.svg scalable/apps/$app_id-tray.svg symbolic/ap
 gnome_extension="${DROPSHADE_GNOME_EXTENSION:-0}"
 force="${DROPSHADE_FORCE:-0}"
 uninstall="${DROPSHADE_UNINSTALL:-0}"
-for arg in "$@"; do
-    case "$arg" in
+from="${DROPSHADE_FROM:-}"
+while [ $# -gt 0 ]; do
+    case "$1" in
         --gnome-extension) gnome_extension=1 ;;
         --force) force=1 ;;
         --uninstall) uninstall=1 ;;
+        --from)
+            if [ $# -lt 2 ]; then
+                echo "dropshade install: --from needs a folder" >&2
+                exit 2
+            fi
+            from="$2"
+            shift
+            ;;
+        --from=*) from="${1#--from=}" ;;
         -h | --help)
-            echo "Usage: install.sh [--gnome-extension] [--force] [--uninstall]"
+            echo "Usage: install.sh [--gnome-extension] [--force] [--uninstall] [--from DIR]"
             echo "Set DROPSHADE_VERSION to install a specific release."
             exit 0
             ;;
         *)
-            echo "dropshade install: unknown option $arg" >&2
+            echo "dropshade install: unknown option $1" >&2
             exit 2
             ;;
     esac
+    shift
 done
 
 say() { printf '%s\n' "$*"; }
@@ -163,7 +176,11 @@ case "$(uname -m)" in
     *) die "there is no Dropshade build for $(uname -m), only for x86_64 and aarch64" ;;
 esac
 
-if [ -n "${DROPSHADE_VERSION:-}" ]; then
+if [ -n "$from" ]; then
+    [ -x "$from/dropshade" ] || die "$from has no dropshade binary. Nothing was installed."
+    version="$("$from/dropshade" --version 2>/dev/null | awk '{ print $2 }')" || true
+    [ -n "$version" ] || die "$from/dropshade does not run on this system. Nothing was installed."
+elif [ -n "${DROPSHADE_VERSION:-}" ]; then
     version="${DROPSHADE_VERSION#v}"
 else
     version="$(latest_version)"
@@ -189,23 +206,28 @@ tmp="$(mktemp -d)"
 trap 'rm -rf -- "$tmp"' EXIT
 trap 'exit 130' INT TERM
 
-bundle="dropshade-$version-$arch-linux"
-say "Downloading Dropshade $version ($arch)"
-fetch "$repo/releases/download/v$version/$bundle.tar.gz" "$tmp/$bundle.tar.gz" ||
-    die "cannot download Dropshade $version for $arch. Nothing was installed."
-if [ -n "${DROPSHADE_SHA256:-}" ]; then
-    expected="$DROPSHADE_SHA256"
+if [ -n "$from" ]; then
+    src="$from"
+    say "Installing Dropshade $version from $from"
 else
-    fetch "$repo/releases/download/v$version/SHA256SUMS-$arch" "$tmp/SHA256SUMS" ||
-        die "cannot download the checksums. Nothing was installed."
-    expected="$(awk -v name="$bundle.tar.gz" '$2 == name || $2 == "*" name { print $1 }' "$tmp/SHA256SUMS")"
-    [ -n "$expected" ] || die "$bundle.tar.gz is missing from SHA256SUMS-$arch. Nothing was installed."
+    bundle="dropshade-$version-$arch-linux"
+    say "Downloading Dropshade $version ($arch)"
+    fetch "$repo/releases/download/v$version/$bundle.tar.gz" "$tmp/$bundle.tar.gz" ||
+        die "cannot download Dropshade $version for $arch. Nothing was installed."
+    if [ -n "${DROPSHADE_SHA256:-}" ]; then
+        expected="$DROPSHADE_SHA256"
+    else
+        fetch "$repo/releases/download/v$version/SHA256SUMS-$arch" "$tmp/SHA256SUMS" ||
+            die "cannot download the checksums. Nothing was installed."
+        expected="$(awk -v name="$bundle.tar.gz" '$2 == name || $2 == "*" name { print $1 }' "$tmp/SHA256SUMS")"
+        [ -n "$expected" ] || die "$bundle.tar.gz is missing from SHA256SUMS-$arch. Nothing was installed."
+    fi
+    [ "$(sha256 "$tmp/$bundle.tar.gz")" = "$expected" ] ||
+        die "the download does not match its checksum. Nothing was installed."
+    tar -xzf "$tmp/$bundle.tar.gz" -C "$tmp"
+    src="$tmp/$bundle"
+    [ -x "$src/dropshade" ] || die "the archive has no dropshade binary. Nothing was installed."
 fi
-[ "$(sha256 "$tmp/$bundle.tar.gz")" = "$expected" ] ||
-    die "the download does not match its checksum. Nothing was installed."
-tar -xzf "$tmp/$bundle.tar.gz" -C "$tmp"
-src="$tmp/$bundle"
-[ -x "$src/dropshade" ] || die "the archive has no dropshade binary. Nothing was installed."
 
 # Written next to the old binary and renamed over it, so a running Dropshade keeps working.
 mkdir -p "$bin_dir"
