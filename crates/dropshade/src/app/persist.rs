@@ -1,6 +1,7 @@
 //! Saving and restoring tabs: the automatic session and named layouts.
 
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use dropshade_session::{
     self as sessions, PaneSnapshot, PaneTree, Snapshot, SplitDirection, TabSnapshot,
@@ -15,6 +16,32 @@ use crate::tabs::{self, Panes};
 
 /// How many lines of each pane are kept for the next start.
 const RESTORE_LINES: usize = 2_000;
+
+/// How long session writes pause after a shell is killed by a signal.
+const HOLD: Duration = Duration::from_secs(5);
+
+/// Pauses session writes after a shell is killed by a signal.
+///
+/// At logout and shutdown systemd signals the shells together with Dropshade. Their tabs close
+/// before the quit request arrives, and saving then would replace the session with what is left.
+#[derive(Debug, Default)]
+pub(super) struct SaveHold(Option<Instant>);
+
+impl SaveHold {
+    pub(super) fn start(&mut self, now: Instant) {
+        self.0 = Some(now + HOLD);
+    }
+
+    pub(super) fn active(&self, now: Instant) -> bool {
+        self.0.is_some_and(|until| now < until)
+    }
+}
+
+/// Whether a shell's exit status means a signal ended it: no code, or 128 + SIGHUP or SIGTERM
+/// from shells that exit with a code instead of re-raising.
+pub(super) fn killed_by_signal(code: Option<i32>) -> bool {
+    matches!(code, None | Some(129 | 143))
+}
 
 /// What the first tabs of a new instance are.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -58,7 +85,7 @@ impl App {
 
     /// Writes the session file if the tabs changed since the last save.
     pub(super) fn save_session(&mut self) {
-        if !self.config.session.restore {
+        if !self.config.session.restore || self.save_hold.active(Instant::now()) {
             return;
         }
         let Some(path) = self.session_path.as_deref() else {
@@ -76,6 +103,9 @@ impl App {
 
     /// Saves the session on quit, plus each pane's scrollback when that is turned on.
     pub(super) fn save_session_on_exit(&mut self) {
+        if self.save_hold.active(Instant::now()) {
+            return;
+        }
         let keep = self.config.session.restore && self.config.session.restore_scrollback;
         match sessions::scrollback_dir() {
             Some(dir) if keep => {
@@ -342,5 +372,33 @@ fn pane_tree(
             first: Box::new(pane_tree(a, panes, dump, leaves)),
             second: Box::new(pane_tree(b, panes, dump, leaves)),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Instant;
+
+    use super::{HOLD, SaveHold, killed_by_signal};
+
+    #[test]
+    fn a_hold_pauses_saves_until_it_runs_out() {
+        let now = Instant::now();
+        let mut hold = SaveHold::default();
+        assert!(!hold.active(now));
+        hold.start(now);
+        assert!(hold.active(now));
+        assert!(hold.active(now + HOLD / 2));
+        assert!(!hold.active(now + HOLD));
+    }
+
+    #[test]
+    fn signal_deaths_hold_saves_but_plain_exits_do_not() {
+        assert!(killed_by_signal(None));
+        assert!(killed_by_signal(Some(129)));
+        assert!(killed_by_signal(Some(143)));
+        assert!(!killed_by_signal(Some(0)));
+        assert!(!killed_by_signal(Some(1)));
+        assert!(!killed_by_signal(Some(130)));
     }
 }
