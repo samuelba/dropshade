@@ -5,8 +5,7 @@
 
 ### Bug Fixes
 
-* keep the saved session when shells are killed at logout ([836bd37](https://github.com/samuelba/dropshade/commit/836bd37ef33df41331512b6dfd15a1f49ea01c07))
-* keep the saved session when shells are killed at logout ([60f1f20](https://github.com/samuelba/dropshade/commit/60f1f202b360c3992db9096047d6d8d8b78ec6ed))
+* keep the saved session when shells are killed at logout (@samuelba) ([60f1f20](https://github.com/samuelba/dropshade/commit/60f1f202b360c3992db9096047d6d8d8b78ec6ed))
 
 ## [0.14.2](https://github.com/samuelba/dropshade/compare/v0.14.1...v0.14.2) (2026-11-25)
 
