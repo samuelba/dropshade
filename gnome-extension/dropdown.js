@@ -117,11 +117,12 @@ export class Dropdown {
 
     hide() {
         const window = this._window;
-        if (!window || window.minimized || !this._shown)
+        // A window on its way out already lost its actor; it moves the focus as it goes.
+        const actor = window?.get_compositor_private();
+        if (!actor || window.minimized || !this._shown)
             return;
         this._shown = false;
         this._maximized = false;
-        const actor = window.get_compositor_private();
         const monitor = Main.layoutManager.monitors[window.get_monitor()];
         const hidden = this._hiddenState(window.get_frame_rect(), monitor);
         this._animate(actor, monitor, SHOWN, hidden, () => {

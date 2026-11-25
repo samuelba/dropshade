@@ -115,6 +115,12 @@ export class AppLauncher {
             console.error(`Dropshade: could not start ${argv.join(' ')}: ${error.message}`);
             Main.notifyError('Dropshade could not start', `${argv[0]}: ${error.message}`);
             return;
+        } finally {
+            // On GNOME 46 the launcher keeps its copy of the app's Wayland socket until garbage
+            // collection. The app's window then outlives the app, and when the collector finally
+            // closes the socket, the shell cannot run its handlers and leaves the window on
+            // screen until the next log-in.
+            launcher.close();
         }
         this._track(spawned.client, spawned.subprocess, {program: argv[0], windowSeen: false});
     }
