@@ -314,7 +314,7 @@ Running it needs a Wayland or X11 session, Vulkan or OpenGL drivers, and `libxkb
 ### GNOME
 
 Mutter, GNOME's compositor, does not let apps place themselves over other windows, so a small
-companion Shell extension shows and hides Dropshade. It supports GNOME 46 to 50.
+companion Shell extension shows and hides Dropshade. It supports GNOME 46 to 51.
 
 The `.rpm`, `.deb` and pacman packages install the extension for all users. For a build of your own:
 
