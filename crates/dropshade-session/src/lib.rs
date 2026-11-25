@@ -1,6 +1,7 @@
 //! Saved tab sets: the automatic session (restored on the next start) and named layouts the user
 //! keeps in the config directory.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -303,7 +304,9 @@ pub fn save(path: &Path, snapshot: &Snapshot) -> Result<(), SessionError> {
         std::fs::create_dir_all(parent).map_err(io_error)?;
     }
     let temporary = path.with_extension("toml.tmp");
-    std::fs::write(&temporary, text).map_err(io_error)?;
+    let mut file = std::fs::File::create(&temporary).map_err(io_error)?;
+    file.write_all(text.as_bytes()).map_err(io_error)?;
+    file.sync_all().map_err(io_error)?;
     std::fs::rename(&temporary, path).map_err(io_error)
 }
 

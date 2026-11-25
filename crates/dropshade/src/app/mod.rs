@@ -116,6 +116,7 @@ pub struct App {
     session_path: Option<PathBuf>,
     /// The last snapshot written, to skip saves when nothing changed.
     saved: Option<dropshade_session::Snapshot>,
+    save_hold: persist::SaveHold,
     /// Where file drops arrive; winit's window shares its connection once it opens.
     drop_target: Option<DropTarget>,
 }
@@ -275,6 +276,7 @@ impl App {
             ipc: None,
             session_path: dropshade_session::session_path(),
             saved: None,
+            save_hold: persist::SaveHold::default(),
             drop_target,
         };
         if app.binds_in_cosmic()

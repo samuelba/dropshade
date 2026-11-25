@@ -13,7 +13,7 @@ use iced::widget::{Id, operation};
 use iced::{Point, Size, Task};
 
 use super::commands::{self, Finished};
-use super::persist::clear_saved_scrollback;
+use super::persist::{self, clear_saved_scrollback};
 use super::split::sync_title;
 use super::view::bar_origin;
 use super::zoom::Zoom;
@@ -241,7 +241,12 @@ impl App {
             return Task::none();
         };
         match session.terminal.handle_event(event, &palette) {
-            Some(Notice::Exited(_)) => self.close_pane(key),
+            Some(Notice::Exited(code)) => {
+                if persist::killed_by_signal(code) {
+                    self.save_hold.start(Instant::now());
+                }
+                self.close_pane(key)
+            }
             Some(Notice::TitleChanged) => {
                 if focused {
                     sync_title(tab);
