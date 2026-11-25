@@ -5,8 +5,7 @@
 
 ### Bug Fixes
 
-* support GNOME 51 and add a bundle for testing builds on a VM ([bac00d8](https://github.com/samuelba/dropshade/commit/bac00d85378a67c81575893abaa8524c0c851ac4))
-* support GNOME 51 and add a bundle for testing builds on a VM ([3c4ee9b](https://github.com/samuelba/dropshade/commit/3c4ee9b95057212e9b818441a38ab42d8e08b821))
+* support GNOME 51 and add a bundle for testing builds on a VM (@samuelba) ([3c4ee9b](https://github.com/samuelba/dropshade/commit/3c4ee9b95057212e9b818441a38ab42d8e08b821))
 
 ## [0.14.3](https://github.com/samuelba/dropshade/compare/v0.14.2...v0.14.3) (2026-11-25)
 
