@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.2](https://github.com/samuelba/dropshade/compare/v0.14.1...v0.14.2) (2026-11-25)
+
+
+### Bug Fixes
+
+* close the launcher's Wayland socket so the dropdown can hide (@samuelba) ([c8efb0d](https://github.com/samuelba/dropshade/commit/c8efb0ddb74e88d4288697948f32e5403ae4a3d9))
+
 ## [0.14.1](https://github.com/samuelba/dropshade/compare/v0.14.0...v0.14.1) (2026-11-24)
 
 
