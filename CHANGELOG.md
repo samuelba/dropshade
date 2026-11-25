@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.3](https://github.com/samuelba/dropshade/compare/v0.14.2...v0.14.3) (2026-11-25)
+
+
+### Bug Fixes
+
+* keep the saved session when shells are killed at logout (@samuelba) ([60f1f20](https://github.com/samuelba/dropshade/commit/60f1f202b360c3992db9096047d6d8d8b78ec6ed))
+
 ## [0.14.2](https://github.com/samuelba/dropshade/compare/v0.14.1...v0.14.2) (2026-11-25)
 
 
