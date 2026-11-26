@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.5](https://github.com/samuelba/dropshade/compare/v0.14.4...v0.14.5) (2026-11-26)
+
+
+### Bug Fixes
+
+* drop the padding around the GNOME panel icon ([06560e6](https://github.com/samuelba/dropshade/commit/06560e6e872a8d98fb27a782b60374794c1465e8))
+* drop the padding around the GNOME panel icon ([3962c03](https://github.com/samuelba/dropshade/commit/3962c0357b0400286a554f271c3cf0a3c851c1b4))
+
 ## [0.14.4](https://github.com/samuelba/dropshade/compare/v0.14.3...v0.14.4) (2026-11-25)
 
 
