@@ -15,10 +15,11 @@ class DropshadeIndicatorButton extends PanelMenu.Button {
     _init(iconFile, {onToggle, onSettings, onAbout}) {
         super._init(0.5, 'Dropshade');
         this._onToggle = onToggle;
-
+        // No icon padding, as the AppIndicator extension draws tray icons.
         this.add_child(new St.Icon({
             gicon: new Gio.FileIcon({file: iconFile}),
             style_class: 'system-status-icon',
+            style: 'padding: 0',
         }));
         this.menu.addAction('Settings…', onSettings);
         this.menu.addAction('About Dropshade', onAbout);
